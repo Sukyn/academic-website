@@ -1,9 +1,40 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 ---
-<BaseLayout title="Home">
-  <h1>Home</h1>
-  <p>
-    Welcome to my academic website.
-  </p>
+
+<BaseLayout
+  title="Home"
+  description="Colin Blake — PhD candidate in quantum computing at Inria (MOCQUA)."
+>
+  <section>
+    <h1>Colin Blake</h1>
+    <p class="muted">
+      PhD candidate in quantum computing · Inria — MOCQUA team
+    </p>
+
+    <p>
+      I work on the formalization and optimization of quantum circuits
+      (especially qudit systems), aiming to develop complete equational theories
+      and improve quantum algorithms.
+    </p>
+
+    <div class="button-row">
+      <a class="button primary" href="/publications">Publications</a>
+      <a class="button ghost" href="/contact">Contact</a>
+    </div>
+
+    <h2>Links</h2>
+    <ul>
+      <li>
+        <a href="https://scholar.google.com/" target="_blank" rel="noopener noreferrer">
+          Google Scholar
+        </a>
+      </li>
+      <li>
+        <a href="https://www.linkedin.com/" target="_blank" rel="noopener noreferrer">
+          LinkedIn
+        </a>
+      </li>
+    </ul>
+  </section>
 </BaseLayout>
