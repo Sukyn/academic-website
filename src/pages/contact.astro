@@ -1,0 +1,23 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="Contact">
+  <h1>Contact</h1>
+
+  <h2>Email</h2>
+  <p id="email"></p>
+
+  <script>
+    // simple bot-resistant email rendering
+    const user = "colin.blake";
+    const domain = "inria.fr";
+    document.getElementById("email").textContent =
+      `${user}@${domain}`;
+  </script>
+
+  <h2>Links</h2>
+  <ul>
+    <li><a href="https://scholar.google.com/" target="_blank" rel="noreferrer">Google Scholar</a></li>
+    <li><a href="https://www.linkedin.com/" target="_blank" rel="noreferrer">LinkedIn</a></li>
+  </ul>
+</BaseLayout>

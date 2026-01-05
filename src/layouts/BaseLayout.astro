@@ -1,0 +1,31 @@
+---
+const { title = "Site" } = Astro.props;
+const description = "Academic website + blog";
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+  <body>
+    <header style="padding:16px; border-bottom:1px solid #ddd;">
+      <nav style="display:flex; gap:12px; flex-wrap:wrap;">
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+        <a href="/publications">Publications</a>
+        <a href="/blog">Blog</a>
+        <a href="/contact">Contact</a>
+      </nav>
+    </header>
+
+    <main style="max-width: 820px; padding: 16px; margin: 0 auto;">
+      <slot />
+    </main>
+
+    <footer style="padding:16px; border-top:1px solid #ddd;">
+      <small>© {new Date().getFullYear()} Colin Blake — Built with Astro</small>
+    </footer>
+  </body>
+</html>
