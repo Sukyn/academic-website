@@ -1,12 +1,87 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 ---
+
 <BaseLayout title="404">
-  <h1>404 - Page not found</h1>
-  <p>
-    The page you are looking for does not exist.
-  </p>
-  <p>
-    <a href="/">Return to home</a>
-  </p>
+  <main class="not-found">
+    <h1>404 - Page not found (in this model)</h1>
+   <!-- <p>
+      Assume the page exists, derive <code>⊥</code>, conclude <code>I'm a teapot</code>.
+    </p>
+-->
+
+    <p>
+      The good news: by non-constructive existence, the page may exist.
+      The bad news: we failed to construct a witness.
+    </p>
+<!--
+    <details>
+      <summary>Proof sketch (click to expand)</summary>
+      <pre><code>Goal: FindPage(url)
+
+1. Reduce FindPage(url) to HALT(program(url))
+2. Observe: HALT is undecidable
+3. Therefore: the existence of this page is… complicated
+4. Return 404 (sound, but probably incomplete)</code></pre>
+    </details>
+-->
+
+<!--
+    <p>
+      If you’re a type theorist: this route’s type appears to be uninhabited.
+      If you’re a logician: it might be independent of our routing axioms.
+      If you’re a complexity theorist: we can approximate it within 404 ± ε.
+    </p>
+--> 
+    <p class="actions">
+      <a class="primary" href="/">Return to home</a>
+      <!-- <a href="/sitemap.xml">Consult the oracle (sitemap)</a> -->
+    </p>
+
+    <p class="fineprint">
+      Tip: if you believe the page exists, please provide either (a) a URL,
+      (b) a constructive proof, or (c) a pull request.
+    </p>
+  </main>
+
+  <style>
+    .not-found {
+      max-width: 60ch;
+      margin: 0 auto;
+      padding: 3rem 1.25rem;
+      line-height: 1.6;
+    }
+    .actions {
+      margin-top: 1.75rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .primary {
+      display: inline-block;
+      padding: 0.6rem 1rem;
+      border-radius: 0.75rem;
+      text-decoration: none;
+      border: 1px solid currentColor;
+    }
+    details {
+      margin: 1rem 0 1.25rem;
+      padding: 0.75rem 1rem;
+      border: 1px solid rgba(127, 127, 127, 0.35);
+      border-radius: 0.75rem;
+    }
+    pre {
+      margin: 0.75rem 0 0;
+      overflow-x: auto;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      background: rgba(127, 127, 127, 0.08);
+    }
+    .fineprint {
+      margin-top: 2rem;
+      opacity: 0.8;
+      font-size: 0.95em;
+    }
+  </style>
 </BaseLayout>
