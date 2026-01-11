@@ -1,7 +1,63 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+
+// Draft handling:
+// - In dev: show everything
+// - In prod: hide draft posts
+const posts = (await getCollection("posts", ({ data }) => {
+  return import.meta.env.PROD ? data.draft !== true : true;
+})).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 ---
-<BaseLayout title="Blog">
-  <h1>Blog</h1>
-  <p></p>
+
+<BaseLayout title="Blog" description="Writing, notes, and research updates.">
+  <section class="prose">
+    <h1>Blog</h1>
+
+    {posts.length === 0 ? (
+      <p class="muted">No posts yet. Check back soon.</p>
+    ) : (
+      <ol class="post-list">
+        {posts.map((post) => (
+          <li class="post-item">
+            <a class="post-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
+
+            <div class="post-meta">
+              <time datetime={post.data.date.toISOString()}>
+                {post.data.date.toISOString().slice(0, 10)}
+              </time>
+
+              <span class="tags">
+                {post.data.tags.map((t) => (
+                  <span class="tag">{t}</span>
+                ))}
+              </span>
+
+              {post.data.draft ? <span class="pill draft">Draft</span> : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    )}
+
+    <p class="rss-link"><a href="/rss.xml">RSS</a></p>
+  </section>
+
+  <style>
+    /* Keep only page-specific list spacing here. Everything else goes to global.css */
+    .post-list { list-style: none; padding: 0; margin: 1.25rem 0 0; }
+    .post-item { padding: 1rem 0; border-top: 1px solid var(--color-border); }
+    .post-item:first-child { border-top: none; padding-top: 0; }
+
+    .post-link {
+      text-decoration: none;
+      font-weight: 750;
+    }
+    .post-link:hover {
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    .rss-link { margin-top: 1.25rem; }
+  </style>
 </BaseLayout>
