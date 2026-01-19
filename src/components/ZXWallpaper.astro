@@ -1,0 +1,208 @@
+<canvas id="zx-wallpaper" aria-hidden="true"></canvas>
+
+<style>
+  #zx-wallpaper {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.12; /* ~10% transparency */
+  }
+</style>
+
+<script>
+  (() => {
+    const canvas = document.getElementById("zx-wallpaper");
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Respect accessibility preference
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let running = !reduceMotion.matches;
+
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    const NODE_COUNT = 26;
+    const EDGE_COUNT = 34;
+
+    // "ZX-ish" node types
+    // green circle, red circle, yellow square
+    const TYPES = ["G", "R", "Y"];
+
+    /** @type {Array<{x:number,y:number,vx:number,vy:number,type:"G"|"R"|"Y",r:number}>} */
+    const nodes = [];
+    /** @type {Array<{a:number,b:number,curve:number}>} */
+    const edges = [];
+
+    function resize() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function init() {
+      nodes.length = 0;
+      edges.length = 0;
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      for (let i = 0; i < NODE_COUNT; i++) {
+        const type = /** @type {"G"|"R"|"Y"} */ (pick(TYPES));
+        nodes.push({
+          x: rand(0, w),
+          y: rand(0, h),
+          // VERY slow drift
+          vx: rand(-4, 4) / 60,
+          vy: rand(-4, 4) / 60,
+          type,
+          r: type === "Y" ? rand(8, 12) : rand(7, 11),
+        });
+      }
+
+      for (let i = 0; i < EDGE_COUNT; i++) {
+        const a = Math.floor(rand(0, NODE_COUNT));
+        let b = Math.floor(rand(0, NODE_COUNT));
+        if (b === a) b = (b + 1) % NODE_COUNT;
+
+        edges.push({
+          a,
+          b,
+          // curve controls how “bendy” the arrow is
+          curve: rand(-120, 120),
+        });
+      }
+    }
+
+    function wrap(n) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      // wrap-around (nice for wallpapers)
+      if (n.x < -40) n.x = w + 40;
+      if (n.x > w + 40) n.x = -40;
+      if (n.y < -40) n.y = h + 40;
+      if (n.y > h + 40) n.y = -40;
+    }
+
+    function drawArrowHead(px, py, angle, size) {
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px - size * Math.cos(angle - 0.35), py - size * Math.sin(angle - 0.35));
+      ctx.lineTo(px - size * Math.cos(angle + 0.35), py - size * Math.sin(angle + 0.35));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawEdge(e) {
+      const A = nodes[e.a];
+      const B = nodes[e.b];
+      if (!A || !B) return;
+
+      const mx = (A.x + B.x) / 2;
+      const my = (A.y + B.y) / 2;
+
+      // normal vector for curved control point
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+
+      const cx = mx + nx * e.curve;
+      const cy = my + ny * e.curve;
+
+      // Edge stroke
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.35)";
+      ctx.fillStyle = "rgba(15, 23, 42, 0.35)";
+
+      ctx.beginPath();
+      ctx.moveTo(A.x, A.y);
+      ctx.quadraticCurveTo(cx, cy, B.x, B.y);
+      ctx.stroke();
+    }
+
+    function drawNode(n) {
+      if (n.type === "Y") {
+        // Yellow square node
+        ctx.fillStyle = "rgba(234, 179, 8, 0.95)";
+        ctx.strokeStyle = "rgba(234, 179, 8, 0.95)";
+        const s = n.r * 2;
+        ctx.beginPath();
+        ctx.rect(n.x - s / 2, n.y - s / 2, s, s);
+        ctx.fill();
+        return;
+      }
+
+      // Green / Red circle nodes
+      ctx.fillStyle = n.type === "G" ? "rgba(34, 197, 94, 0.95)" : "rgba(239, 68, 68, 0.95)";
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.18)";
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    let last = performance.now();
+
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      // Clear
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      // Update (very slow drift)
+      if (running) {
+        for (const n of nodes) {
+          n.x += n.vx * (dt * 60);
+          n.y += n.vy * (dt * 60);
+
+          // tiny random wander to avoid “too linear”
+          n.vx += rand(-0.02, 0.02) * dt;
+          n.vy += rand(-0.02, 0.02) * dt;
+
+          // clamp speed
+          n.vx = Math.max(-0.12, Math.min(0.12, n.vx));
+          n.vy = Math.max(-0.12, Math.min(0.12, n.vy));
+
+          wrap(n);
+        }
+      }
+
+      // Draw edges first, then nodes on top
+      for (const e of edges) drawEdge(e);
+      for (const n of nodes) drawNode(n);
+
+      requestAnimationFrame(frame);
+    }
+
+    function start() {
+      resize();
+      init();
+      last = performance.now();
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("resize", () => {
+      resize();
+    });
+
+    reduceMotion.addEventListener?.("change", (e) => {
+      running = !e.matches;
+    });
+
+    start();
+  })();
+</script>
