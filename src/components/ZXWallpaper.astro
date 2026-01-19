@@ -29,6 +29,8 @@
 
     const NODE_COUNT = 26;
     const EDGE_COUNT = 34;
+    const FPS = 30;
+    let acc = 0;
 
     // "ZX-ish" node types
     // green circle, red circle, yellow square
@@ -38,9 +40,37 @@
     const nodes = [];
     /** @type {Array<{a:number,b:number,curve:number}>} */
     const edges = [];
+ 
+function frame(now) {
+  const dt = (now - last) / 1000;
+  last = now;
+  acc += dt;
+
+  if (acc < 1 / FPS) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  acc = 0;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (running) {
+    for (const n of nodes) {
+      n.x += n.vx;
+      n.y += n.vy;
+      wrap(n);
+    }
+  }
+
+  for (const e of edges) drawEdge(e);
+  for (const n of nodes) drawNode(n);
+
+  requestAnimationFrame(frame);
+}
+
 
     function resize() {
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const dpr = Math.min(1.5, window.devicePixelRatio || 1);
       canvas.width = Math.floor(window.innerWidth * dpr);
       canvas.height = Math.floor(window.innerHeight * dpr);
       canvas.style.width = "100%";
@@ -202,6 +232,10 @@
     reduceMotion.addEventListener?.("change", (e) => {
       running = !e.matches;
     });
+
+    document.addEventListener("visibilitychange", () => {
+  running = !document.hidden && !reduceMotion.matches;
+});
 
     start();
   })();
