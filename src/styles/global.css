@@ -61,6 +61,11 @@ main.container {
   padding-block: 2rem;
 }
 
+.page {
+  position: relative;
+  z-index: 1;
+}
+
 /* =========================
    TYPOGRAPHY (H1–H3 + text)
    ========================= */

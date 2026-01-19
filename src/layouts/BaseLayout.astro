@@ -1,6 +1,7 @@
 ---
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+import ZXWallpaper from "../components/ZXWallpaper.astro";
 import "../styles/global.css";
 
 export interface Props {
@@ -8,10 +9,7 @@ export interface Props {
   description?: string;
 }
 
-const {
-  title,
-  description = "Academic website."
-} = Astro.props;
+const { title, description = "Academic website." } = Astro.props;
 ---
 
 <!doctype html>
@@ -25,10 +23,18 @@ const {
 
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <Header />
-    <main id="main-content" class="container">
-      <slot />
-    </main>
-    <Footer />
+
+    <!-- NEW: background wallpaper -->
+    <ZXWallpaper />
+
+    <!-- NEW: content wrapper above the wallpaper -->
+    <div class="page">
+      <Header />
+      <main id="main-content" class="container">
+        <slot />
+      </main>
+      <Footer />
+    </div>
   </body>
 </html>
+
