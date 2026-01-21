@@ -8,6 +8,14 @@ import { getCollection } from "astro:content";
 const posts = (await getCollection("posts", ({ data }) => {
   return import.meta.env.PROD ? data.draft !== true : true;
 })).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const WORDS_PER_MINUTE = 200;
+
+function readingTimeFromText(text) {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const minutes = Math.max(1, Math.ceil(words / WORDS_PER_MINUTE));
+  return `(${minutes} min read)`;
+}
 ---
 
 <BaseLayout title="Blog" description="Writing, notes, and research updates.">
@@ -27,9 +35,11 @@ const posts = (await getCollection("posts", ({ data }) => {
                 {post.data.date.toISOString().slice(0, 10)}
               </time>
 
+              <span class="reading-time">{readingTimeFromText(post.body)}</span>
+
               <span class="tags">
                 {post.data.tags.map((t) => (
-                  <span class="tag">{t}</span>
+                  <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
                 ))}
               </span>
 
@@ -40,7 +50,12 @@ const posts = (await getCollection("posts", ({ data }) => {
       </ol>
     )}
 
+    <nav class="pagination">
+      <a href="/blog/page/2">Next →</a>
+    </nav>
+
     <p class="rss-link"><a href="/rss.xml">RSS</a></p>
+
   </section>
 
   <style>
