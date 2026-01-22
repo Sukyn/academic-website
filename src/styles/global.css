@@ -196,6 +196,8 @@ a:focus-visible {
 /* Generic “prose” wrapper for Markdown content */
 .prose {
   max-width: var(--reading-width);
+  margin-inline: auto; /* centers prose even if container changes later */
+  width: 100%;
 }
 
 /* Headings inside Markdown (avoid huge gaps) */
@@ -282,4 +284,18 @@ a:focus-visible {
 
 .pill.draft {
   font-weight: 700;
+}
+
+.reading-time {
+  color: var(--color-muted);
+  font-size: 0.65em;
+}
+
+.tag {
+  text-decoration: none;
+}
+
+.tag:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }

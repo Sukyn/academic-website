@@ -1,0 +1,77 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+
+const POSTS_PER_MINUTE = 200;
+const readingTime = (text) =>
+  `${Math.max(1, Math.ceil(text.trim().split(/\s+/).filter(Boolean).length / POSTS_PER_MINUTE))} min read`;
+
+const allPosts = (await getCollection("posts", ({ data }) => {
+  return import.meta.env.PROD ? data.draft !== true : true;
+})).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+export async function getStaticPaths() {
+  const allPosts = (await getCollection("posts", ({ data }) => {
+    return import.meta.env.PROD ? data.draft !== true : true;
+  })).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+  const tags = new Set();
+  for (const post of allPosts) {
+    for (const t of post.data.tags ?? []) tags.add(t);
+  }
+
+  return Array.from(tags).map((t) => ({
+    params: { tag: encodeURIComponent(t) },
+    props: { tag: t },
+  }));
+}
+
+
+const { tag } = Astro.props;
+
+const posts = allPosts.filter((p) => (p.data.tags ?? []).includes(tag));
+---
+
+<BaseLayout title={`Tag: ${tag}`} description={`Posts tagged "${tag}".`}>
+  <section class="prose">
+    <p class="muted"><a href="/tags">← All tags</a></p>
+
+    <h1>Tag: {tag}</h1>
+
+    {posts.length === 0 ? (
+      <p class="muted">No posts for this tag yet.</p>
+    ) : (
+      <ol class="post-list">
+        {posts.map((post) => (
+          <li class="post-item">
+            <a class="post-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
+
+            <div class="post-meta">
+              <time datetime={post.data.date.toISOString()}>
+                {post.data.date.toISOString().slice(0, 10)}
+              </time>
+
+              <span class="reading-time">{readingTime(post.body)}</span>
+
+              <span class="tags">
+                {post.data.tags.map((t) => (
+                  <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
+                ))}
+              </span>
+
+              {post.data.draft ? <span class="pill draft">Draft</span> : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    )}
+  </section>
+
+  <style>
+    .post-list { list-style: none; padding: 0; margin: 1.25rem 0 0; }
+    .post-item { padding: 1rem 0; border-top: 1px solid var(--color-border); }
+    .post-item:first-child { border-top: none; padding-top: 0; }
+    .post-link { text-decoration: none; font-weight: 750; }
+    .post-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+  </style>
+</BaseLayout>

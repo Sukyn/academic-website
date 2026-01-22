@@ -1,0 +1,85 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+
+const POSTS_PER_PAGE = 5;
+
+// Fetch posts (same draft logic as before)
+const allPosts = (await getCollection("posts", ({ data }) => {
+  return import.meta.env.PROD ? data.draft !== true : true;
+})).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+export async function getStaticPaths() {
+  const POSTS_PER_PAGE = 5;
+  const allPosts = (await getCollection("posts", ({ data }) => {
+    return import.meta.env.PROD ? data.draft !== true : true;
+  })).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+  const pageCount = Math.ceil(allPosts.length / POSTS_PER_PAGE);
+
+  return Array.from({ length: pageCount }, (_, i) => ({
+    params: { page: String(i + 1) },
+  }));
+}
+
+const currentPage = Number(Astro.params.page);
+const start = (currentPage - 1) * POSTS_PER_PAGE;
+const end = start + POSTS_PER_PAGE;
+
+const posts = allPosts.slice(start, end);
+const pageCount = Math.ceil(allPosts.length / POSTS_PER_PAGE);
+---
+
+<BaseLayout title={`Blog – Page ${currentPage}`}>
+  <section class="prose">
+    <h1>Blog</h1>
+
+    <ol class="post-list">
+      {posts.map((post) => (
+        <li class="post-item">
+          <a class="post-link" href={`/blog/${post.id}/`}>
+            {post.data.title}
+          </a>
+
+          <div class="post-meta">
+            <time datetime={post.data.date.toISOString()}>
+              {post.data.date.toISOString().slice(0, 10)}
+            </time>
+
+            <span class="reading-time">
+              {Math.max(1, Math.ceil(post.body.split(/\s+/).length / 200))} min read
+            </span>
+
+            <span class="tags">
+              {post.data.tags.map((t) => (
+                <span class="tag">{t}</span>
+              ))}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ol>
+
+    <nav class="pagination">
+      {currentPage > 1 && (
+        <a href={currentPage === 2 ? "/blog" : `/blog/page/${currentPage - 1}`}>
+          ← Previous
+        </a>
+      )}
+
+      {currentPage < pageCount && (
+        <a href={`/blog/page/${currentPage + 1}`}>
+          Next →
+        </a>
+      )}
+    </nav>
+  </section>
+
+  <style>
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 2rem;
+    }
+  </style>
+</BaseLayout>

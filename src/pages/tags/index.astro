@@ -1,0 +1,45 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+
+const posts = await getCollection("posts", ({ data }) => {
+  return import.meta.env.PROD ? data.draft !== true : true;
+});
+
+const tagSet = new Set();
+for (const post of posts) {
+  for (const t of post.data.tags ?? []) tagSet.add(t);
+}
+
+const tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+---
+
+<BaseLayout title="Tags" description="Browse posts by tag.">
+  <section class="prose">
+    <h1>Tags</h1>
+
+    {tags.length === 0 ? (
+      <p class="muted">No tags yet.</p>
+    ) : (
+      <ul class="tag-list">
+        {tags.map((t) => (
+          <li>
+            <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+
+  <style>
+    .tag-list {
+      list-style: none;
+      padding: 0;
+      margin: 1.25rem 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .tag-list li { margin: 0; }
+  </style>
+</BaseLayout>
