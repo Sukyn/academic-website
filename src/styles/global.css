@@ -17,7 +17,7 @@
     "Liberation Mono", "Courier New", monospace;
 
   /* Layout */
-  --content-width: 72ch; /* comfortable reading width */
+  --content-width: 95ch; /* comfortable reading width */
 }
 
 /* =========================
@@ -53,8 +53,9 @@ img {
    LAYOUT HELPERS
    ========================= */
 .container {
-  width: min(100% - 2rem, var(--content-width));
+  width: min(100%, var(--content-width));
   margin-inline: auto;
+  padding-inline: clamp(0rem, 4vw, 2rem);
 }
 
 main.container {
@@ -190,7 +191,7 @@ a:focus-visible {
 
 /* A slightly narrower reading measure for long articles */
 :root {
-  --reading-width: 68ch;
+  --reading-width: 95ch;
 }
 
 /* Generic “prose” wrapper for Markdown content */
