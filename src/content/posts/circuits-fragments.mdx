@@ -201,17 +201,17 @@ Legend used in the status columns:
 | $H+P(\theta)$ | $\mathrm{U}(2)$ | All 1q unitaries | ☑️ [9] | ☑️ [9] | ☑️ [9] |
 | $X+Z$ | $C_2 \times C_2$| Effective Pauli group / Klein four group| ? | ? | ? |
 | $X+Z+i$ | $\mathcal{P}_1$ | Pauli group | ☑️ [15] |☑️ [15] | ? |
-| $X+S$  | $D_4$ | Dihedral (order 4) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
-| $X+T$  | $D_8$ | Dihedral (order 8) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
+| $X+S$  | $D_4$ | Dihedral (order 8) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
+| $X+T$  | $D_8$ | Dihedral (order 16) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
 | $X+P(\pi/2^k)$ | $D_{2^{k+1}}$ | Dihedral (2‑power) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
-| $X+P(\theta)$ | $U(1)\rtimes C_2$ | Monomial 1q unitaries | ? | ? | ? |
+| $X+P(\theta)$ | $(U(1) \times U(1))\rtimes C_2$ | Monomial 1q unitaries | ? | ? | ? |
 | $\mathrm{CZ}$ | $\mathbb{Z}_2^{\binom{n}{2}}$ | Graphs | ? | ? | ? |
 | $\mathrm{CNOT}$ | $\mathrm{GL}(n,2)$ | Linear reversible | ☑️ [12] | ? | ☑️ [12] |
 | $\mathrm{CNOT}+H$ | -- | CNOT+H circuits | ? | ? | ? |
 | $\mathrm{CNOT}+X$ | $\mathrm{AGL}(n,2)$ | Affine reversible | ☑️ [14] | ? | ☑️ [14] |
 | $\mathrm{CNOT}+Z$ | $\{\pm1\}^n \rtimes GL(n,2)$ | CNOT+Z circuits| ? | ? | ? |
-| $\mathrm{CNOT}+S$ | $\{\pm1,\pm i\}^n \rtimes GL(n,2)$ | CNOT+S circuits | ? | ? | ? |
-| $\mathrm{CNOT}+T$ | $\{\omega_8^k: k\in \mathbb{Z}\}^n \rtimes GL(n,2)$ | CNOT+T circuits | ? | ? | ? |
+| $\mathrm{CNOT}+S$ | ? | CNOT+S circuits | ? | ? | ? |
+| $\mathrm{CNOT}+T$ | ? | CNOT+T circuits | ? | ? | ? |
 | $\mathrm{CNOT}+P(\theta)$ | $(U(1))^{2^n} \rtimes GL(n,2)$ | Phase-polynomial circuits | ? | ? | ? |
 | $\mathrm{CNOT}+H+Z$ | $\mathrm{Real\,Clifford}_n$ | Real stabilizer circuits | ☑️ [5] | ☑️ [16] | ☑️ [5] |
 | $\mathrm{CNOT}+H+S$ | $\mathcal{C}_n$ | Stabilizer / Clifford circuits | ☑️ [4] | ☑️ [16] | ☑️ [4] |
@@ -228,7 +228,7 @@ Legend used in the status columns:
 | $\mathrm{CZ}+S$ | $\mathrm{Clifford}_n^{\mathrm{diag}}$ | Diagonal Clifford | ? | ? | ☑️ [12] |
 | $\mathrm{CNOT}\!\downarrow+\mathrm{CZ}+X+S$ | $\mathcal{B}_n$ | Borel subgroup | ? | ? | ? |
 | $\mathrm{CP}(\theta)+P(\theta)$ | -- | Diagonal commuting phase gates | ? | ? | ? |
-| $\mathrm{CNOT}+X+\mathrm{CCNOT}$ | $S_{2^n}$ | Reversible Boolean functions | ? | ? | ? |
+| $\mathrm{CNOT}+X+\mathrm{CCNOT}$ | $A_{2^n}$ | Reversible Boolean functions | ? | ? | ? |
 | $\mathrm{SWAP}$ | $\mathcal{S}_n$ | Symmetric group | ☑️ [13] | ? | ? |
 | $\mathrm{SWAP}+H$ | $C_2^n \rtimes S_n$ | Weyl group | ? | ? | ? |
 | $\mathrm{SWAP}+\mathrm{CZ}$ | -- | SWAP+CZ circuits | ? | ? | ☑️ [12] |
@@ -240,9 +240,12 @@ Legend used in the status columns:
 
 | Dim. | Generators | Math. name | Alternative name | Pres | Min | NF |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3 | $H+S+\mathrm{CNOT}$ | Clifford group (qutrit) | Qutrit stabilizer | ☑️ [10] | ~ [16] | ☑️ [10] |
-| d | $H+S+\mathrm{CNOT}$ | Clifford group (qudit) | Qudit stabilizer | ? | ? | ? |
-
+| 3 | $H+S+\mathrm{SUM}$ | ? | Qutrit stabilizer | ☑️ [10] | ~ [16] | ☑️ [10] |
+| d | $H+S+\mathrm{SUM}$ | ? | Qudit stabilizer | ? | ? | ? |
+| 3 | $H+S+T+\mathrm{SUM}$ | ? | Qutrit Clifford+T | ? | ? | ☑️ [17] |
+| d | $H+S+T+\mathrm{SUM}$ | ? | Qudit Clifford+T | ? | ? | ☑️ [18] |
+| 3 | $H+S+R+\mathrm{SUM}$ | ? | Qutrit Clifford+R / Metaplectic | ? | ? | ? |
+| 3 | $X+\mathrm{SUM}+CCX+H+T_k$ | Clifford-cyclotomic (degree 3^k) | Qutrit Toffoli+Hadamard (k=1), Clifford+T_k (k>1) | ? | ? | ~ [19] |
 ---
 
 ## Fragment inclusions and (qubits, d = 2)
@@ -304,3 +307,9 @@ we get:
 [15] https://groupprops.subwiki.org/wiki/Central_product_of_D8_and_Z4
 
 [16] Upcoming work..
+
+[17] https://arxiv.org/abs/1803.03228
+
+[18] https://arxiv.org/abs/2011.07970
+
+[19] https://arxiv.org/abs/2405.08136
