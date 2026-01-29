@@ -7,9 +7,41 @@ import "../styles/global.css";
 export interface Props {
   title: string;
   description?: string;
+
+  /** Absolute or site-relative (recommended: "/og/default.png") */
+  ogImage?: string;
+
+  /** Override if needed; otherwise we use Astro.url */
+  canonicalUrl?: URL | string;
 }
 
-const { title, description = "Academic website." } = Astro.props;
+const {
+  title,
+  description = "Academic website.",
+  ogImage,
+  canonicalUrl,
+} = Astro.props;
+
+// Canonical URL (good for SEO + sharing)
+const canonical =
+  typeof canonicalUrl === "string"
+    ? canonicalUrl
+    : canonicalUrl instanceof URL
+      ? canonicalUrl.toString()
+      : Astro.url.toString();
+
+// Resolve OG image to an absolute URL if Astro.site exists
+const resolvedOgImage = (() => {
+  if (!ogImage) return undefined;
+  try {
+    // If ogImage is already absolute, URL() will keep it.
+    // If it's "/something.png", it becomes absolute using Astro.site.
+    const base = Astro.site ?? new URL(canonical);
+    return new URL(ogImage, base).toString();
+  } catch {
+    return undefined;
+  }
+})();
 ---
 
 <!doctype html>
@@ -17,21 +49,33 @@ const { title, description = "Academic website." } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+
+    <!-- OpenGraph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {resolvedOgImage ? <meta property="og:image" content={resolvedOgImage} /> : null}
+
+    <!-- Twitter card (works for many platforms too) -->
+    <meta name="twitter:card" content={resolvedOgImage ? "summary_large_image" : "summary"} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    {resolvedOgImage ? <meta name="twitter:image" content={resolvedOgImage} /> : null}
+
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
     />
   </head>
-  
+
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-
-    <!-- NEW: background wallpaper -->
     <ZXWallpaper />
-
-    <!-- NEW: content wrapper above the wallpaper -->
     <div class="page">
       <Header />
       <main id="main-content" class="container">
@@ -41,4 +85,3 @@ const { title, description = "Academic website." } = Astro.props;
     </div>
   </body>
 </html>
-

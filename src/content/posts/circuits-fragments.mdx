@@ -3,6 +3,7 @@ title: "Gate-set fragments of the quantum circuit model"
 date: 2026-01-25
 tags: ["quantum computing", "circuits", "fragments", "equational theory"]
 description: "A compact atlas of common circuit fragments (Clifford, Clifford+T, real stabilizer, CNOT-dihedral, ...): generators, semantics, inclusions, and key references."
+coverImage: "/og/circuitfragments.png"
 draft: false
 ---
 
@@ -190,26 +191,26 @@ Legend used in the status columns:
 | --- | --- | --- | --- | --- | --- |
 | $\omega_k$ | $C_k$ | Discrete global phases | ☑️ [1] | ☑️ [1] | ☑️ [1] |
 | $s(\alpha)$ | $U(1)$ | All global phases |  ☑️ [2] | ☑️ [2] | ☑️ [2] |
-| $X$ | $C_2$ | Pauli‑X | ☑️ [1] | ☑️ [1] | ☑️ [1] |
-| $Z$ | $C_2$ | Pauli‑Z | ☑️ [1] | ☑️ [1] | ☑️ [1] |
-| $S$ | $C_4$ | Phase ($S$) | ☑️ [1] | ☑️ [1] | ☑️ [1] |
-| $T$ | $C_8$ | $T$ / $\pi/8$ gate | ☑️ [1] | ☑️ [1] | ☑️ [1] |
-| $P(\theta)$ | $U(1)$ | Z‑rotations |  ☑️ [2] | ☑️ [2] | ☑️ [2] |
-| $H+Z$ | $D_4$ | Real Clifford / real stabilizer  | ☑️ [5] | ☑️ [16] | ☑️ [5] |
-| $H+S$ | $\mathcal{C}_1$ | Single‑qubit Clifford | ☑️ [4] | ☑️ [16] | ☑️ [4] |
-| $H+T$ | $\mathrm{Clifford{+}T}_1$ | 1q Clifford+T | ☑️ [6] | ☑️ [16] | ☑️ [11] |
-| $H+P(\theta)$ | $\mathrm{U}(2)$ | All 1q unitaries | ☑️ [9] | ☑️ [9] | ☑️ [9] |
-| $X+Z$ | $C_2 \times C_2$| Effective Pauli group / Klein four group| ? | ? | ? |
-| $X+Z+i$ | $\mathcal{P}_1$ | Pauli group | ☑️ [15] |☑️ [15] | ? |
-| $X+S$  | $D_4$ | Dihedral (order 8) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
-| $X+T$  | $D_8$ | Dihedral (order 16) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
-| $X+P(\pi/2^k)$ | $D_{2^{k+1}}$ | Dihedral (2‑power) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
-| $X+P(\theta)$ | $(U(1) \times U(1))\rtimes C_2$ | Monomial 1q unitaries | ? | ? | ? |
+| $X$ | $C_2^{\,n}$ | Local Pauli‑$X$ (bit flips) | ☑️ [1] | ☑️ [1] | ☑️ [1] |
+| $Z$ | $C_2^{\,n}$ | Local Pauli‑$Z$ | ☑️ [1] | ☑️ [1] | ☑️ [1] |
+| $S$ | $C_4^{\,n}$ | Local phase ($S$) gates | ☑️ [1] | ☑️ [1] | ☑️ [1] |
+| $T$ | $C_8^{\,n}$ | Local $T$ / $\pi/8$ gates | ☑️ [1] | ☑️ [1] | ☑️ [1] |
+| $P(\theta)$ | $(U(1))^{\,n}$ | Local $Z$‑rotations |  ☑️ [2] | ☑️ [2] | ☑️ [2] |
+| $H+Z$ | $D_4^{\times n}$ | Local real Clifford (no entangling) | ☑️ [5] | ☑️ [16] | ☑️ [5] |
+| $H+S$ | $\mathcal{C}_1^{\times n}$ | Local Clifford (no entangling) | ☑️ [4] | ☑️ [16] | ☑️ [4] |
+| $H+T$ | $\mathrm{Clifford{+}T}_1^{\times n}$ | Local Clifford+T (no entangling) | ☑️ [6] | ☑️ [16] | ☑️ [11] |
+| $H+P(\theta)$ | $\mathrm{U}(2)^{\times n}$ | Local unitaries ($\mathrm{LU}$) | ☑️ [9] | ☑️ [9] | ☑️ [9] |
+| $X+Z$ | $(C_2)^{2n}$ | Projective Pauli (Paulis mod global phase) | ☑️ [20] | ☑️ [20] | ☑️ [20] |
+| $X+Z+i$ | $\mathcal{P}_n$ | Pauli group ($n$ qubits) | ☑️ [15] |☑️ [15] | ☑️ [21] |
+| $X+S$  | $D_4^{\times n}$ | Local dihedral (order 8) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
+| $X+T$  | $D_8^{\times n}$ | Local dihedral (order 16) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
+| $X+P(\pi/2^k)$ | $D_{2^{k+1}}^{\times n}$ | Local dihedral (2‑power) | ☑️ [3] | ☑️ [3] | ☑️ [3] |
+| $X+P(\theta)$ | $\big((U(1))^{2}\rtimes C_2\big)^{\times n}$ | Local monomial unitaries | ? | ? | ? |
 | $\mathrm{CZ}$ | $\mathbb{Z}_2^{\binom{n}{2}}$ | Graphs | ? | ? | ? |
 | $\mathrm{CNOT}$ | $\mathrm{GL}(n,2)$ | Linear reversible | ☑️ [12] | ? | ☑️ [12] |
-| $\mathrm{CNOT}+H$ | -- | CNOT+H circuits | ? | ? | ? |
+| $\mathrm{CNOT}+H$ | ? | CNOT+H circuits | ? | ? | ? |
 | $\mathrm{CNOT}+X$ | $\mathrm{AGL}(n,2)$ | Affine reversible | ☑️ [14] | ? | ☑️ [14] |
-| $\mathrm{CNOT}+Z$ | $\{\pm1\}^n \rtimes GL(n,2)$ | CNOT+Z circuits| ? | ? | ? |
+| $\mathrm{CNOT}+Z$ | $C_2^n \rtimes GL(n,2)$ | CNOT+Z circuits| ? | ? | ? |
 | $\mathrm{CNOT}+S$ | ? | CNOT+S circuits | ? | ? | ? |
 | $\mathrm{CNOT}+T$ | ? | CNOT+T circuits | ? | ? | ? |
 | $\mathrm{CNOT}+P(\theta)$ | $(U(1))^{2^n} \rtimes GL(n,2)$ | Phase-polynomial circuits | ? | ? | ? |
@@ -217,28 +218,29 @@ Legend used in the status columns:
 | $\mathrm{CNOT}+H+S$ | $\mathcal{C}_n$ | Stabilizer / Clifford circuits | ☑️ [4] | ☑️ [16] | ☑️ [4] |
 | $\mathrm{CNOT}+H+T$ | $\mathrm{Clifford{+}T}_n$ | Clifford+T| ~ [6] | ~ [16] | ~ [6] |
 | $\mathrm{CNOT}+H+P(\theta)$ | $\mathrm{U}(2^n)$ | Universal | ☑️ [9] | ☑️ [9] | ? |
-| $\mathrm{CNOT}+X+Z$ | CNOT-dihedral | CNOT-dihedral circuits | ~ [8] | ~ [16] | ~ [8] |
-| $\mathrm{CNOT}+X+S$ | CNOT-dihedral | CNOT-dihedral circuits | ~ [8] | ~ [16] | ~ [8] |
-| $\mathrm{CNOT}+X+T$ | CNOT-dihedral | CNOT-dihedral circuits | ☑️ [8] | ☑️ [16] | ☑️ [8] |
-| $\mathrm{CNOT}+X+P(\pi/2^k)$ | CNOT-dihedral (2‑power) | Generalised CNOT-dihedral | ~ [8] | ~ [16] | ~ [8] |
+| $\mathrm{CNOT}+X+Z$ | $(C_2)^{2n} \rtimes \mathrm{GL}(n,2)$ | CNOT+Pauli (mod phase) | ~ [8] | ~ [16] | ~ [8] |
+| $\mathrm{CNOT}+X+Z+i$ | $\mathcal{P}_n \rtimes \mathrm{GL}(n,2)$ | CNOT+Pauli | ? | ? | ? |
+| $\mathrm{CNOT}+X+S$ | ? | CNOT-dihedral circuits | ~ [8] | ~ [16] | ~ [8] |
+| $\mathrm{CNOT}+X+T$ | ? | CNOT-dihedral circuits | ☑️ [8] | ☑️ [16] | ☑️ [8] |
+| $\mathrm{CNOT}+X+P(\pi/2^k)$ | ? | Generalised CNOT-dihedral | ~ [8] | ~ [16] | ~ [8] |
 | $\mathrm{CNOT}+X+P(\theta)$ | $(U(1))^{2^n}\rtimes AGL(n,2)$ | Affine phase-polynomial | ? | ? | ? |
-| $\mathrm{CNOT}+X+Z+i$ | ? | ? | ? | ? | ? |
 | $\mathrm{CCZ}+\mathrm{CNOT}+H+S$ | ? | Clifford+Toffoli | ? | ? | ? |
 | $\mathrm{CS}+H+S$ | $\mathrm{Clifford{+}CS}_n$ | Clifford+CS | ~ [7] | ~ [16] | ~ [7] |
 | $\mathrm{CZ}+S$ | $\mathrm{Clifford}_n^{\mathrm{diag}}$ | Diagonal Clifford | ? | ? | ☑️ [12] |
 | $\mathrm{CNOT}\!\downarrow+\mathrm{CZ}+X+S$ | $\mathcal{B}_n$ | Borel subgroup | ? | ? | ? |
-| $\mathrm{CP}(\theta)+P(\theta)$ | -- | Diagonal commuting phase gates | ? | ? | ? |
+| $\mathrm{CP}(\theta)+P(\theta)$ | ? | Diagonal commuting phase gates | ? | ? | ? |
 | $\mathrm{CNOT}+X+\mathrm{CCNOT}$ | $A_{2^n}$ | Reversible Boolean functions | ? | ? | ? |
 | $\mathrm{SWAP}$ | $\mathcal{S}_n$ | Symmetric group | ☑️ [13] | ? | ? |
 | $\mathrm{SWAP}+H$ | $C_2^n \rtimes S_n$ | Weyl group | ? | ? | ? |
-| $\mathrm{SWAP}+\mathrm{CZ}$ | -- | SWAP+CZ circuits | ? | ? | ☑️ [12] |
+| $\mathrm{SWAP}+\mathrm{CZ}$ | ? | SWAP+CZ circuits | ? | ? | ☑️ [12] |
+
 
 
 ---
 
 ## Qudits (non-qubit rows)
 
-| Dim. | Generators | Math. name | Alternative name | Pres | Min | NF |
+| Dim. | Generators | Math. name  | Alternative name | Complete | Minimal | Normal Form |
 | --- | --- | --- | --- | --- | --- | --- |
 | 3 | $H+S+\mathrm{SUM}$ | ? | Qutrit stabilizer | ☑️ [10] | ~ [16] | ☑️ [10] |
 | d | $H+S+\mathrm{SUM}$ | ? | Qudit stabilizer | ? | ? | ? |
@@ -256,6 +258,24 @@ These are the quick ''if you have this, you automatically have that'' observatio
 - $S$ $\implies$ $Z$ because $Z=S^2$.
 - $T$ $\implies$ $S$ because $S=T^2$.
 - $H$ and $Z$ $\implies$ $X$ because $X=HZH$.
+
+### Discrete global phase from non-commuting 1q gates
+When you *do* keep track of global phase (i.e. you work in $U(2^n)$ rather than $PU(2^n)$), some 1‑qubit gate sets generate nontrivial scalars automatically:
+
+- $X+P(2\pi/k)$ $\implies$ $\omega_k$, since
+  $$
+  P\!\left(\tfrac{2\pi}{k}\right) X P\!\left(\tfrac{2\pi}{k}\right) X
+  =
+  \mathrm{diag}(\omega_k,\omega_k)
+  =
+  \omega_k I
+  \;=\;
+  \omega_k \otimes Id.
+  $$
+- In particular, $H+S$ $\implies$ $\omega_8$, because
+  $$
+  HSHSHS = (HS)^3 = \omega_8 I = \omega_8 \otimes Id.
+  $$
 
 ### Controlled-phase from CNOT + phases
 Using
@@ -280,29 +300,27 @@ we get:
 
 [3] https://proofwiki.org/wiki/Dihedral_Group/Group_Presentation
 
-[4] P. Selinger, *Generators and Relations for n-Qubit Clifford Operators* (LMCS, 2015).
+[4] https://arxiv.org/abs/1310.6813
 
-[5] J. Makary, N. J. Ross, P. Selinger, *Generators and Relations for Real Stabilizer Operators* (EPTCS, 2021).
+[5] https://arxiv.org/abs/2109.05655
 
-[6] X. Bian, P. Selinger, *Generators and Relations for 2-Qubit Clifford+T Operators* (EPTCS, 2023).  
-(2‑qubit presentation; higher‑qubit completeness is not obtained ''for free''.)
+[6] https://arxiv.org/abs/2204.02217
 
-[7] X. Bian, P. Selinger, *Generators and Relations for 3-Qubit Clifford+CS Operators* (EPTCS, 2023).  
-(3‑qubit presentation.)
+[7] https://arxiv.org/abs/2306.08530
 
-[8] M. Amy, J. Chen, N. J. Ross, *A Finite Presentation of CNOT-Dihedral Operators* (EPTCS, 2018).
+[8] https://arxiv.org/abs/1701.00140
 
-[9] A. Clément, N. Delorme, S. Perdrix, *Minimal Equational Theories for Quantum Circuits* (arXiv, 2023/2024).
+[9] https://arxiv.org/abs/2311.07476
 
-[10] S.M. Li, M. Mosca, N.J. Ross, J.V.D. Wetering, Y. Zhao, *A Complete and Natural Rule Set for Multi-Qutrit Clifford Circuits* (arXiv:2508.14670, 2025).
+[10] https://arxiv.org/abs/2508.14670
 
-[11] B. Giles, P. Selinger, *Remarks on Matsumoto and Amano's normal form for single-qubit Clifford+T operators* (arXiv:1312.6584, 2013).
+[11] https://arxiv.org/abs/1312.6584
 
-[12] M. Bataille, *Reducing stabilizer circuits without the symplectic group* (arXiv:2012.09224).
+[12] https://arxiv.org/abs/2012.09224
 
-[13] J.N. Bray, M.D.E. Conder, C.R. Leedham-Green, E.A. O'Brien, *Short presentations for alternating and symmetric groups*.
+[13] https://www.math.auckland.ac.nz/~conder/preprints/SymGpPresentations.pdf
 
-[14] Y. Lafont, *Towards an Algebraic Theory of Boolean Circuits* (Information and Computation, 2003).
+[14] https://www.sciencedirect.com/science/article/pii/S0022404903000690
 
 [15] https://groupprops.subwiki.org/wiki/Central_product_of_D8_and_Z4
 
@@ -313,3 +331,7 @@ we get:
 [18] https://arxiv.org/abs/2011.07970
 
 [19] https://arxiv.org/abs/2405.08136
+
+[20] https://en.wikipedia.org/wiki/Klein_four-group
+
+[21] https://en.wikipedia.org/wiki/Pauli_group

@@ -26,31 +26,48 @@ function readingTimeFromText(text) {
 }
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description ?? "Blog post."}>
+<BaseLayout title={post.data.title} description={post.data.description ?? "Blog post."} ogImage={post.data.coverImage ?? "/og/default.png"}>
   <article class="article prose">
     <header class="header">
-      <h1>{post.data.title}</h1>
+  <h1>{post.data.title}</h1>
 
-      <div class="meta">
-        <time datetime={post.data.date.toISOString()}>
-          {post.data.date.toISOString().slice(0, 10)}
-        </time>
+  <div class="meta">
+    <time datetime={post.data.date.toISOString()}>
+      {post.data.date.toISOString().slice(0, 10)}
+    </time>
 
-        <span class="reading-time">{readingTimeFromText(post.body)}</span>
+    <span class="reading-time">{readingTimeFromText(post.body)}</span>
 
-        <span class="tags">
-          {post.data.tags.map((t) => (
-            <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
-          ))}
-        </span>
+    <span class="tags">
+      {post.data.tags.map((t) => (
+        <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
+      ))}
+    </span>
 
-        {post.data.draft ? <span class="pill">Draft</span> : null}
+    {post.data.draft ? <span class="pill">Draft</span> : null}
       </div>
     </header>
+
+    {/* NEW: Cover image (optional) */}
+    {post.data.coverImage ? (
+      
+      <figure class="cover">
+        <img
+          src={post.data.coverImage}
+          alt={post.data.coverImageAlt ?? `${post.data.title} cover image`}
+          loading="eager"
+          decoding="async"
+        />
+        {post.data.coverCaption ? (
+          <figcaption class="cover-caption">{post.data.coverCaption}</figcaption>
+        ) : null}
+      </figure>
+    ) : null}
 
     <div class="prose">
       <Content />
     </div>
+
 
     <footer class="footer">
       <a href="/blog">← Back to Blog</a>
