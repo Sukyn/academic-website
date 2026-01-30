@@ -1,22 +1,86 @@
 ---
+import katex from "katex";
+
 type Heading = { depth: number; slug: string; text: string };
 
 const { headings = [] } = Astro.props as { headings: Heading[] };
 const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+
+function escapeHtml(s: string) {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/**
+ * Render inline LaTeX found in headings into KaTeX HTML for the TOC.
+ *
+ * Supported:
+ *  - $ ... $ (inline)
+ *  - \( ... \) (inline)
+ *  - $$ ... $$ (we render it inline in TOC on purpose)
+ *
+ * Everything outside math is HTML-escaped (prevents injection).
+ * KaTeX output is restricted to HTML (no MathML) to keep TOC compact.
+ */
+function renderTocLabel(input: string) {
+  if (!input) return "";
+
+  // Normalize \(..\) to $..$ for simpler parsing
+  let s = input.replaceAll("\\(", "$").replaceAll("\\)", "$");
+
+  // Convert $$..$$ to $..$ (TOC is always inline)
+  s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_m, inner) => `$${inner}$`);
+
+  const parts: string[] = [];
+
+  // Split on $...$ pairs
+  while (s.includes("$")) {
+    const a = s.indexOf("$");
+    const b = s.indexOf("$", a + 1);
+    if (b === -1) break;
+
+    // text before math
+    const before = s.slice(0, a);
+    if (before) parts.push(escapeHtml(before));
+
+    const math = s.slice(a + 1, b).trim();
+
+    // render math
+    if (math) {
+      const rendered = katex.renderToString(math, {
+        throwOnError: false,
+        displayMode: false,
+        output: "html", // avoids MathML in TOC
+        strict: "ignore",
+      });
+      parts.push(rendered);
+    }
+
+    s = s.slice(b + 1);
+  }
+
+  // trailing text
+  if (s) parts.push(escapeHtml(s));
+
+  return parts.join("");
+}
 ---
 
 {items.length > 0 ? (
-  <details class="toc">
-    <summary class="toc-summary">
-      <span class="toc-title">On this page</span>
-      <span class="toc-hint">Show</span>
+  <details class="toc" data-toc>
+    <summary class="toc-summary" aria-label="Table of contents" title="Table of contents">
+      <span class="toc-title">Table of contents</span>
     </summary>
 
     <nav class="toc-nav" aria-label="Table of contents">
       <ol class="toc-list">
         {items.map((h) => (
           <li class={`toc-item depth-${h.depth}`}>
-            <a href={`#${h.slug}`}>{h.text}</a>
+            <a href={`#${h.slug}`} set:html={renderTocLabel(h.text)} />
           </li>
         ))}
       </ol>
@@ -24,54 +88,59 @@ const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
   </details>
 ) : null}
 
+
 <style>
-  .toc {
+  /* Base shell */
+  details.toc {
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
-    padding: 0.75rem 1rem;
-    margin: 1.5rem 0;
+    background: transparent;
   }
 
+  /* Summary */
   .toc-summary {
     cursor: pointer;
     list-style: none;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-    font-weight: 750;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    padding: 0;
+    margin: 0;
   }
-
-  /* Hide default marker */
   .toc-summary::-webkit-details-marker { display: none; }
 
-  /* Custom marker */
   .toc-summary::before {
     content: "▸";
     display: inline-block;
-    margin-right: 0.5rem;
     transform: translateY(1px);
   }
   details[open] > .toc-summary::before {
     transform: rotate(90deg) translateY(1px);
   }
 
-  .toc-title { font-weight: 750; }
-  .toc-hint {
-    font-weight: 600;
+  /* CLOSED: compact pill */
+  details.toc:not([open]) {
+    padding: 0.12rem 0.45rem;
+    margin: 0.15rem 0 0.55rem;
+    border-radius: 999px;
+  }
+  details.toc:not([open]) .toc-title {
+    font-size: 0.9rem;
     color: var(--color-muted);
-    font-size: 0.95em;
   }
-  details[open] .toc-hint { display: none; }
 
-  .toc-nav { margin-top: 0.75rem; }
-
-  .toc-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+  /* OPEN: full card */
+  details.toc[open] {
+    padding: 0.7rem 0.9rem;
+    margin: 0.35rem 0 0.85rem; /* tighter */
   }
-  .toc-item { margin: 0.35rem 0; }
+  details.toc[open] .toc-title { display: none; }
+
+  .toc-nav { margin-top: 0.65rem; }
+
+  .toc-list { list-style: none; padding: 0; margin: 0; }
+  .toc-item { margin: 0.32rem 0; }
   .toc-item.depth-3 { padding-left: 1rem; opacity: 0.95; }
 
   .toc a {
@@ -83,4 +152,52 @@ const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
     text-decoration: underline;
     text-underline-offset: 4px;
   }
+
+  details.toc[open] {
+    padding: 0.7rem 0.9rem;
+    margin: 0.35rem 0 0.85rem;
+    overflow: hidden; /* ✅ keeps content inside rounded border */
+  }
+
+  details.toc[open] .toc-nav {
+    margin-top: 0.65rem;
+
+    /* ✅ this is the key */
+    max-height: min(60vh, 22rem);
+    overflow: auto;
+
+    /* optional: breathing room so scrollbar doesn't sit on text */
+    padding-right: 0.25rem;
+  }
+  :root:not([data-theme="dark"]) details.toc .toc-nav {
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff transparent;
+}
+:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar { width: 10px; }
+:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar-track { background: transparent; }
+:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar-thumb {
+  background-color: #ffffff;
+  border-radius: 999px;
+  border: 2px solid var(--color-border);
+  background-clip: content-box;
+}
+:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar-thumb:hover {
+  background-color: #f1f5f9;
+}
+
+:root[data-theme="dark"] details.toc .toc-nav {
+  scrollbar-width: thin;
+  scrollbar-color: #374151 transparent;
+}
+:root[data-theme="dark"] details.toc .toc-nav::-webkit-scrollbar-thumb {
+  background-color: #374151;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+:root[data-theme="dark"] details.toc .toc-nav::-webkit-scrollbar-thumb:hover {
+  background-color: #4b5563;
+}
+
+details.toc[open] .toc-nav {
+  overscroll-behavior: contain;
+}
 </style>

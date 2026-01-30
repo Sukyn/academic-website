@@ -1,4 +1,6 @@
 ---
+import ThemeToggle from "./ThemeToggle.astro";
+
 const rawPath = Astro.url.pathname || "/";
 const pathname = rawPath !== "/" ? rawPath.replace(/\/$/, "") : "/";
 
@@ -23,6 +25,7 @@ const nav = [
         </a>
       ))}
     </nav>
+    <ThemeToggle />
   </div>
 
   <style>
