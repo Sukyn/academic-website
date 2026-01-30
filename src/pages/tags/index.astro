@@ -6,12 +6,13 @@ const posts = await getCollection("posts", ({ data }) => {
   return import.meta.env.PROD ? data.draft !== true : true;
 });
 
-const tagSet = new Set();
+const tagSet = new Set<string>();
 for (const post of posts) {
   for (const t of post.data.tags ?? []) tagSet.add(t);
 }
 
-const tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+const tags = Array.from(tagSet);
+tags.sort((a, b) => a.localeCompare(b));
 ---
 
 <BaseLayout title="Tags" description="Browse posts by tag.">
