@@ -1,7 +1,38 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { parseBibtexToPubs } from "../lib/bibtex";
+
+// Import BibTeX as plain text at build time
+import bibtex from "../content/publications.bibtex?raw";
+
+const pubs = parseBibtexToPubs(bibtex);
 ---
-<BaseLayout title="Publications">
-  <h1>Publications</h1>
-  <p></p>
+
+
+<BaseLayout title="Publications" description="Selected publications and preprints.">
+  <section class="prose">
+    <h1>Publications</h1>
+
+    {pubs.length === 0 ? (
+      <p class="muted">No publications yet.</p>
+    ) : (
+      <ol>
+        {pubs.map((p) => (
+          <li>
+            <strong>{p.title}</strong>
+            {p.year ? <span class="muted"> ({p.year})</span> : null}
+            {p.venue ? <div class="muted">{p.venue}</div> : null}
+            {p.authors ? <div class="muted">{p.authors}</div> : null}
+            {p.url ? (
+              <div>
+                <a href={p.url} target="_blank" rel="noopener noreferrer">
+                  Link
+                </a>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    )}
+  </section>
 </BaseLayout>
