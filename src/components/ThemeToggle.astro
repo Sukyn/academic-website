@@ -1,0 +1,39 @@
+<button class="theme-toggle" type="button">
+  Theme
+</button>
+
+<script>
+  const KEY = "theme";
+  const btn = document.querySelector(".theme-toggle");
+
+  const apply = (t) => {
+    if (t === "dark") document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
+  };
+
+  const stored = localStorage.getItem(KEY);
+  if (stored) apply(stored);
+
+  btn?.addEventListener("click", () => {
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const next = isDark ? "light" : "dark";
+    localStorage.setItem(KEY, next);
+    apply(next);
+  });
+</script>
+
+<style>
+  .theme-toggle {
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-muted);
+    padding: 0.35rem 0.6rem;
+    border-radius: 0.6rem;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--color-text); }
+  .theme-toggle:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+</style>

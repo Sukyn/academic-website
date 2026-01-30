@@ -27,59 +27,145 @@ function readingTimeFromText(text) {
 }
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description ?? "Blog post."} ogImage={post.data.coverImage ?? "/og/default.png"}>
-  <article class="article prose">
-    <header class="header">
-  <h1>{post.data.title}</h1>
+<BaseLayout
+  title={post.data.title}
+  description={post.data.description ?? "Blog post."}
+  ogImage={post.data.coverImage ?? "/og/default.png"}
+>
+  <article class="article">
+    <header class="header prose">
+      <h1>{post.data.title}</h1>
 
-  <div class="meta">
-    <time datetime={post.data.date.toISOString()}>
-      {post.data.date.toISOString().slice(0, 10)}
-    </time>
+      <div class="meta">
+        <time datetime={post.data.date.toISOString()}>
+          {post.data.date.toISOString().slice(0, 10)}
+        </time>
 
-    <span class="reading-time">{readingTimeFromText(post.body)}</span>
+        <span class="reading-time">{readingTimeFromText(post.body)}</span>
 
-    <span class="tags">
-      {post.data.tags.map((t) => (
-        <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
-      ))}
-    </span>
+        <span class="tags">
+          {post.data.tags.map((t) => (
+            <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
+          ))}
+        </span>
 
-    {post.data.draft ? <span class="pill">Draft</span> : null}
+        {post.data.draft ? <span class="pill">Draft</span> : null}
       </div>
     </header>
 
-    <TableOfContents headings={headings} />
-    
-    {post.data.coverImage ? (
-      
-      <figure class="cover">
-        <img
-          src={post.data.coverImage}
-          alt={post.data.coverImageAlt ?? `${post.data.title} cover image`}
-          loading="eager"
-          decoding="async"
-        />
-        {post.data.coverCaption ? (
-          <figcaption class="cover-caption">{post.data.coverCaption}</figcaption>
+    <div class="article-grid">
+      <aside class="toc-col" aria-label="Table of contents">
+        <TableOfContents headings={headings} />
+      </aside>
+
+      <div class="content-col prose">
+        {post.data.coverImage ? (
+          <figure class="cover">
+            <img
+              src={post.data.coverImage}
+              alt={post.data.coverImageAlt ?? `${post.data.title} cover image`}
+              loading="eager"
+              decoding="async"
+            />
+            {post.data.coverCaption ? (
+              <figcaption class="cover-caption">{post.data.coverCaption}</figcaption>
+            ) : null}
+          </figure>
         ) : null}
-      </figure>
-    ) : null}
 
-    <div class="prose">
-      <Content />
+        <Content />
+
+        <footer class="footer">
+          <a href="/blog">← Back to Blog</a>
+        </footer>
+      </div>
     </div>
-
-
-    <footer class="footer">
-      <a href="/blog">← Back to Blog</a>
-    </footer>
   </article>
 
   <style>
-    /* Keep only layout-specific tweaks here (global.css does the real styling) */
-    .header { margin-bottom: 1.25rem; }
-    .tags { display: inline-flex; gap: 0.35rem; flex-wrap: wrap; }
-    .footer { margin-top: 2rem; }
+    /* -------------------------
+       Small page-specific spacing
+       ------------------------- */
+    .header {
+      margin-bottom: 0.5rem; /* ↓ was 1.25rem */
+    }
+
+    .tags {
+      display: inline-flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    .footer {
+      margin-top: 2rem;
+    }
+
+    /* Base: 1 column layout (mobile + default) */
+    .article-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem; /* ↓ was 1.25rem */
+    }
+
+    /* Mobile: TOC goes above content */
+    @media (max-width: 979px) {
+      .toc-col {
+        order: -1;
+      }
+    }
+
+    /* Desktop behavior */
+    @media (min-width: 980px) {
+      /* Make blog posts use a wider container */
+      :global(main.container) {
+        width: min(100%, 1400px);
+      }
+
+      /* Default: TOC OPEN => two columns */
+      .article-grid {
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 1.5rem; /* ↓ was 2.25rem */
+        align-items: start;
+      }
+
+      /* Sticky TOC column */
+      .toc-col {
+        position: sticky;
+        top: 0.75rem;
+        max-height: calc(100vh - 6rem);
+        overflow: auto;
+
+        display: flex;
+        justify-content: flex-start; /* feels less "floaty" */
+      }
+
+      /* Content width in the 2-col layout */
+      .content-col.prose {
+        max-width: 110ch;
+        margin-inline: 0; /* don't auto-center inside grid */
+        width: 100%;
+      }
+
+      /* -------------------------
+         TOC CLOSED => single column
+         ------------------------- */
+      .article-grid:has(.toc:not([open])) {
+        grid-template-columns: 1fr;
+        gap: 0rem;
+      }
+
+      /* Center content again when single column */
+      .article-grid:has(.toc:not([open])) .content-col.prose {
+        margin-inline: auto;
+      }
+
+      /* Place the "Table of contents" pill near the content, not floating */
+      .article-grid:has(.toc:not([open])) .toc-col {
+        justify-content: center; /* centered above content */
+        position: static;        /* no sticky needed when closed */
+        max-height: none;
+        overflow: visible;
+      }
+    }
   </style>
 </BaseLayout>

@@ -29,6 +29,14 @@
   box-sizing: border-box;
 }
 
+:root:not([data-theme="dark"]) {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 html,
 body {
   margin: 0;
@@ -318,3 +326,32 @@ a:focus-visible {
   color: var(--color-muted);
   font-size: 0.95rem;
 }
+
+
+:root {
+  color-scheme: light dark;
+
+  /* light */
+  --color-bg: #ffffff;
+  --color-text: #0f172a;
+  --color-muted: #475569;
+  --color-border: rgba(15, 23, 42, 0.14);
+  --color-accent: #2563eb;
+
+  /* reading */
+  --reading-width: 95ch;
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #0b1220;
+  --color-text: #e5e7eb;
+  --color-muted: #9ca3af;
+  --color-border: rgba(229, 231, 235, 0.14);
+  --color-accent: #60a5fa;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+

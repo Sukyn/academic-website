@@ -16,6 +16,7 @@
     "@astrojs/sitemap": "^3.7.0",
     "astro": "^5.16.6",
     "katex": "^0.16.27",
+    "rehype-github-alerts": "^4.2.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "typescript": "^5.9.3"

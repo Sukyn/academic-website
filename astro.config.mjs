@@ -14,7 +14,7 @@ export default defineConfig({
   integrations: [
     mdx({
       remarkPlugins: [remarkMath],
-      rehypePlugins: [rehypeKatex],
+      rehypePlugins: [[rehypeKatex, { output: "html" }]],
     }),
     sitemap()
   ],
