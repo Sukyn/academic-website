@@ -1,4 +1,5 @@
 ---
+import TableOfContents from "../../components/TableOfContents.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getCollection, render } from "astro:content";
 
@@ -15,7 +16,7 @@ export async function getStaticPaths() {
 }
 
 const { post } = Astro.props;
-const { Content } = await render(post);
+const { Content, headings } = await render(post);
 
 const WORDS_PER_MINUTE = 200;
 
@@ -48,7 +49,8 @@ function readingTimeFromText(text) {
       </div>
     </header>
 
-    {/* NEW: Cover image (optional) */}
+    <TableOfContents headings={headings} />
+    
     {post.data.coverImage ? (
       
       <figure class="cover">

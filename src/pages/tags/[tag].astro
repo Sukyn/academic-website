@@ -15,7 +15,7 @@ export async function getStaticPaths() {
     return import.meta.env.PROD ? data.draft !== true : true;
   })).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
-  const tags = new Set();
+  const tags = new Set<string>();
   for (const post of allPosts) {
     for (const t of post.data.tags ?? []) tags.add(t);
   }
@@ -27,7 +27,7 @@ export async function getStaticPaths() {
 }
 
 
-const { tag } = Astro.props;
+const { tag } = Astro.props as { tag: string };
 
 const posts = allPosts.filter((p) => (p.data.tags ?? []).includes(tag));
 ---

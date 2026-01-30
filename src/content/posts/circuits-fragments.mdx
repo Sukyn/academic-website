@@ -58,7 +58,7 @@ Restricting gates sounds like you are ''throwing power away'', but in practice f
 ### 1) Physics and hardware constraints
 Real devices do not implement an arbitrary unitary gate set directly. They implement some native gates (or some native Hamiltonians), plus calibration-dependent approximations. Studying fragments helps you understand what is *exactly expressible* vs what requires approximation and synthesis.
 
-### 2) Fault tolerance and compilation (why Clifford+$T$ is everywhere)
+### 2) Fault tolerance and compilation (why Clifford+T is everywhere)
 Fault-tolerant architectures typically make some operations ''easy'' (often Clifford operations) and others ''expensive'' (often non-Cliffords such as $T$). The fragment boundary becomes a resource boundary: you optimize in a fragment because the cost model is fragment-aware (e.g. $T$-count, $T$-depth).
 
 ### 3) Classical simulability and complexity transitions

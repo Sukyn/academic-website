@@ -1,0 +1,86 @@
+---
+type Heading = { depth: number; slug: string; text: string };
+
+const { headings = [] } = Astro.props as { headings: Heading[] };
+const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+{items.length > 0 ? (
+  <details class="toc">
+    <summary class="toc-summary">
+      <span class="toc-title">On this page</span>
+      <span class="toc-hint">Show</span>
+    </summary>
+
+    <nav class="toc-nav" aria-label="Table of contents">
+      <ol class="toc-list">
+        {items.map((h) => (
+          <li class={`toc-item depth-${h.depth}`}>
+            <a href={`#${h.slug}`}>{h.text}</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  </details>
+) : null}
+
+<style>
+  .toc {
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .toc-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    font-weight: 750;
+  }
+
+  /* Hide default marker */
+  .toc-summary::-webkit-details-marker { display: none; }
+
+  /* Custom marker */
+  .toc-summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 0.5rem;
+    transform: translateY(1px);
+  }
+  details[open] > .toc-summary::before {
+    transform: rotate(90deg) translateY(1px);
+  }
+
+  .toc-title { font-weight: 750; }
+  .toc-hint {
+    font-weight: 600;
+    color: var(--color-muted);
+    font-size: 0.95em;
+  }
+  details[open] .toc-hint { display: none; }
+
+  .toc-nav { margin-top: 0.75rem; }
+
+  .toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .toc-item { margin: 0.35rem 0; }
+  .toc-item.depth-3 { padding-left: 1rem; opacity: 0.95; }
+
+  .toc a {
+    text-decoration: none;
+    color: var(--color-muted);
+  }
+  .toc a:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+</style>

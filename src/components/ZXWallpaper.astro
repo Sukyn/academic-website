@@ -14,7 +14,7 @@
 
 <script>
   (() => {
-    const canvas = document.getElementById("zx-wallpaper");
+    const canvas = document.getElementById("zx-wallpaper") as HTMLCanvasElement | null;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
@@ -40,34 +40,6 @@
     const nodes = [];
     /** @type {Array<{a:number,b:number,curve:number}>} */
     const edges = [];
- 
-function frame(now) {
-  const dt = (now - last) / 1000;
-  last = now;
-  acc += dt;
-
-  if (acc < 1 / FPS) {
-    requestAnimationFrame(frame);
-    return;
-  }
-  acc = 0;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (running) {
-    for (const n of nodes) {
-      n.x += n.vx;
-      n.y += n.vy;
-      wrap(n);
-    }
-  }
-
-  for (const e of edges) drawEdge(e);
-  for (const n of nodes) drawNode(n);
-
-  requestAnimationFrame(frame);
-}
-
 
     function resize() {
       const dpr = Math.min(1.5, window.devicePixelRatio || 1);

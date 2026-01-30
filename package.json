@@ -6,14 +6,18 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "check": "astro check"
   },
   "dependencies": {
+    "@astrojs/check": "^0.9.6",
     "@astrojs/mdx": "^4.3.13",
     "@astrojs/rss": "^4.0.14",
+    "@astrojs/sitemap": "^3.7.0",
     "astro": "^5.16.6",
     "katex": "^0.16.27",
     "rehype-katex": "^7.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "typescript": "^5.9.3"
   }
 }
