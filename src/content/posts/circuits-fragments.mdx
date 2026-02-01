@@ -2,63 +2,57 @@
 title: "Gate-set fragments of the quantum circuit model"
 date: 2026-01-25
 tags: ["quantum computing", "circuits", "fragments", "equational theory"]
-description: "A compact atlas of common circuit fragments (Clifford, Clifford+T, real stabilizer, CNOT-dihedral, ...): generators, semantics, inclusions, and key references."
+description: "A compact atlas of common circuit fragments: generators, semantics, inclusions... and what is known about them"
 coverImage: "/og/circuitfragments.png"
 draft: false
 ---
 
+import Callout from "../../components/Callout.astro";
 
 This page is an "atlas" of **gate-set fragments of the quantum circuit model**.
 
+> [!WARNING] Scope and conventions
+>
+> * This atlas is about **unitary** circuit fragments (no measurement, no discard, no classical control).
+> * Unless stated otherwise, circuits are compared **up to global phase**.
+> * Gates may be applied to any qubits; hardware connectivity constraints are **out of scope**.
 ---
 
-## 1. The quantum circuit model in one sentence
+## What is a qubit and what is an $n$-qubit state?
 
-A **quantum circuit** is a wiring diagram made of a small library of gates, and it denotes (usually) a linear map on $2^n$-dimensional complex vectors.
+> A classical bit is $0$ or $1$.  
+> A **qubit** is a unit vector in $\mathbb{C}^2$.
+> 
+> We choose the **computational basis**
+> $$
+> |0\rangle = \begin{pmatrix}1\\0\end{pmatrix},\qquad
+> |1\rangle = \begin{pmatrix}0\\1\end{pmatrix}.
+> $$
+>
+> A general single-qubit pure state is
+> $$
+> |\psi\rangle = \alpha |0\rangle + \beta |1\rangle,
+> \quad \text{with } \alpha,\beta\in\mathbb{C},\;\;|\alpha|^2+|\beta|^2=1.
+> $$
 
-If all gates are unitary, the circuit denotes an $n$-qubit **unitary matrix**.
+> Two qubits live in $\mathbb{C}^2\otimes \mathbb{C}^2 \cong \mathbb{C}^4$.  
+> In general, $n$ qubits live in
+> $$
+> (\mathbb{C}^2)^{\otimes n}\cong \mathbb{C}^{2^n}.
+> $$
+> 
+> The computational basis states are
+> $$
+> |x_1x_2\ldots x_n\rangle
+> $$ 
+> where each $x_i\in\{0,1\}.
+> $
 
----
-
-## 2. What is a qubit and what is an $n$‑qubit state?
-
-### 2.1 Single qubit state space
-
-A classical bit is $0$ or $1$.  
-A **qubit** is a unit vector in $\mathbb{C}^2$.
-
-We choose the **computational basis**
-$$
-|0\rangle = \begin{pmatrix}1\\0\end{pmatrix},\qquad
-|1\rangle = \begin{pmatrix}0\\1\end{pmatrix}.
-$$
-
-A general single-qubit pure state is
-$$
-|\psi\rangle = \alpha |0\rangle + \beta |1\rangle,
-\quad \text{with } \alpha,\beta\in\mathbb{C},\;\;|\alpha|^2+|\beta|^2=1.
-$$
-
-### 2.2 Multiple qubits: tensor products
-
-Two qubits live in $\mathbb{C}^2\otimes \mathbb{C}^2 \cong \mathbb{C}^4$.  
-In general, $n$ qubits live in
-$
-(\mathbb{C}^2)^{\otimes n}\cong \mathbb{C}^{2^n}.
-$
-
-The computational basis states are
-$
-|x_1x_2\ldots x_n\rangle
-$ where each $x_i\in\{0,1\}.
-$
-
-Example: for two qubits, the basis is
-$
-|00\rangle,|01\rangle,|10\rangle,|11\rangle.
-$
-
-### 2.3 Linear maps are the semantics backbone
+> [!INFO] 
+> Example : for two qubits, the basis is
+> $$
+> |00\rangle,|01\rangle,|10\rangle,|11\rangle.
+> $$
 
 The key point: **every gate is a linear map**, represented as a matrix.  
 Applying a gate to a state means multiplying the matrix by the vector.
@@ -67,369 +61,327 @@ When gates are unitary, they preserve inner products and norm (so probabilities 
 
 ---
 
-## 3. What is a quantum circuit (syntax)?
+## What is a quantum circuit (syntax)?
 
-A circuit is built from:
+> A circuit is built from:
+> 
+> - **wires** (each wire is a qubit),
+> - **gates** (small-arity operations on one or a few wires),
+> - **two composition operations**:
+>  1. **sequential composition** (do one circuit after another),
+>  2. **parallel composition** (place circuits side-by-side on disjoint wires).
 
-- **wires** (each wire is a qubit),
-- **gates** (small-arity operations on one or a few wires),
-- **two composition operations**:
-  1. **sequential composition** (do one circuit after another),
-  2. **parallel composition** (place circuits side-by-side on disjoint wires).
+> [!TIP]
+> A helpful way to think of it:
+> 
+> - sequential composition corresponds to **matrix multiplication**;
+> - parallel composition corresponds to **tensor product** (Kronecker product).
 
-A helpful way to think of it:
+> If $C_1$ denotes a matrix $U_1$ and $C_2$ denotes $U_2$, then running $C_1$ then $C_2$ denotes
+> $
+> U_2U_1.
+> $
+> (Notice the order: the circuit drawn left-to-right matches right-to-left matrix multiplication if you're used to function composition.)
 
-- sequential composition corresponds to **matrix multiplication**;
-- parallel composition corresponds to **tensor product** (Kronecker product).
-
-So circuits come with two native algebraic operations: composition and tensor.
-
-### 3.1 Sequential composition
-
-If $C_1$ denotes a matrix $U_1$ and $C_2$ denotes $U_2$, then running $C_1$ then $C_2$ denotes
-$
-U_2U_1.
-$
-
-(Notice the order: the circuit drawn left-to-right matches right-to-left matrix multiplication if you’re used to function composition.)
-
-### 3.2 Parallel composition
-
-If $C_1$ acts on $n$ qubits and denotes $U_1\in U(2^n)$, and $C_2$ acts on $m$ qubits and denotes $U_2\in U(2^m)$, then putting them side-by-side denotes
-$
-U_1\otimes U_2 \in U(2^{n+m}).
-$
+> If $C_1$ acts on $n$ qubits and denotes $U_1\in U(2^n)$, and $C_2$ acts on $m$ qubits and denotes $U_2\in U(2^m)$, then putting them side-by-side denotes
+> $
+> U_1\otimes U_2 \in U(2^{n+m}).
+> $
 
 ---
 
-## 4. What is the semantic universe?
+## Gate sets
 
-### 4.1 The "full" unitary circuit model
+> Fix a collection of gates $G$ (for example $G=\{H,S,\mathrm{CNOT}\}$).
+> 
+> There are two notions which are important:
+> 
+> 1. **Gate set**: the primitive generators you allow in circuits.
+> 2. **Fragment generated by the gate set**: all circuits you can build from those generators using sequential and parallel composition (and identities, and typically wire swaps).
 
-For each $n$, the most general thing you could do is any unitary in $U(2^n)$.
-
-A universal gate set is one whose generated fragment is dense in $U(2^n)$ (approximate universality) or equals a very large exact subgroup (exact universality depends on the gate set).
-
-### 4.2 Global phase: why $U(2^n)$ vs $PU(2^n)$
-
-Multiplying a unitary by a global scalar phase $e^{i\alpha}$ does not change measurement statistics:
-
-If $|\psi\rangle$ becomes $e^{i\alpha}U|\psi\rangle$, probabilities depend on squared magnitudes, so the global phase cancels.
-
-Because of that, many equivalence statements are "up to global phase". Formally, you quotient $U(2^n)$ by $U(1)$ and get the **projective unitary group**
-$$
-PU(2^n)=U(2^n)/U(1).
-$$
-
-So:
-
-- If you "ignore global phase", you live in $PU(2^n)$.
-- If you "track global phase", you live in $U(2^n)$, and your syntax may include explicit scalar gates.
-
-This matters in fragments because some gate sets automatically generate nontrivial global phases when you close under composition.
+> [!INFO]
+> The fragment is the closure:
+> - You can use a gate any number of times.
+> - You can apply it on any wires (with swaps if you allow them).
+> - You can compose gates sequentially and in parallel.
 
 ---
 
-## 5. Gate sets vs fragments: the key idea
+## Why do fragments matter?
 
-Fix a collection of gates $G$ (for example $G=\{H,S,\mathrm{CNOT}\}$).
+Restricting gates sounds like throwing power away. In reality, it's exactly how most theory and tooling becomes *usable*.
 
-There are two things you can mean:
+> [!INFO]
+> Real devices implement a limited menu of calibrated operations. 
+> 
+> Even if the physics is universal, what you can do **exactly** may be a small fragment, and what you can do **approximately** depends on synthesis.
+> 
+> So fragments separate:
+> - **exact expressibility** (inside the fragment),
+> - **approximation/synthesis** (to reach outside).
 
-1. **Gate set**: the primitive generators you allow in circuits.
-2. **Fragment generated by the gate set**: all circuits you can build from those generators using sequential and parallel composition (and identities, and typically wire swaps).
+> [!INFO]
+> Fault-tolerant architectures typically make some operations much cheaper than others. 
+> 
+> A very common pattern is:
+> 
+> - Clifford operations are "easy" (transversal, or low overhead),
+> - non-Clifford gates (often T) are "expensive" (magic state distillation, injection, etc.).
 
-The fragment is the closure:
-- You can use a gate any number of times.
-- You can apply it on any wires (with swaps if you allow them).
-- You can compose gates sequentially and in parallel.
+> [!TIP]
+> That makes "Clifford+T" a practical sweet spot: you work in a fragment-aware cost model like:
+> - T-count,
+> - T-depth,
+> - number of magic states, etc.
 
-This closure step is the reason fragments are "worlds" rather than just "lists of gates".
+> [!INFO]
+> Some fragments are classically efficiently simulable:
+> 
+> - Stabilizer / Clifford circuits (Gottesman-Knill).
+> - Purely diagonal commuting phases of limited structure.
+> - Some structured "almost-Clifford" families.
+> 
+> But tiny extensions can cross to universality:
+> - "Clifford + any non-Clifford single-qubit gate" is a common universality trigger.
+> - "Clifford + T" is the canonical example.
 
-### 5.1 "All arities at once"
+Fragments show you where the complexity jumps, and what structured intermediate fragments look like.
 
-A subtle but important point: a fragment is not only about "circuits on exactly $n$ qubits".
+> [!INFO]
+> Many fragments have clean algebraic semantics:
+> 
+> - CNOT-only corresponds to invertible linear maps over $\mathbb{F}_2$.
+> - CNOT+X corresponds to affine maps.
+> - Stabilizer circuits correspond to symplectic transformations plus phase data.
+> - Diagonal phase fragments correspond to phase polynomials.
 
-It’s a family across all $n$:
+> [!TIP]
+> Once you identify the algebra, you get:
+> - invariants,
+> - normal forms,
+> - equivalence checks,
+> - synthesis algorithms.
 
-- For each $n$, you get a set of $n$-qubit circuits.
-- Semantically, that set corresponds to some subset of $U(2^n)$ (often a subgroup).
+> [!INFO]
+> Circuit optimization and verification are rewriting tasks:
+> 
+> - Replace a subcircuit by an equivalent subcircuit.
+> - Prove two circuits implement the same map.
 
-This uniform, all-arities perspective is how people naturally state many results:
+> An **equational theory** is a set of rewrite rules (equations) that generate all valid equalities.
+> 
+> Important properties:
+> 
+> - **Soundness**: every rewrite preserves semantics.
+> - **Completeness**: if two circuits are semantically equal, you can derive that equality from the rules.
+> - **Minimality**: no rule is redundant (cannot be derived from the others).
 
-- "CNOT-only circuits correspond to $GL(n,2)$" is a statement for every $n$.
-- "Clifford circuits form the Clifford group" is similarly uniform in $n$.
-- Normal form procedures usually scale with $n$ and treat $n$ parametrically.
-
----
-
-## 6. Why do fragments matter?
-
-Restricting gates sounds like throwing power away. In reality, it’s exactly how most theory and tooling becomes *usable*.
-
-### 6.1 Hardware constraints and native gates
-
-Real devices implement a limited menu of calibrated operations. Even if the physics is universal, what you can do **exactly** may be a small fragment, and what you can do **approximately** depends on synthesis.
-
-So fragments separate:
-- **exact expressibility** (inside the fragment),
-- **approximation/synthesis** (to reach outside).
-
-### 6.2 Fault tolerance and the "Clifford vs non-Clifford" boundary
-
-Fault-tolerant architectures typically make some operations much cheaper than others. A very common pattern is:
-
-- Clifford operations are "easy" (transversal, or low overhead),
-- non-Clifford gates (often $T$) are "expensive" (magic state distillation, injection, etc.).
-
-That makes "Clifford+$T$" a practical sweet spot: you work in a fragment-aware cost model like:
-- $T$-count,
-- $T$-depth,
-- number of magic states, etc.
-
-### 6.3 Classical simulation and complexity phase transitions
-
-Some fragments are classically efficiently simulable:
-
-- Stabilizer / Clifford circuits (Gottesman–Knill).
-- Purely diagonal commuting phases of limited structure.
-- Some structured "almost-Clifford" families.
-
-But tiny extensions can cross to universality:
-- "Clifford + any non-Clifford single-qubit gate" is a common universality trigger.
-- "Clifford + $T$" is the canonical example.
-
-Fragments show you where the complexity jumps, and what structured intermediate fragments look like (e.g. CNOT-dihedral).
-
-### 6.4 Algebraic structure you can actually compute with
-
-Many fragments have clean algebraic semantics:
-
-- CNOT-only corresponds to invertible linear maps over $\mathbb{F}_2$.
-- CNOT+X corresponds to affine maps.
-- Stabilizer circuits correspond to symplectic transformations plus phase data.
-- Diagonal phase fragments correspond to phase polynomials.
-
-Once you identify the algebra, you get:
-- invariants,
-- normal forms,
-- equivalence checks,
-- synthesis algorithms.
-
-### 6.5 Equational theories and rewriting
-
-Circuit optimization and verification are rewriting tasks:
-
-- Replace a subcircuit by an equivalent subcircuit.
-- Prove two circuits implement the same map.
-
-An **equational theory** is a set of rewrite rules (equations) that generate all valid equalities.
-
-Important properties:
-
-- **Soundness**: every rewrite preserves semantics.
-- **Completeness**: if two circuits are semantically equal, you can derive that equality from the rules.
-- **Minimality**: no rule is redundant (cannot be derived from the others).
-
-A **normal form** is a canonical representative for each semantic element:
-- ideally unique (so equality reduces to syntactic comparison),
-- often algorithmic (a rewrite procedure that always terminates).
-
-The atlas table later tracks "Complete / Minimal / Normal form" status for fragments.
+> A **normal form** is a canonical representative for each semantic element:
+> - ideally unique (so equality reduces to syntactic comparison),
+> - often algorithmic (a rewrite procedure that always terminates).
 
 ---
 
-## 7. Notation: what does `H+S+CNOT` mean?
+## Notation: what does `H+S+CNOT` mean?
 
-I’ll write expressions like `H+S+CNOT` to mean "the fragment generated by these gates":
-$$
-\langle H, S, \mathrm{CNOT} \rangle,
-$$
-i.e. the smallest fragment that contains those gates (and identities) and is closed under sequential and parallel composition (and typically wire permutations).
+> I'll write expressions like `H+S+CNOT` to mean "the fragment generated by these gates":
+> $$
+> \langle H, S, \mathrm{CNOT} \rangle,
+> $$
+> i.e. the smallest fragment that contains those gates (and identities) and is closed under sequential and parallel composition (and typically wire permutations).
 
-Important: the symbol $+$ is **not** addition.  
-Read it as "generated by".
+> [!WARNING]
+> Important: 
+> 
+> The symbol $+$ is **not** addition.  
+> Read it as "generated by".
 
 ---
 
-## 8. Gates we will use (generators and their semantics)
+## Gates we will use (generators and their semantics)
 
 Throughout, we use the computational basis $\{|0\rangle,|1\rangle\}$.
 
-### 8.1 Global phases (optional)
+### Global phases (optional)
 
 If you explicitly track global phase, you may allow scalar gates.
 
-- Continuous global phase:
-  $$
-  s(\alpha) := e^{i\alpha}.
-  $$
-- Root of unity:
-  $$
-  \omega_k := e^{2\pi i/k}.
-  $$
+> - Continuous global phase:
+>  $$
+>  s(\alpha) := e^{i\alpha}.
+>  $$
 
-(If you’re working up to global phase, you typically drop these.)
+> - Root of unity:
+>  $$
+>  \omega_k := e^{2\pi i/k}.
+>  $$
 
-### 8.2 Single-qubit gates
+> [!TIP]
+> If you're working up to global phase, you typically drop these, so we usually don't really care about them.
 
-- Hadamard:
-  $$
-  H = \frac{1}{\sqrt 2}\begin{pmatrix}1&1\\1&-1\end{pmatrix}.
-  $$
+### Single-qubit gates
 
-- Paulis:
-  $$
-  X = \begin{pmatrix}0&1\\1&0\end{pmatrix},\quad
-  Z = \begin{pmatrix}1&0\\0&-1\end{pmatrix}.
-  $$
+> - Hadamard:
+>  $$
+>  H = \frac{1}{\sqrt 2}\begin{pmatrix}1&1\\1&-1\end{pmatrix}.
+>  $$
 
-- Phase gate / $Z$-rotation family:
-  $$
-  P(\theta) = \begin{pmatrix}1&0\\0&e^{i\theta}\end{pmatrix}.
-  $$
-  Special cases:
-  $$
-  S := P(\tfrac{\pi}{2})=\begin{pmatrix}1&0\\0&i\end{pmatrix},\quad
-  T := P(\tfrac{\pi}{4})=\begin{pmatrix}1&0\\0&e^{i\pi/4}\end{pmatrix},\quad
-  Z := P(\pi).
-  $$
+> - Paulis:
+>  $$
+>  X = \begin{pmatrix}0&1\\1&0\end{pmatrix},\quad
+>  Z = \begin{pmatrix}1&0\\0&-1\end{pmatrix}.
+>  $$
 
-  Useful identities:
-  - $T^2=S$,
-  - $S^2=Z$,
-  - $T^4=Z$,
-  - $P(\alpha)P(\beta)=P(\alpha+\beta)$ and $P(\theta+2\pi)=P(\theta)$.
+> - Phase gate / $Z$-rotation family:
+>  $$
+>  P(\theta) = \begin{pmatrix}1&0\\0&e^{i\theta}\end{pmatrix}.
+>  $$
+>  Special cases:
+>  $$
+>  S := P(\tfrac{\pi}{2})=\begin{pmatrix}1&0\\0&i\end{pmatrix},\quad
+>  T := P(\tfrac{\pi}{4})=\begin{pmatrix}1&0\\0&e^{i\pi/4}\end{pmatrix},\quad
+>  Z := P(\pi).
+>  $$
+
+> [!TIP] Useful identities:
+>
+>  - $T^2=S$,
+>  - $S^2=Z$,
+>  - $T^4=Z$,
+>  - $P(\alpha)P(\beta)=P(\alpha+\beta)$ and $P(\theta+2\pi)=P(\theta)$.
 
 > Note: $P(\theta)$ is a "phase shift" gate. Up to a global phase it matches the usual $R_z(\theta)$ convention (different communities differ by a global phase convention).
 
-### 8.3 Two-qubit controlled gates
+### Two-qubit controlled gates
 
-- CNOT (control first, target second):
-  $$
-  \mathrm{CNOT}:|a,b\rangle\mapsto |a,\, b\oplus a\rangle,\qquad
-  \mathrm{CNOT}=
-  \begin{pmatrix}
-  1&0&0&0\\
-  0&1&0&0\\
-  0&0&0&1\\
-  0&0&1&0
-  \end{pmatrix}.
-  $$
+> - CNOT (control first, target second):
+>  $$
+>  \mathrm{CNOT}:|a,b\rangle\mapsto |a,\, b\oplus a\rangle,\qquad
+>  \mathrm{CNOT}=
+>  \begin{pmatrix}
+>  1&0&0&0\\
+>  0&1&0&0\\
+>  0&0&0&1\\
+>  0&0&1&0
+>  \end{pmatrix}.
+>  $$
 
-- Controlled-phase:
-  $$
-  CP(\theta)=\mathrm{diag}(1,1,1,e^{i\theta}).
-  $$
-  Special cases:
-  $$
-  CZ := CP(\pi)=\mathrm{diag}(1,1,1,-1),\quad
-  CS := CP(\tfrac{\pi}{2})=\mathrm{diag}(1,1,1,i).
-  $$
+> - Controlled-phase:
+>  $$
+>  CP(\theta)=\mathrm{diag}(1,1,1,e^{i\theta}).
+>  $$
+>  Special cases:
+>  $$
+>  CZ := CP(\pi)=\mathrm{diag}(1,1,1,-1),\quad
+>  CS := CP(\tfrac{\pi}{2})=\mathrm{diag}(1,1,1,i).
+>  $$
 
 ---
 
-## 9. A "map" of the circuit fragment landscape
+## A "map" of the circuit fragment landscape
 
-Before the big table, here’s a conceptual map of the most common regions:
+Before the big table, here's a conceptual map of the most common regions:
 
-### 9.1 Local vs entangling fragments
+### Local vs entangling fragments
 
-- **Local fragments**: only single-qubit gates; no entanglement is ever created.
-  Example: `H+S` acting independently on each qubit.
+> - **Local fragments**: only single-qubit gates; no entanglement is ever created.
+>  Example: `H+S` acting independently on each qubit.
+>  Semantically, on $n$ qubits, these fragments look like "a product of $n$ copies of a 1-qubit group", e.g. $\mathcal{C}_1^{\times n}$.
 
-  Semantically, on $n$ qubits, these fragments look like "a product of $n$ copies of a 1-qubit group", e.g. $\mathcal{C}_1^{\times n}$.
+> - **Entangling fragments**: include a 2-qubit entangling gate like CNOT or CZ.
+>  Example: `CNOT+H+S` (the Clifford fragment).
 
-- **Entangling fragments**: include a 2-qubit entangling gate like CNOT or CZ.
-  Example: `CNOT+H+S` (the Clifford fragment).
-
-### 9.2 "Classical reversible" region
+### "Classical reversible" region
 
 If you restrict to gates that permute computational basis states, you get reversible classical computations.
 
-- `CNOT` gives linear reversible maps: $x \mapsto Ax$ over $\mathbb{F}_2$.
-- `CNOT+X` gives affine reversible maps: $x \mapsto Ax + b$.
+> - `CNOT` gives linear reversible maps: $x \mapsto Ax$ over $\mathbb{F}_2$.
+> - `CNOT+X` gives affine reversible maps: $x \mapsto Ax + b$.
 
 These show up as $GL(n,2)$ and $AGL(n,2)$ in the table.
 
-### 9.3 Stabilizer / Clifford region
+### Stabilizer / Clifford region
 
 The stabilizer fragment is generated by `CNOT+H+S`.
 
-This is the boundary of efficient stabilizer simulation and a central object in fault-tolerance.
+> [!IMPORTANT]
+> This is the boundary of efficient stabilizer simulation and a central object in fault-tolerance.
 
-### 9.4 "Just beyond Clifford": diagonal / CNOT-dihedral / phase polynomial
+### "Just beyond Clifford": diagonal / CNOT-dihedral / phase polynomial
 
 A lot of practical compilation lives in fragments that are "Clifford plus structured phases".
 
-Examples in the table include:
-- `CNOT+T` and `CNOT+X+T`,
-- `CNOT+P(\theta)` (phase polynomial circuits).
+> Examples in the table include:
+> - `CNOT+T` and `CNOT+X+T`,
+> - `CNOT+P(\theta)` (phase polynomial circuits).
 
-These are often described by polynomials over $\mathbb{F}_2$ that encode which basis states pick up which phases.
+> These are often described by polynomials over $\mathbb{F}_2$ that encode which basis states pick up which phases.
 
-### 9.5 Universal fragments
+### Universal fragments
 
-Adding enough continuous parameters (like all $P(\theta)$ plus $H$ and CNOT) gives full $U(2^n)$.
+> Adding enough continuous parameters (like all $P(\theta)$ plus $H$ and CNOT) gives full $U(2^n)$.
 
-Adding a discrete non-Clifford like $T$ gives the standard exact gate library for fault-tolerant compilation (universal by approximation, and exact in the appropriate algebraic number ring).
-
----
-
-## 10. Equational theories and normal forms: what the table is tracking
-
-When the table says "Complete / Minimal / Normal Form", it’s about *reasoning inside that fragment*.
-
-### 10.1 Complete equational theory (presentation)
-
-A set of circuit equations is **complete** for a fragment if:
-
-Whenever two fragment circuits denote the same unitary (or the same projective unitary if working up to global phase), you can derive their equality using those equations.
-
-In group language: it gives a presentation of the semantic group of the fragment (uniformly in $n$, if possible).
-
-### 10.2 Minimal
-
-A presentation is **minimal** if no listed equation is derivable from the others.
-
-Minimality is useful because it tells you you’re not carrying redundant axioms — and, more deeply, it can tell you something about what kinds of relations are *fundamentally necessary*.
-
-### 10.3 Normal form
-
-A **normal form** is a canonical circuit shape such that:
-
-- every element of the fragment can be rewritten into that shape;
-- ideally, that shape is unique for each semantic element.
-
-If you have a unique normal form, equivalence checking becomes:
-
-1. rewrite both circuits to normal form,
-2. check syntactic equality.
+> Adding a discrete non-Clifford like T gives the standard exact gate library for fault-tolerant compilation (universal by approximation, and exact in the appropriate algebraic number ring).
 
 ---
 
-## 11. The atlas: how to read the fragment table
+## Equational theories and normal forms: what the table is tracking
 
-### 11.1 Table columns (expanded explanation)
+When the table says "Complete / Minimal / Normal Form", it's about *reasoning inside that fragment*.
 
-- **Generators**: the gate set you start from.
-- **Math. name**: the standard algebraic object associated with the $n$-qubit slice (often a group up to phase).
-- **Alternative name**: what you’ll often hear in circuit/compiler discussions.
-- **Complete**: a complete equational theory/presentation is known (for the intended scope).
-- **Minimal**: that presentation is proved minimal.
-- **Normal Form**: a deterministic normal form exists (often unique; sometimes only for small $n$).
+### Complete equational theory (presentation)
 
-### 11.2 Status legend
+> [!TIP] 
+> A set of circuit equations is complete for a fragment if:
+> 
+> Whenever two fragment circuits denote the same unitary (or the same projective unitary if working up to global phase), you can derive their equality using those equations.
 
-- `☑️ [k]` = established in reference `[k]` (or standard finite-group presentation).
-- `~ [k]` = only for bounded qubit counts / special cases / or the reference has the idea but not a clean explicit statement.
-- `?` = a clean "best" reference not pinned down here.
+> [!INFO]
+> In group language: 
+> 
+> It gives a presentation of the semantic group of the fragment (uniformly in $n$, if possible).
+
+### Minimal
+
+> [!TIP]
+> A presentation is minimal if no listed equation is derivable from the others.
+
+Minimality is useful because it tells you you're not carrying redundant axioms and, more deeply, it can tell you something about what kinds of relations are *fundamentally necessary*.
+
+### Normal form
+
+> [!TIP]
+> A normal form is a canonical circuit shape such that:
+> 
+> - every element of the fragment can be rewritten into that shape;
+> - ideally, that shape is unique for each semantic element.
+
+> [!INFO]
+> If you have a unique normal form, equivalence checking becomes:
+>
+> 1. rewrite both circuits to normal form,
+> 2. check syntactic equality.
 
 ---
 
-## 12. The atlas table (qubits)
+## The atlas: how to read the fragment table
 
-*(The table below is kept exactly as in the original atlas.)*
+> [!TIP] Table columns
+> - **Generators**: the gate set you start from.
+> - **Math. name**: the standard algebraic object associated with the $n$-qubit slice (often a group up to phase).
+> - **Alternative name**: what you'll often hear in circuit/compiler discussions.
+> - **Complete**: is a complete equational theory/presentation known (for the intended scope)?
+> - **Minimal**: is that presentation proven minimal?
+> - **Normal Form**: is a deterministic normal form known (often unique; sometimes only for small $n$)?
+
+> [!INFO]
+> - `☑️ [k]` = established in reference `[k]` (or standard finite-group presentation).
+> - `~ [k]` = only for bounded qubit counts / special cases / or the reference has the idea but not a clean explicit statement.
+> - `?` = a clean "best" reference not pinned down here.
+
+---
+
+## The atlas table (qubits)
 
 | Generators | Math. name  | Alternative name | Complete | Minimal | Normal Form |
 | --- | --- | --- | --- | --- | --- |
@@ -438,7 +390,7 @@ If you have a unique normal form, equivalence checking becomes:
 | $X$ | $C_2^{\,n}$ | Local Pauli‑$X$ (bit flips) | ☑️ [1] | ☑️ [1] | ☑️ [1] |
 | $Z$ | $C_2^{\,n}$ | Local Pauli‑$Z$ | ☑️ [1] | ☑️ [1] | ☑️ [1] |
 | $S$ | $C_4^{\,n}$ | Local phase ($S$) gates | ☑️ [1] | ☑️ [1] | ☑️ [1] |
-| $T$ | $C_8^{\,n}$ | Local $T$ / $\pi/8$ gates | ☑️ [1] | ☑️ [1] | ☑️ [1] |
+| T | $C_8^{\,n}$ | Local T / $\pi/8$ gates | ☑️ [1] | ☑️ [1] | ☑️ [1] |
 | $P(\theta)$ | $(U(1))^{\,n}$ | Local $Z$‑rotations |  ☑️ [2] | ☑️ [2] | ☑️ [2] |
 | $H+Z$ | $D_4^{\times n}$ | Local real Clifford (no entangling) | ☑️ [5] | ☑️ [16] | ☑️ [5] |
 | $H+S$ | $\mathcal{C}_1^{\times n}$ | Local Clifford (no entangling) | ☑️ [4] | ☑️ [16] | ☑️ [4] |
@@ -482,7 +434,7 @@ If you have a unique normal form, equivalence checking becomes:
 
 ---
 
-## 13. Qudits (non-qubit rows)
+## Qudits (non-qubit rows)
 
 | Dim. | Generators | Math. name  | Alternative name | Complete | Minimal | Normal Form |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -494,78 +446,176 @@ If you have a unique normal form, equivalence checking becomes:
 | 3 | $X+\mathrm{SUM}+CCX+H+T_k$ | Clifford-cyclotomic (degree 3^k) | Qutrit Toffoli+Hadamard (k=1), Clifford+T_k (k>1) | ? | ? | ~ [19] |
 ---
 
-## 14. Fragment inclusions and quick derivations (qubits, $d=2$)
+> [!INFO]
+> This fragment table is meant as a quick atlas, not a full survey.
+
+> [!WARNING]
+> Some rows depend on conventions (global phase vs projective).
+
+## Fragment inclusions and quick derivations (qubits, $d=2$)
 
 This section is a "navigation aid": if you have one gate set, what else do you automatically get?
 
-I’ll keep the original quick facts, but I’ll also explain the mechanism behind each one.
+I'll keep the original quick facts, but I'll also explain the mechanism behind each one.
 
-### 14.1 From powers and conjugation
+###  From powers and conjugation
 
-These are purely algebraic identities:
+> [!TIP]
+> These are purely algebraic identities:
+>
+> - $S \implies Z$ because $Z=S^2$.
+> - $T \implies S$ because $S=T^2$.
+> - $H$ and $Z \implies X$ because $X=HZH$.
 
-- $S \implies Z$ because $Z=S^2$.
-- $T \implies S$ because $S=T^2$.
-- $H$ and $Z \implies X$ because $X=HZH$.
+```mermaid
+graph TD
+  %% =========================
+  %% Gate-level quick derivations
+  %% =========================
+  subgraph G["Gate-level derivations (inside a fragment)"]
+    T["T"] -->|"T^2 = S"| S["S"]
+    S -->|"S^2 = Z"| Z["Z"]
+    HZ["H + Z"] -->|"HZH = X"| X["X"]
+  end
+```
 
-Why this matters: if you list $H$ and $Z$ as generators, you don’t need to separately list $X$ — it’s already in the generated fragment.
+Why this matters: if you list $H$ and $Z$ as generators, you don't need to separately list $X$ — it's already in the generated fragment.
 
-### 14.2 Discrete global phase from non-commuting 1q gates
+### Discrete global phase from non-commuting 1q gates
 
 When you *do* keep track of global phase (work in $U(2^n)$, not $PU(2^n)$), some 1‑qubit gate sets generate nontrivial scalars automatically.
 
-A standard trick is: if two gates don’t commute, their product can sometimes become a scalar.
+> A standard trick is: if two gates don't commute, their product can sometimes become a scalar.
+>
+> - $X+P(2\pi/k) \implies \omega_k$, since
+>  $$
+>  P\!\left(\tfrac{2\pi}{k}\right) X P\!\left(\tfrac{2\pi}{k}\right) X
+>  =
+>  \mathrm{diag}(\omega_k,\omega_k)
+>  =
+>  \omega_k I
+>  =
+>  \omega_k \otimes Id.
+>  $$
 
-- $X+P(2\pi/k) \implies \omega_k$, since
-  $$
-  P\!\left(\tfrac{2\pi}{k}\right) X P\!\left(\tfrac{2\pi}{k}\right) X
-  =
-  \mathrm{diag}(\omega_k,\omega_k)
-  =
-  \omega_k I
-  \;=\;
-  \omega_k \otimes Id.
-  $$
+> - In particular, $H+S \implies \omega_8$, because
+>   $$
+>   HSHSHS = (HS)^3 = \omega_8 I = \omega_8 \otimes Id.
+>   $$
 
-- In particular, $H+S \implies \omega_8$, because
-  $$
-  HSHSHS = (HS)^3 = \omega_8 I = \omega_8 \otimes Id.
-  $$
+> [!INFO]
+> Interpretation: 
+>
+> Even if you didn't include "global phase generators", the fragment might contain them anyway once you close under composition.
 
-Interpretation: even if you didn’t include "global phase generators", the fragment might contain them anyway once you close under composition.
-
-### 14.3 Controlled-phase from CNOT + phases
+### Controlled-phase from CNOT + phases
 
 A very common identity is that you can build controlled-$Z$-type phases from CNOTs and single-qubit $Z$-rotations.
 
-Using
-$$
-CP(\theta) = (P(\tfrac{\theta}{2})\otimes P(\tfrac{\theta}{2}))\mathrm{CNOT}(I\otimes P(-\tfrac{\theta}{2}))\mathrm{CNOT},
-$$
-we get:
+> Using
+> $$
+> CP(\theta) = (P(\tfrac{\theta}{2})\otimes P(\tfrac{\theta}{2}))\mathrm{CNOT}(I\otimes P(-\tfrac{\theta}{2}))\mathrm{CNOT},
+> $$
+> we get:
+> 
+> - $CNOT+S \implies CZ$ (take $\theta=\pi$),
+> - $CNOT+T \implies CS$ (take  $\theta=\pi/2$),
+> - more generally $CNOT+P(\theta/2) \implies CP(\theta)$.
 
-- $CNOT+S \implies CZ$ (take $\theta=\pi$),
-- $CNOT+T \implies CS$ (take  $\theta=\pi/2$),
-- more generally $CNOT+P(\theta/2) \implies CP(\theta)$.
+> [!INFO]
+> This identity is one reason "phase polynomial" and "CNOT-dihedral" styles of compilation are so natural: 
+> 
+> CNOTs move parity information around; phase gates attach phases conditional on parity.
 
-This identity is one reason "phase polynomial" and "CNOT-dihedral" styles of compilation are so natural: CNOTs move parity information around; phase gates attach phases conditional on parity.
+```mermaid 
+graph TD 
+  subgraph C["Controlled-phase from CNOT + phases"]
+    CN_S["CNOT + S"] -->|"gives CZ"| CZ["CZ"]
+    CN_T["CNOT + T"] -->|"gives CS"| CS["CS"]
+    CN_P["CNOT + P(θ/2)"] -->|"gives CP(θ)"| CP["CP(θ)"]
+  end
+```
+### CNOT vs CZ (with Hadamard)
 
-### 14.4 CNOT vs CZ (with Hadamard)
+> CNOT and CZ are interconvertible with Hadamards on the target wire:
+> 
+> - $CNOT+H \implies CZ$ and $CZ+H \implies CNOT$ (by conjugating the target with $H$).
 
-CNOT and CZ are interconvertible with Hadamards on the target wire:
+> Explicitly:
+> $$
+> (I\otimes H)\, \mathrm{CNOT}\, (I\otimes H) = CZ.
+> $$
 
-- $CNOT+H \implies CZ$ and $CZ+H \implies CNOT$ (by conjugating the target with $H$).
+> [!INFO]
+> So "CNOT-based" and "CZ-based" entangling fragments often differ only superficially when H is available.
 
-Explicitly:
-$$
-(I\otimes H)\, \mathrm{CNOT}\, (I\otimes H) = CZ.
-$$
 
-So "CNOT-based" and "CZ-based" entangling fragments often differ only superficially when $H$ is available.
+```mermaid 
+graph TD
+  subgraph D["Some inclusions"]
+    H["⟨H⟩"] 
+    S["⟨S⟩"]
+    X["⟨X⟩"]
+    Z["⟨Z⟩"]
+    T["⟨T⟩"]
 
+    HStmp(( ))
+    HStmp --> HS["⟨H+S⟩"] 
+    H --> HStmp 
+    S --> HStmp
+
+    T --> S 
+    S --> Z
+
+    HTtmp(( ))
+    HTtmp --> HT["⟨H+T⟩"] 
+    H --> HTtmp 
+    T --> HTtmp
+
+    HXtmp(( ))
+    HXtmp --> HX["⟨H+X⟩"] 
+    H --> HXtmp 
+    X --> HXtmp
+
+    HZtmp(( ))
+    HZtmp --> HZ["⟨H+Z⟩"] 
+    H --> HZtmp 
+    Z --> HZtmp
+
+    HT --> HS 
+    HS --> HZ 
+
+    HX <-.-> HZ
+
+    XTtmp(( ))
+    XTtmp --> XT["⟨X+T⟩"] 
+    X --> XTtmp 
+    T --> XTtmp
+
+    XStmp(( ))
+    XStmp --> XS["⟨X+S⟩"] 
+    X --> XStmp 
+    S --> XStmp
+
+    XZtmp(( ))
+    XZtmp --> XZ["⟨X+Z⟩"] 
+    X --> XZtmp 
+    Z --> XZtmp
+
+    XT --> XS
+    XS --> XZ
+
+    HT --> XT 
+    HS --> XS 
+    HZ --> XZ
+
+    HT <-.-> HTX["⟨H+X+T⟩"] 
+    HS <-.-> HSX["⟨H+X+S⟩"] 
+  end
+```
 ---
 
-## 15. References
+## References
 
 [1] https://proofwiki.org/wiki/Cyclic_Group/Group_Presentation
 
