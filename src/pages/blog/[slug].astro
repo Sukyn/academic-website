@@ -2,6 +2,7 @@
 import TableOfContents from "../../components/TableOfContents.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getCollection, render } from "astro:content";
+import type { CollectionEntry } from "astro:content";
 
 // Build one page per post (static output)
 export async function getStaticPaths() {
@@ -18,6 +19,29 @@ export async function getStaticPaths() {
 const { post } = Astro.props;
 const { Content, headings } = await render(post);
 
+// Related posts (by shared tags)
+const allPosts = (await getCollection("posts", ({ data }) => {
+  return import.meta.env.PROD ? data.draft !== true : true;
+}))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+// score by number of shared tags
+function sharedTagScore(a: CollectionEntry<"posts">, b: CollectionEntry<"posts">) {
+  const set = new Set(a.data.tags ?? []);
+  let score = 0;
+  for (const t of b.data.tags ?? []) if (set.has(t)) score++;
+  return score;
+}
+
+const related = allPosts
+  .filter((p) => p.id !== post.id)
+  .map((p) => ({ post: p, score: sharedTagScore(post, p) }))
+  .filter(({ score }) => score > 0)
+  .sort((x, y) => y.score - x.score || y.post.data.date.valueOf() - x.post.data.date.valueOf())
+  .slice(0, 3)
+  .map(({ post }) => post);
+
+
 const WORDS_PER_MINUTE = 200;
 
 function readingTimeFromText(text) {
@@ -26,6 +50,76 @@ function readingTimeFromText(text) {
   return `(${minutes} min read)`;
 }
 ---
+
+<script
+  src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
+  defer
+></script>
+
+<script>
+  function mermaidTheme() {
+    return document.documentElement.dataset.theme === "dark"
+      ? "dark"
+      : "default";
+  }
+
+  function renderMermaid() {
+    const mermaidAPI = window.mermaid;
+    if (!mermaidAPI) return;
+
+    const blocks = Array.from(
+      document.querySelectorAll("pre > code.language-mermaid")
+    );
+
+    if (blocks.length === 0) return;
+
+    mermaidAPI.initialize({
+      startOnLoad: false,
+      theme: mermaidTheme(),
+      securityLevel: "strict",
+    });
+
+    for (const codeEl of blocks) {
+      const pre = codeEl.parentElement;
+      if (!pre || pre.dataset.mermaidRendered === "true") continue;
+
+      const source = codeEl.textContent ?? "";
+
+      const container = document.createElement("div");
+      container.className = "mermaid";
+      container.dataset.source = source;
+      container.textContent = source;
+
+      pre.replaceWith(container);
+      pre.dataset.mermaidRendered = "true";
+    }
+
+    mermaidAPI.run({ querySelector: ".mermaid" });
+  }
+
+  // Initial load (after DOM + CDN script)
+  document.addEventListener("DOMContentLoaded", renderMermaid);
+
+  // Astro client-side navigation
+  document.addEventListener("astro:page-load", renderMermaid);
+
+  // Re-render on theme change
+  const obs = new MutationObserver(() => {
+    const nodes = document.querySelectorAll(".mermaid");
+    for (const n of nodes) {
+      n.innerHTML = "";
+      n.textContent = n.dataset.source ?? "";
+    }
+    renderMermaid();
+  });
+
+  obs.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+</script>
+
+
 
 <BaseLayout
   title={post.data.title}
@@ -73,11 +167,33 @@ function readingTimeFromText(text) {
           </figure>
         ) : null}
 
-        <Content />
+                <Content />
+
+        {related.length > 0 ? (
+          <section class="related">
+            <h2>Related posts</h2>
+            <ol class="related-list">
+              {related.map((p) => (
+                <li class="related-item">
+                  <a href={`/blog/${p.id}/`}>{p.data.title}</a>
+                  <div class="post-meta">
+                    <time datetime={p.data.date.toISOString()}>
+                      {p.data.date.toISOString().slice(0, 10)}
+                    </time>
+                    {p.data.description ? (
+                      <span class="muted"> — {p.data.description}</span>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
 
         <footer class="footer">
           <a href="/blog">← Back to Blog</a>
         </footer>
+
       </div>
     </div>
   </article>
@@ -166,6 +282,31 @@ function readingTimeFromText(text) {
         max-height: none;
         overflow: visible;
       }
+
+
     }
+
+    .related {
+  margin-top: 2.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.related-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+}
+
+.related-item {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.related-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
   </style>
 </BaseLayout>

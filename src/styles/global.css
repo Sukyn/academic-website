@@ -355,3 +355,59 @@ body {
   color: var(--color-text);
 }
 
+
+/* =========================
+   CALLOUTS (Deliverable 4)
+   ========================= */
+.callout {
+  margin: 1.25rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.03);
+}
+
+:root[data-theme="dark"] .callout {
+  background: rgba(229, 231, 235, 0.06);
+}
+
+.callout__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.callout__title {
+  font-weight: 750;
+}
+
+.callout__body > :first-child {
+  margin-top: 0;
+}
+.callout__body > :last-child {
+  margin-bottom: 0;
+}
+
+/* Variants */
+.callout--note { border-left-color: var(--color-accent); }
+.callout--info { border-left-color: var(--color-border); }
+.callout--warning { border-left-color: #f59e0b; } /* amber */
+
+/* Mermaid diagrams */
+.prose .mermaid {
+  margin: 1.25rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+}
+
+/* Ensure SVG scales nicely */
+.prose .mermaid svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}

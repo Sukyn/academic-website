@@ -50,6 +50,34 @@ const resolvedOgImage = (() => {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+    <!--
+      Prevent white flash (FOUC) by applying theme before first paint.
+      Also re-apply during Astro client-side navigations (view transitions / client router).
+    -->
+    <script is:inline>
+      const KEY = "theme";
+
+      const getTheme = () => {
+        try {
+          const stored = localStorage.getItem(KEY);
+          if (stored === "dark" || stored === "light") return stored;
+        } catch {}
+        return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+      };
+
+      const applyTheme = (t) => {
+        if (t === "dark") document.documentElement.dataset.theme = "dark";
+        else delete document.documentElement.dataset.theme;
+      };
+
+      applyTheme(getTheme());
+
+      // When Astro swaps pages on client-side navigation, ensure theme is set before the swap paints.
+      document.addEventListener("astro:before-swap", () => {
+        applyTheme(getTheme());
+      });
+    </script>
+
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
@@ -62,7 +90,10 @@ const resolvedOgImage = (() => {
     {resolvedOgImage ? <meta property="og:image" content={resolvedOgImage} /> : null}
 
     <!-- Twitter card (works for many platforms too) -->
-    <meta name="twitter:card" content={resolvedOgImage ? "summary_large_image" : "summary"} />
+    <meta
+      name="twitter:card"
+      content={resolvedOgImage ? "summary_large_image" : "summary"}
+    />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     {resolvedOgImage ? <meta name="twitter:image" content={resolvedOgImage} /> : null}
