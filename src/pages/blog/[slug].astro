@@ -1,6 +1,7 @@
 ---
 import TableOfContents from "../../components/TableOfContents.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import Giscus from "../../components/Giscus.astro";
 import { getCollection, render } from "astro:content";
 import type { CollectionEntry } from "astro:content";
 
@@ -167,8 +168,8 @@ function readingTimeFromText(text) {
           </figure>
         ) : null}
 
-                <Content />
-
+        <Content />
+        <Giscus />
         {related.length > 0 ? (
           <section class="related">
             <h2>Related posts</h2>
