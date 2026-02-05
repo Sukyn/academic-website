@@ -86,7 +86,8 @@ $$
 |\alpha|^2 + |\beta|^2 = 1.
 $$
 
-> [!INFO] What does "complex amplitude" really mean?
+> [!INFO] What does complex amplitude really mean?
+> 
 > A complex number is $a+ib$ with $i^2=-1$.  
 > You can think of a complex amplitude as having:
 > - a **size** (how much weight it carries), and
@@ -114,7 +115,8 @@ $$
 \qquad \sum_x |\alpha_x|^2 = 1.
 $$
 
-> [!INFO] The "spreadsheet" metaphor
+> [!INFO] The spreadsheet metaphor
+>
 > Imagine a spreadsheet with $2^n$ rows, one row per bitstring $x$.  
 > A quantum state is like filling that sheet with complex amplitudes $\alpha_x$, constrained so that the squared magnitudes sum to 1.
 
@@ -565,7 +567,8 @@ The dream scenario:
 ---
 
 > [!INFO]
-> This fragment table is meant as a navigation aid, not a full survey.  
+> This fragment table is meant as a navigation aid, not a full survey. 
+> 
 > For many rows, "the best reference" is still something you have to actively hunt down.
 
 ---
@@ -597,7 +600,8 @@ graph TD
 
 When you track exact unitaries (not "up to global phase"), some gate sets generate nontrivial scalar phases automatically.
 
-> [!INFO] The "non-commuting loop" idea
+> [!INFO] The non-commuting loop idea
+>
 > If two operations don’t commute, going around a small loop
 > (do A then B then undo A then undo B) can leave a "residual effect".
 > Sometimes that residual is *just* a global phase.
@@ -630,6 +634,7 @@ So:
 - More generally, `CNOT + P(θ/2)` gives `CP(θ)`.
 
 > [!TIP] The parity-phase intuition
+>
 > CNOTs compute and move XOR-parities around; phase gates attach phases conditioned on those parities.
 > That’s why "phase-polynomial" and "CNOT-dihedral" compilation styles fit so well.
 
@@ -655,7 +660,7 @@ $$
 $$
 
 > [!INFO]
-> So "CNOT-based" and "CZ-based" entangling fragments are often the same story once $H$ is available.
+> So "CNOT-based" and "CZ-based" entangling fragments are often the same story once H is available.
 
 ```mermaid
 graph TD
