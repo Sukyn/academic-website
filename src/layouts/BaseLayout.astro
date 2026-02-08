@@ -112,7 +112,7 @@ const isProd = import.meta.env.PROD;
       <script
         defer
         src="https://static.cloudflareinsights.com/beacon.min.js"
-        data-cf-beacon={JSON.stringify({ token: cfToken })}
+        data-cf-beacon={JSON.stringify({ token: cfToken, spa: true  })}
       />
     ) : null}
   </head>
