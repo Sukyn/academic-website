@@ -42,6 +42,10 @@ const resolvedOgImage = (() => {
     return undefined;
   }
 })();
+
+// Cloudflare Web Analytics (prod-only)
+const cfToken = import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN;
+const isProd = import.meta.env.PROD;
 ---
 
 <!doctype html>
@@ -102,6 +106,15 @@ const resolvedOgImage = (() => {
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
     />
+
+    <!-- Cloudflare Web Analytics (prod-only) -->
+    {isProd && cfToken ? (
+      <script
+        defer
+        src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon={JSON.stringify({ token: cfToken })}
+      />
+    ) : null}
   </head>
 
   <body>
