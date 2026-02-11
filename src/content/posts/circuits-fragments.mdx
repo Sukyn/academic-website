@@ -249,6 +249,7 @@ Notation in the cells is intentionally compact: `☑️ [k]` means established i
 | $\mathrm{CNOT}+H+S$ | $\mathcal{C}_n$ | Stabilizer / Clifford circuits | ☑️ [4] | ☑️ [16] | ☑️ [4] |
 | $\mathrm{CNOT}+H+T$ | $\mathrm{Clifford{+}T}_n$ | Clifford+T| ~ [6] | ~ [16] | ~ [6] |
 | $\mathrm{CNOT}+H+P(\theta)$ | $\mathrm{U}(2^n)$ | Universal | ☑️ [9] | ☑️ [9] | ? |
+| $\mathrm{Ctrl}+H+s(\theta)$ | $\mathrm{U}(2^n)$ | Universal with native control | ☑️ [22] | ? | ? |
 | $\mathrm{CNOT}+X+Z$ | $(C_2)^{2n} \rtimes \mathrm{GL}(n,2)$ | CNOT+Pauli (mod phase) | ~ [8] | ~ [16] | ~ [8] |
 | $\mathrm{CNOT}+X+Z+i$ | $\mathcal{P}_n \rtimes \mathrm{GL}(n,2)$ | CNOT+Pauli | ? | ? | ? |
 | $\mathrm{CNOT}+X+S$ | ? | CNOT-dihedral circuits | ~ [8] | ~ [16] | ~ [8] |
@@ -277,6 +278,7 @@ Notation in the cells is intentionally compact: `☑️ [k]` means established i
 | d | $H+S+T+\mathrm{SUM}$ | ? | Qudit Clifford+T | ? | ? | ☑️ [18] |
 | 3 | $H+S+R+\mathrm{SUM}$ | ? | Qutrit Clifford+R / Metaplectic | ? | ? | ? |
 | 3 | $X+\mathrm{SUM}+CCX+H+T_k$ | Clifford-cyclotomic (degree $3^k$) | Qutrit Toffoli+Hadamard $(k=1)$, Clifford+$T_k (k>1)$ | ? | ? | ~ [19] |
+| d | $\mathrm{Ctrl}+H^{ij}+s(\theta)$ | ? | Qudit universal with native control | ☑️ [23] | ? | ? |
 ---
 
 > [!INFO]
@@ -452,3 +454,7 @@ graph TD
 [21] https://en.wikipedia.org/wiki/Pauli_group
 
 [22] https://hal.science/hal-05487235
+
+[22] https://arxiv.org/abs/2508.21756
+
+[23] https://hal.science/view/index/docid/5503323

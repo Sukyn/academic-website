@@ -1,0 +1,480 @@
+---
+title: "Categories, PROPs, and control: a compositional language for circuit reasoning"
+date: 2026-02-11
+tags:
+  [
+    "quantum computing",
+    "category theory",
+    "PROPs",
+    "rewriting",
+    "control",
+    "qudits",
+  ]
+description: "A serious-but-accessible introduction to categories, PROs/PROPs, and the idea of treating control as structure--background for complete rewrite rulebooks for (qudit) quantum circuits."
+coverImage: "/og/quditprops.png"
+draft: false
+---
+
+import Callout from "../../components/Callout.astro";
+
+When people first meet category theory, they often meet it as a strange zoo of abstract definitions.
+
+This post takes a different route:
+
+- start from **circuits** (things you can plug together),
+- notice the *two* ways you compose them (serial + parallel),
+- and then explain why **categories**, **PROs**, **PROPs**, and finally **controlled PROPs** are a very natural ''language layer'' for reasoning about circuits by rewriting.
+
+> [!WARNING] Scope and conventions
+>
+> I'm using **circuits** as a guiding metaphor throughout, but everything below is *purely structural*:
+> it applies just as well to classical circuits, linear-optical circuits, dataflow graphs, or string-diagram calculi.
+>
+> When I mention ''quantum circuits'', I mean **unitary** circuits (no measurement, discarding, reset, classical branching, etc.).
+> Those extra features are fascinating, but they belong to richer categorical settings than the one I want here.
+
+---
+
+## 1. What is a category?
+
+A category is the smallest piece of mathematics that can talk about **composition** in a principled way.
+
+### 1.1 The definition
+
+A **category** $\mathcal{C}$ consists of:
+
+- **objects** $A,B,C,\dots$
+- **morphisms** (arrows) $f : A \to B$
+- a **composition** operation: if $f:A\to B$ and $g:B\to C$, then $g\circ f : A\to C$
+- an **identity** arrow $\mathrm{id}_A : A \to A$ for every object $A$
+
+subject to two axioms:
+
+1. **Associativity:** $h\circ(g\circ f) = (h\circ g)\circ f$ whenever both sides make sense.
+2. **Unit laws:** $f\circ \mathrm{id}_A = f$ and $\mathrm{id}_B\circ f = f$ for every $f:A\to B$.
+
+That's it.
+
+A useful mental model is:
+
+> Objects are ''types of things'', morphisms are ''processes'', and composition is ''do one after the other''.
+
+### 1.2 A picture you can keep in your head
+
+A category is like a directed graph where some paths are declared equal because they represent the same composite process.
+
+```mermaid
+flowchart LR
+  A((A)) -->|f| B((B))
+  B -->|g| C((C))
+  A -->|g∘f| C
+````
+
+The whole point is: **if you can compose, you can reason modularly**.
+
+### 1.3 Examples (this is where the definition stops being abstract)
+
+Here are some categories you already know:
+
+* **Set**
+  objects = sets, morphisms = functions.
+
+* **Vect_k**
+  objects = vector spaces over $k$, morphisms = linear maps.
+
+* **Posets as categories**
+  Any partially ordered set $(P,\le)$ is a category where:
+
+  * objects = elements of $P$
+  * there is a morphism $p\to q$ iff $p\le q$
+  * composition is forced (and unique when it exists).
+
+  These are called **thin categories**: between any two objects there is at most one arrow.
+
+* **Monoids as categories (the ''one-object trick'')**
+  A monoid $(M,\cdot,1)$ is exactly the same as a category with:
+
+  * one object $\star$
+  * morphisms $\star\to\star$ are elements of $M$
+  * composition is multiplication, identity is $1$.
+
+This last example is more important than it looks: it's the first hint that *algebraic structure can be encoded as categorical structure*.
+
+---
+
+## 2. A little history and why anyone invented this
+
+Category theory was introduced by **Eilenberg and Mac Lane** (1940s) as a way to formalize patterns of construction that kept recurring in topology and algebra.
+
+But its modern ''engineering'' motivation is almost embarrassingly simple:
+
+> If your subject has composable things, you want a calculus where ''plugging things together'' is the primitive operation.
+
+This is why categories show up in:
+
+* programming language semantics (''programs are arrows''),
+* logic (''proofs are arrows''),
+* circuit theory (''circuits are arrows''),
+* and of course quantum information (''processes are arrows'').
+
+If you want a friendly motivational video, this one has the right vibe:
+
+<div class="video-container">
+  <iframe
+    src="https://www.youtube.com/embed/FQYOpD7tv30"
+    frameborder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+    allowfullscreen
+  ></iframe>
+</div>
+
+---
+
+## 3. Categories are not enough for circuits
+
+A plain category only knows how to do **sequential composition**.
+
+But circuits have *two* compositions:
+
+1. **Sequential:** plug outputs into inputs (''do this then that'').
+2. **Parallel:** place side-by-side on separate wires (''do both independently'').
+
+To model that second one, we need one extra layer of structure.
+
+---
+
+## 4. Monoidal categories: ''and also in parallel''
+
+A **monoidal category** is a category equipped with a tensor product $\otimes$ that behaves like ''parallel composition''.
+
+Concretely, it gives you:
+
+* for objects: $A\otimes B$ (''system A together with system B'')
+* for morphisms: $f\otimes g : A\otimes B \to A'\otimes B'$
+
+and a distinguished **unit object** $I$ (''no system''), plus coherence laws ensuring everything associates nicely.
+
+### 4.1 Why monoidal categories match circuit diagrams
+
+String diagrams are the reason this is such a good fit:
+
+* **wires** represent objects,
+* **boxes** represent morphisms,
+* **vertical stacking** is composition,
+* **horizontal juxtaposition** is tensor.
+
+In that world, many ''proofs'' are just topological deformations of pictures.
+
+> [!INFO] A slogan you'll hear again
+>
+> **Monoidal categories are the algebra of wiring.**
+> They are the minimal setting in which ''connect'' and ''juxtapose'' are both primitive, and interact cleanly.
+
+---
+
+## 5. PROs: a monoidal category of arities
+
+Now we specialize monoidal categories to something very circuit-like.
+
+A **PRO** (short for ''PROduct category'', historically) is:
+
+> a **strict monoidal category** whose objects are the natural numbers $0,1,2,\dots$, with tensor on objects given by addition:
+> $$
+> m\otimes n := m+n.
+> $$
+
+Interpretation: object $n$ is ''$n$ wires''.
+
+A morphism $f:m\to n$ is ''a box with $m$ input wires and $n$ output wires''.
+
+### 5.1 What PROs give you (and what they *don't*)
+
+PROs capture **planar** wiring: you can compose and put side-by-side, but you do *not* automatically get wire swaps.
+
+This is already enough to encode a lot of algebra.
+
+### 5.2 Example: the PRO for monoids
+
+A (not-necessarily-commutative) monoid has two operations:
+
+* multiplication $\mu : 2 \to 1$
+* unit $\eta : 0 \to 1$
+
+with equations:
+
+* associativity: $\mu\circ(\mu\otimes \mathrm{id}) = \mu\circ(\mathrm{id}\otimes\mu)$
+* unitality: $\mu\circ(\eta\otimes \mathrm{id}) = \mathrm{id} = \mu\circ(\mathrm{id}\otimes\eta)$
+
+In a PRO, these equations are literally equations between diagrams.
+
+This is one of the deep ideas behind PROs/PROPs:
+
+> They let you treat an algebraic theory as a **diagrammatic rewriting system**.
+
+---
+
+## 6. PROPs: PROs + permutations = real circuit wiring
+
+Most circuit languages allow you to **swap wires**.
+
+Categorically, this is symmetry.
+
+A **PROP** (''PROduct and Permutation category'') is a PRO equipped with:
+
+* for every $m,n$, a symmetry isomorphism $\sigma_{m,n}:m+n \to n+m$
+* satisfying the usual coherence laws (so permutations behave like permutations)
+
+Equivalently:
+
+> A PROP is a strict **symmetric** monoidal category whose objects are natural numbers.
+
+### 6.1 Why quantum circuits fit in PROPs so naturally
+
+In a circuit model:
+
+* object $n$ means ''$n$ qubits'' (or qudits, or wires in general)
+* morphisms $n\to n$ are unitary circuits on $n$ wires
+* tensor is ''put circuits side-by-side''
+* symmetry is SWAP / wire permutation
+
+So, at the level of pure syntax + wiring, *a quantum circuit language is basically a presented PROP*.
+
+> [!TIP] A useful mental separation
+>
+> A PROP splits your ''reasoning'' into:
+>
+> 1. **structural equations** (how wiring behaves: associativity, swaps, etc.)
+> 2. **gate equations** (fragment-specific identities)
+
+This is exactly what you want when building rewrite engines: you don't want every rule to keep re-proving ''SWAP behaves like a swap''.
+
+---
+
+## 7. Presentations: ''a circuit language = generators + relations''
+
+If you've seen group presentations (''generators and relations''), this is the same idea, one categorical level up.
+
+A **presented PROP** consists of:
+
+* a set of generating gates (morphisms of various arities)
+* a set of equations (relations) between diagrams
+* and then you take the free PROP generated by those gates modulo those equations
+
+This is not just philosophy. It is literally how many ''complete rulebooks'' are stated:
+
+* choose generators,
+* list rewrite rules,
+* prove they are **sound** and (ideally) **complete**.
+
+---
+
+## 8. The idea of ''control'' as structure
+
+Now we come to the central theme that motivates *controlled* PROPs.
+
+In circuits, **control** is not a single gate: it's a *pattern*.
+
+For qubits, controlling $X$ gives CNOT.
+Controlling a whole subcircuit gives a controlled subcircuit.
+
+So control is naturally an **operation on circuits**, not just another circuit.
+
+### 8.1 The pain point (why this matters for rewriting)
+
+If control is treated only as a derived gadget, then a complete theory often needs rules that mention **arbitrarily many control wires**, because ''multi-control'' is unbounded.
+
+A different design choice is:
+
+> Treat control as a primitive constructor with its own coherence laws.
+
+Then you get a powerful meta-rule:
+
+> If $f=g$, then their controlled versions are equal automatically.
+
+That single principle is a massive compression of a rewrite theory.
+
+---
+
+## 9. Controlled PROPs (Delorme–Perdrix): control as a functor
+
+One clean formalization is due to Delorme and Perdrix.
+
+### 9.1 The core definition
+
+Let $P$ be a PROP, and let $P_{\mathrm{endo}}$ denote the subcategory of endomorphisms
+(i.e. morphisms $n\to n$).
+
+A **control functor** is a functor
+$$
+C: P_{\mathrm{endo}} \to P_{\mathrm{endo}}
+$$
+that:
+
+* sends each object $n$ to $1+n$ (adds one control wire),
+* sends each endomorphism $f:n\to n$ to a controlled version $C(f):1+n\to 1+n$,
+* and satisfies a small set of **coherence laws** saying that nested controls commute appropriately and that control interacts well with the PROP's symmetries.
+
+In other words:
+
+> A controlled PROP is a PROP equipped with such a control functor.
+
+### 9.2 What this buys you immediately
+
+The defining property of a functor is that it preserves:
+
+* composition: $C(g\circ f) = C(g)\circ C(f)$
+* identities: $C(\mathrm{id}) = \mathrm{id}$
+
+So ''control distributes over doing things in sequence'' is built in for free.
+
+And because this is a functor on the *equational theory*:
+
+> if your rewrite rules prove $f=g$, you automatically get $C(f)=C(g)$.
+
+That is exactly the kind of ''lifting'' you want in a rewrite engine.
+
+### 9.3 What does control mean semantically?
+
+In finite-dimensional Hilbert spaces (the usual quantum model), the standard qubit control-on-$|1\rangle$ operation is:
+
+$$
+C_{|1\rangle}(U) =
+|0\rangle\langle 0|\ \otimes I +
+|1\rangle\langle 1|\ \otimes U.
+$$
+
+For qudits of dimension $d$, you can control on any basis value $|k\rangle$:
+
+$$
+C_{|k\rangle}(U) =
+|k\rangle\langle k|\ \otimes U +
+\sum_{\ell\neq k} |\ell\rangle\langle \ell|\ \otimes I.
+$$
+
+This is the clean ''block-diagonal'' picture: apply $U$ on the target only in the control subspace you selected.
+
+### 9.4 Points: ''true'' and ''false'' for control
+
+A pleasant extra feature is the notion of **points** for a control functor:
+two special states (diagrammatically: $0\to 1$ morphisms) that:
+
+* **annihilate** the controlled operation (''false'')
+* **fire** the controlled operation (''true'')
+
+This captures, abstractly, the idea that plugging $|0\rangle$ into the control wire makes the controlled circuit behave like identity, while plugging $|1\rangle$ makes it behave like $U$.
+
+---
+
+## 10. Polycontrolled PROPs: control comes in families
+
+For qubits there are already multiple reasonable ''control choices'' (control on $|1\rangle$, on $|0\rangle$, on $|-\rangle$, etc.), related by conjugating the control wire.
+
+For qudits, something even more canonical happens:
+
+> There are $d$ natural basis controls: control-on-$|0\rangle$, …, control-on-$|d-1\rangle$.
+
+So one is led to a PROP equipped with **a family of control functors**:
+$$
+(C_k)_{k\in[d]}.
+$$
+
+Once you have multiple control functors, you can ask structural questions:
+
+* do they **commute** (in some sense)?
+* are they **exhaustive** (do they ''cover'' all basis cases)?
+* how do they relate by conjugation?
+
+These are not ''quantum-specific'' questions; they're about the *wiring logic* of control.
+
+---
+
+## 11. Controlled PROPs (Heunen–Kaarsgaard–Lemonnier): eight equations for computational control
+
+A complementary approach comes from Heunen, Kaarsgaard, and Lemonnier, who isolate control as a tiny equational theory.
+
+### 11.1 Start from a ''crop'' (a prop of endomorphisms + a NOT)
+
+They introduce a **controllable prop** (they abbreviate ''crop''):
+
+* a prop whose morphisms are endomorphisms $n\to n$,
+* equipped with a distinguished involution $x:1\to 1$ (think NOT), with $x^2=\mathrm{id}$.
+
+From this base, they *freely adjoin* controlled versions of morphisms.
+
+### 11.2 Two controls (positive and negative)
+
+They use two endofunctors:
+
+* $C_1(f)$: ''control on 1'' (positive control)
+* $C_0(f)$: ''control on 0'' (negative control)
+
+and show you only need a small, interpretable list of equations--eight of them--to govern how control behaves.
+
+### 11.3 What the equations mean (informal reading)
+
+The eight equations include:
+
+* **functoriality:** controlled composition and controlled identity behave as expected
+* **strength:** control ignores extra unused wires (it behaves well under adding identities)
+* **colour change:** positive and negative control relate by conjugating with NOT
+* **complementarity:** doing both controls amounts to ''always do $f$''
+* **commutativity:** controls of opposite polarity commute appropriately
+* **swap / swap coherence:** nested controls interact properly with wire swapping
+
+One way to read their result is:
+
+> Control is not ''a million different controlled gates''.
+> It's a **small structural theory** you can add on top of any base circuit theory.
+
+They also connect this syntactic construction to a semantic universal property: the controlled theory corresponds to a free kind of ''rig-like'' categorical structure.
+
+---
+
+## 12. Why this matters for rewriting and completeness
+
+At this point you can see the strategic advantage:
+
+* A PROP presentation of a circuit language separates:
+
+  * wiring bureaucracy (structural laws)
+  * fragment-specific gate identities
+
+* A controlled PROP adds one more structural layer:
+
+  * ''control is a constructor'' with coherence laws
+
+And this changes the shape of rewrite systems you can hope for.
+
+The slogan becomes:
+
+> **Make control structural, and local rewrite systems become possible.**
+
+<div class="video-container">
+  <iframe
+    src="https://www.youtube.com/embed/H0Ek86IH-3Y"
+    frameborder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+    allowfullscreen
+  ></iframe>
+</div>
+---
+
+## References and further reading
+
+* Delorme & Perdrix, *Diagrammatic Reasoning with Control as a Constructor, Applications to Quantum Circuits*:
+  [https://arxiv.org/abs/2508.21756](https://arxiv.org/abs/2508.21756)
+
+* Heunen, Kaarsgaard & Lemonnier, *One rig to control them all*:
+  [https://arxiv.org/abs/2510.05032](https://arxiv.org/abs/2510.05032)
+
+* My paper (the qudit completeness result framed via polycontrolled PROPs):
+  [https://arxiv.org/abs/2602.09873](https://arxiv.org/abs/2602.09873)
+
+* For a classic textbook introduction:
+
+  * S. Mac Lane, *Categories for the Working Mathematician*.
+
+* For string diagrams and monoidal categories (highly recommended once you're comfortable):
+
+  * A. Joyal & R. Street, work on string diagrams (many expositions exist).
+  * P. Selinger, survey material on dagger compact categories and quantum processes.
