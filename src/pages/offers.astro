@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
 
 /**
  * Centralised reference list so the page stays maintainable.
@@ -77,864 +78,1225 @@ const refs = {
   // --- Outreach
   chevaliersGame: "https://sukyn.itch.io/les-chevaliers-du-quantique",
   chevaliersArticle:
-    "https://tice-education.fr/tous-les-articles-erun/1236-les-chevaliers-du-quantique"
+    "https://tice-education.fr/tous-les-articles-erun/1236-les-chevaliers-du-quantique",
 };
+
+/**
+ * Category hub for this page:
+ * - You list categories you have ideas for.
+ * - Under each category, we show related blog posts that share a "research" key.
+ *
+ * IMPORTANT: these keys come from frontmatter `research: [...]` in posts.
+ * Example: research: ["equational-theory", "circuit-fragments"]
+ */
+const topics = [
+  {
+    key: "qudit-clifford",
+    title: "Qudit Clifford structure & tooling",
+    description:
+      "Prime and composite dimensions, presentations/relations, normal forms, rewriting-friendly tooling.",
+  },
+  {
+    key: "linear-optics",
+    title: "Linear optics (LOv/LOfi)",
+    description:
+      "Linear-optical circuit calculi, normal forms, and structured synthesis constructions (Fourier/Hadamard).",
+  },
+  {
+    key: "outreach",
+    title: "Outreach & educational tooling",
+    description:
+      "Student-facing projects: playable content, web ports, and guided solution material.",
+  },
+  {
+    key: "algebraic-viewpoints",
+    title: "Alternative algebraic viewpoints",
+    description:
+      "Cyclotomic/exact synthesis perspectives, Clifford/geometric algebra formalisms, and compiler-friendly representations.",
+  },
+  {
+    key: "equational-theory",
+    title: "Equational theories & rewriting",
+    description: "Axioms, completeness/minimality, normal forms, rewriting systems.",
+  },
+  {
+    key: "circuit-fragments",
+    title: "Circuit fragments & expressivity",
+    description:
+      "Gate sets, fragments, expressivity, and reasoning inside fragments (often as “backlog” topics).",
+  },
+  {
+    key: "zx-zh",
+    title: "Diagrammatic reasoning (ZX/ZH)",
+    description:
+      "Graphical calculi, rewriting automation, extraction, and tooling (currently lower priority for me).",
+  },
+];
+
+// Load posts (hide drafts in prod)
+const allPosts = (
+  await getCollection("posts", ({ data }) => {
+    return import.meta.env.PROD ? data.draft !== true : true;
+  })
+).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+function hasKey(postKeys: string[] = [], key: string) {
+  const set = new Set(postKeys.map((t) => t.toLowerCase()));
+  return set.has(key.toLowerCase());
+}
+
+const topicSections = topics.map((t) => ({
+  ...t,
+  posts: allPosts.filter((p) => hasKey(p.data.research ?? [], t.key)),
+}));
+
+// (Optional) quick check: posts with research keys not covered by topics (useful while tagging)
+const knownKeys = new Set(topics.map((t) => t.key.toLowerCase()));
+const postsWithUnknownKeys = allPosts
+  .filter((p) => (p.data.research ?? []).some((k) => !knownKeys.has(k.toLowerCase())))
+  .map((p) => ({
+    id: p.id,
+    title: p.data.title,
+    extra: (p.data.research ?? []).filter((k) => !knownKeys.has(k.toLowerCase())),
+  }));
+
+/**
+ * “Front-of-page” quick links to show what you're most motivated by *right now*.
+ * (Keeps the long list from feeling like the main message.)
+ */
+const focusNow = [
+  {
+    title: "Clifford for qupits (prime p): axioms + normal forms + tooling",
+    href: "#offer-clifford-qupits",
+    note: "Some people are already working on this but I'm not aware of their progression. It would surely need the help of automatic tools such as Rocq or another prover.",
+    interest: 95,
+    status: "Current focus",
+  },
+  {
+    title: "LOv: structured decomposition of the generalized Hadamard / Fourier gate",
+    href: "#offer-lov-hadamard",
+    note: "I have clues, I feel like I need to relax the constraints from the original problem. I'd like this to be done, it would help understand better the inner structure of the Hadamard gate.",
+    interest: 95,
+    status: "Current focus",
+  },
+];
+
+const alsoSoon = [
+  {
+    title: '“Les Chevaliers du Quantique”: web port + content + solutions',
+    href: "#offer-chevaliers",
+    note: "I'm planning to do the bare-minimum port soon, namely have a web version of the game. I have a Trello for this project.",
+    interest: 85,
+    status: "Actively looking for help",
+  },
+];
+
+const legend = [
+  { label: "Current focus", cls: "pill--focus", text: "I'm highly motivated to work on this now." },
+  { label: "Open / exploratory", cls: "pill--open", text: "I like it, but scope may evolve." },
+  { label: "Tomorrow-problem", cls: "pill--incubating", text: "Interested, still building background." },
+  { label: "Backlog / parked", cls: "pill--parked", text: "Not my current focus; only if you're very driven." },
+];
 ---
 
 <BaseLayout
   title="Ideas"
-  description="Research topics and internship ideas."
+  description="Project / supervision ideas with clear priority signals, plus related blog posts when available."
 >
-  <h1>Ideas</h1>
+  <article class="ideas">
+    <header class="hero">
+      <h1>Ideas</h1>
 
-  <p class="muted">
-    If you’re interested in one of these topics, please <a href="/contact">get in touch</a>. This list is a subset of what I plan to work on someday, so it might as well be all together.
-  </p>
-
-  <p class="muted">
-    Each idea includes two (totally arbitrary) scores out of 100:
-    <strong>Difficulty</strong> (how challenging technically) and <strong>Importance</strong> (how much impact it
-    could have for theory and/or practical tooling). These are just guidance.
-  </p>
-
-  <h2>Qudit circuits</h2>
-
-  <p class="muted">
-    A <strong>qudit</strong> is a <em>d</em>-level quantum system (a qubit is <em>d=2</em>, a qutrit is <em>d=3</em>).
-    <strong>Clifford</strong> circuits are the structured gate family behind stabilizer error correction and many
-    compilation and verification methods.
-  </p>
-
-  <h3>Clifford circuit axiomatization</h3>
-
-  <details class="offer">
-    <summary>Axiomatization of single-qupit Clifford circuits (one wire)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">55/100</span> · Importance <span class="pill">70/100</span>
+      <p class="lead">
+        This page is a curated list of <strong>project ideas</strong>.
+        I try to be explicit about <strong>my current motivation</strong> for each idea, so you can quickly see what
+        I'm excited to push forward right now vs. what's more exploratory.
       </p>
 
-      <p>
-        <strong>Goal:</strong> Build a <em>rewrite-friendly</em> “dictionary” of identities for the
-        <strong>1‑qupit Clifford group</strong> (prime dimension <em>p</em>).
-        Concretely, the project should deliver:
+      <p class="muted">
+        If you're interested, please <a href="/contact">get in touch</a>. I'm happy to adapt scope to your background
+        (math-heavy, tooling-heavy, or “balanced”).
       </p>
-      <ul>
-        <li>
-          a small set of generators (e.g., Fourier/phase-like gates) and a finite set of relations (rewrite rules);
-        </li>
-        <li>
-          a <strong>canonical normal form</strong> (every 1‑qupit Clifford reduces to a unique, standard circuit);
-        </li>
-        <li>
-          an implementation that takes a 1‑wire Clifford circuit and <strong>normalizes</strong> it automatically.
-        </li>
+    </header>
+
+    <section class="spotlight" aria-label="Current focus">
+      <h2>Right now</h2>
+      <p class="muted">
+        If you only read one part of this page, read this: these are the two topics I'm most excited to work on (but not working on!) at the moment.
+      </p>
+
+      <div class="spotlight-grid">
+        {focusNow.map((x) => (
+          <a class="spotlight-card" href={x.href}>
+            <div class="spotlight-head">
+              <span class="pill pill--focus">{x.status}</span>
+              <span class="pill pill--score">Interest {x.interest}/100</span>
+            </div>
+            <h3 class="spotlight-title">{x.title}</h3>
+            <p class="muted">{x.note}</p>
+            <div class="meter-row" aria-label={`Interest meter for ${x.title}`}>
+              <meter min="0" max="100" value={x.interest}></meter>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <h3 class="subtle">Also soon</h3>
+      <div class="spotlight-grid">
+        {alsoSoon.map((x) => (
+          <a class="spotlight-card spotlight-card--soon" href={x.href}>
+            <div class="spotlight-head">
+              <span class="pill pill--open">{x.status}</span>
+              <span class="pill pill--score">Interest {x.interest}/100</span>
+            </div>
+            <h3 class="spotlight-title">{x.title}</h3>
+            <p class="muted">{x.note}</p>
+            <div class="meter-row" aria-label={`Interest meter for ${x.title}`}>
+              <meter min="0" max="100" value={x.interest}></meter>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="legend">
+      <h2>How to read the labels</h2>
+      <ul class="legend-list">
+        {legend.map((l) => (
+          <li class="legend-item">
+            <span class={`pill ${l.cls}`}>{l.label}</span>
+            <span class="muted">{l.text}</span>
+          </li>
+        ))}
       </ul>
-      <p>
-        This matters because 1‑wire is the cleanest “sandbox” where you can make proofs rigorous and build tooling
-        that later scales to multi‑qudit compilation and verification.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> the structure of qudit Clifford operations is well understood at the
-        group-theory level in arbitrary dimensions, and there are constructive characterizations and generating sets.
-        <strong>Still open (tooling-wise):</strong> turning that understanding into a <em>small</em>, implementation-ready
-        rewrite system with a clearly stated normal form, plus automated tests and (ideally) machine-checked proofs.
-        (<a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
-        <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
-        <a href={refs.qubitCliffordPresentation} target="_blank" rel="noopener noreferrer">arXiv:1310.6813</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Axiomatization of Clifford circuits for qupits (prime dimension p)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">75/100</span> · Importance <span class="pill">85/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Design a compact, <em>sound and complete</em> set of circuit identities
-        (generators + relations / rewrite rules) for <strong>multi-qupit</strong> Clifford circuits (prime
-        dimension <em>p</em>), in a form suitable for <strong>automated rewriting</strong>.
-      </p>
-      <p>
-        “Sound and complete” here means:
-        (1) every rule is correct as a matrix identity, and
-        (2) every true equality of qupit Clifford circuits can be derived using the rules.
-        This is important because prime‑dimension qudits are the “clean” algebraic setting and a natural stepping stone
-        toward composite dimensions used in real devices (e.g., ququarts).
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> there is now a complete rewrite rule set for <em>multi‑qutrit</em> Clifford
-        circuits (a landmark result for odd prime dimension), and the general Clifford group structure for arbitrary
-        dimensions is documented in several foundational works.
-        <strong>Still open:</strong> a dimension‑parametric presentation that works for general prime <em>p</em> (not only
-        <em>p=3</em>), with a normal form and an implementation that scales.
-        (<a href={refs.qutritCliffordRules} target="_blank" rel="noopener noreferrer">arXiv:2508.14670</a>,
-        <a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
-        <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Axiomatization of Clifford circuits for qudits (arbitrary dimension d, including composite)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">90/100</span> · Importance <span class="pill">90/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Extend Clifford-circuit axiomatizations beyond prime <em>p</em> to
-        <strong>arbitrary dimension d</strong> (including composite <em>d</em>), and produce:
-      </p>
-      <ul>
-        <li>a clear choice of generators for “arbitrary‑d Clifford circuits” (including the right phase conventions),</li>
-        <li>a practical <strong>normal form</strong> (what does a “canonical Clifford circuit” look like in composite d?),</li>
-        <li>
-          an implementation strategy (e.g., reduction by rewriting + a decision procedure),
-          and a benchmark suite.
-        </li>
-      </ul>
-      <p>
-        This matters because many realistic platforms and encodings naturally produce composite dimensions (e.g. <em>d=4</em>),
-        and dimension‑generic compilation/verification is a key missing piece for qudit tooling.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> the qudit stabilizer formalism and Clifford operations have constructive descriptions
-        for arbitrary dimensions, and there are “dimension‑uniform” viewpoints on Clifford groups.
-        <strong>Still open:</strong> a small, usable circuit rewrite theory (generators + relations) that
-        stays manageable in composite dimensions, with a clean normal form and an implementation that works in practice.
-        (<a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
-        <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
-        <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Axiomatization of Clifford circuits in even dimensions (power-of-two and beyond)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">95/100</span> · Importance <span class="pill">80/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Pin down what “breaks” in even dimensions (where modular arithmetic behaves differently),
-        then build an axiomatization (rules + normal form) that is tailored to
-        <strong>even‑d Clifford circuits</strong> (e.g. ququarts <em>d=4</em>, or more generally <em>d=2^k</em>).
-      </p>
-      <p>
-        This matters because many experimental qudit platforms naturally provide access to higher transmon levels
-        (often <em>d=4</em> is a very concrete target), and even‑d is where a lot of “easy” algebraic tricks from odd prime
-        dimensions stop being plug‑and‑play.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> there are general (dimension‑uniform) Clifford characterizations and reviews, and there
-        is active hardware-motivated work that compiles qudit operations for even‑d systems (e.g., ququarts in superconducting circuits).
-        <strong>Still open:</strong> a rewriting-oriented axiomatization that cleanly handles even‑d subtleties and supports automated normalization.
-        (<a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>,
-        <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
-        <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
-      </p>
-    </div>
-  </details>
-
-  <h3>Other structured fragments</h3>
-
-  <details class="offer">
-    <summary>
-      Axiomatization of CNOT-dihedral circuits for qupits/qutrits (Pauli + controlled-addition + phase gates)
-    </summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">80/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Define a qudit analogue of the <strong>CNOT-dihedral</strong> fragment
-        (roughly: “linear reversible structure + structured phases”), and then:
-      </p>
-      <ul>
-        <li>either give a <strong>finite presentation</strong> (generators + relations) with a usable normal form,</li>
-        <li>or identify precisely where/why finiteness fails in higher dimension.</li>
-      </ul>
-      <p>
-        This matters because CNOT-dihedral-style fragments are central to compilation (they capture “phase logic”),
-        and a qudit version would directly feed into qutrit/qupit optimizers (especially for diagonal unitaries).
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> for qubits, there is a finite presentation and well-studied synthesis/optimization
-        approaches connected to phase polynomials.
-        For qutrits/qudits, phase-gadget methods and qudit phase-polynomial optimizers exist, but a clean “qudit CNOT-dihedral”
-        rewrite theory is not yet standardized.
-        <strong>Still open:</strong> a coherent definition + a rewrite system that is both mathematically solid and practically implementable.
-        (<a href={refs.cnotDihedralPresentation} target="_blank" rel="noopener noreferrer">arXiv:1701.00140</a>,
-        <a href={refs.cnotDihedralSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2006.12042</a>,
-        <a href={refs.phasePolynomialsQubit} target="_blank" rel="noopener noreferrer">arXiv:1303.2042</a>,
-        <a href={refs.phasePolynomialsQudit} target="_blank" rel="noopener noreferrer">arXiv:1902.05634</a>,
-        <a href={refs.qutritPhaseGadgets} target="_blank" rel="noopener noreferrer">arXiv:2204.13681</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Axiomatization of single-qupit Clifford+(T) / cyclotomic circuits (one wire)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">70/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Study a single‑qudit analogue of “Clifford+T” (more generally:
-        <strong>Clifford‑cyclotomic</strong> gate sets), focusing on one wire:
-      </p>
-      <ul>
-        <li>choose a concrete gate set (qutrit or general odd prime dimension),</li>
-        <li>define a <strong>normal form</strong> and a synthesis algorithm,</li>
-        <li>turn it into code (a small exact synthesizer / normalizer),</li>
-        <li>and measure “non‑Clifford cost” (the analogue of T-count) on random and structured targets.</li>
-      </ul>
-      <p>
-        This matters because exact synthesis and cost metrics are crucial for fault-tolerant compilation, and qudit
-        versions are much less “standard library” than the qubit case.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> canonical forms and normal forms exist for single‑qutrit Clifford+T and, more generally,
-        single‑qudit Clifford+T in odd prime dimensions; there is also active work on qutrit cyclotomic gate sets and
-        multi‑qutrit exact synthesis.
-        <strong>Still open:</strong> unifying these results into a clean rewrite system and making it “compiler-ready”
-        (robust implementation, benchmarks, and integration points).
-        (<a href={refs.singleQutritCliffordT} target="_blank" rel="noopener noreferrer">arXiv:1803.05047</a>,
-        <a href={refs.singleQuditCliffordT} target="_blank" rel="noopener noreferrer">arXiv:2011.07970</a>,
-        <a href={refs.qutritCyclotomic} target="_blank" rel="noopener noreferrer">arXiv:2303.13644</a>,
-        <a href={refs.multiQutritExactSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2405.08136</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>
-      Exploit generalised qudit controlled-X decompositions to improve algorithms (compression/storage tradeoffs)
-    </summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">65/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Use known qudit decompositions (especially controlled‑addition / “CINC”-style gates) to get
-        <strong>measurable improvements</strong> in concrete algorithms. A good outcome would be:
-      </p>
-      <ul>
-        <li>a small “benchmark suite” (e.g., arithmetic blocks, oracles, diagonal gadgets),</li>
-        <li>a catalogue of alternative encodings (qubits vs qutrits/qudits),</li>
-        <li>quantitative tradeoffs (two‑qudit gate count, depth, ancillas, or runtime/memory).</li>
-      </ul>
-      <p>
-        This matters because qudits can pack more information per register and sometimes reduce the number of entangling
-        operations; but the benefits are often scattered across papers and not systematically translated into compiler passes.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> there is a broad review of qudit advantages and a detailed body of work on qudit gate
-        libraries, exact-universal synthesis, and multi-controlled qudit gate constructions.
-        <strong>Still open:</strong> a “compilation-minded” evaluation: which algorithmic patterns reliably benefit from qudits,
-        under realistic constraints and cost models.
-        (<a href={refs.quditsReview} target="_blank" rel="noopener noreferrer">arXiv:2008.00959</a>,
-        <a href={refs.quditCircuitsUniversal} target="_blank" rel="noopener noreferrer">quant-ph/0509161</a>,
-        <a href={refs.multiControlledQudit} target="_blank" rel="noopener noreferrer">arXiv:2303.12979</a>,
-        <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>"Fault Tolerance by Construction": extend the framework to qudit circuits</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">90/100</span> · Importance <span class="pill">95/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Extend the “fault‑equivalence‑preserving rewrite” idea from qubits to <strong>qudits</strong>.
-        A concrete deliverable could be:
-      </p>
-      <ul>
-        <li>a clear definition of fault equivalence for a qudit noise model (or a family of models),</li>
-        <li>a small set of <strong>qudit-safe</strong> diagram rewrites (rewrites that preserve fault equivalence),</li>
-        <li>a prototype pipeline: specification → diagram → fault‑safe rewriting → extracted circuit,</li>
-        <li>case studies on small qudit gadgets or code circuits.</li>
-      </ul>
-      <p>
-        This matters because “correct-by-construction” compilation is a strong way to avoid accidentally destroying
-        the error-detecting/correcting properties of circuits during optimization.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> the Fault Tolerance by Construction framework formalizes fault equivalence and adapts
-        ZX-style reasoning to preserve it; separately, qudit fault-tolerant computation is a mature theory area.
-        There is also ongoing work generalising graphical calculi beyond qubits (e.g., qudit ZH).
-        <strong>Still open:</strong> a clean intersection: qudit-aware fault-equivalence rewrites + extraction + implementation
-        and evaluation.
-        (<a href={refs.faultToleranceByConstruction} target="_blank" rel="noopener noreferrer">arXiv:2506.17181</a>,
-        <a href={refs.quditFaultTolerance} target="_blank" rel="noopener noreferrer">quant-ph/9802007</a>,
-        <a href={refs.quditZH} target="_blank" rel="noopener noreferrer">arXiv:2307.10095</a>,
-        <a href={refs.zxCompleteFiniteDim} target="_blank" rel="noopener noreferrer">arXiv:2405.10896</a>)
-      </p>
-    </div>
-  </details>
-
-  <h2>Qubit circuits</h2>
-
-  <details class="offer">
-    <summary>Clifford+ancilla minimisation (gate count/depth vs number of ancillas)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">75/100</span> · Importance <span class="pill">85/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Build optimisation methods for Clifford(-dominant) circuits that treat
-        <strong>ancillas as an explicit resource</strong>.
-        Instead of “minimise CNOT count for a fixed number of wires”, the goal is to produce a
-        <strong>Pareto tradeoff</strong>:
-      </p>
-      <ul>
-        <li>How many CNOTs / how much depth can you save if you allow 1, 2, … ancillas?</li>
-        <li>What changes if ancillas may be reset/discarded (when the model allows it)?</li>
-        <li>Can you build a practical heuristic guided by exact methods for small subcircuits (peepholes)?</li>
-      </ul>
-      <p>
-        This matters because real devices and compilers constantly balance “more qubits” against “fewer noisy two‑qubit gates”.
-        Making that tradeoff explicit can lead to better compilation strategies and clearer engineering decisions.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> there are strong exact synthesis and optimisation approaches for Clifford circuits using SAT,
-        including tools that target CNOT count/depth; and there are theoretical studies of space‑depth tradeoffs for CNOT circuits.
-        <strong>Still open:</strong> a student-friendly, end-to-end framework that (1) exposes the tradeoff as an output, and
-        (2) integrates with compiler workflows (benchmarks, slicing, connectivity).
-        (<a href={refs.qsynthPaper} target="_blank" rel="noopener noreferrer">arXiv:2504.00634</a>,
-        <a href={refs.qsynthRepo} target="_blank" rel="noopener noreferrer">Q‑Synth (code)</a>,
-        <a href={refs.depthOptimalCliffordSAT} target="_blank" rel="noopener noreferrer">arXiv:2305.01674</a>,
-        <a href={refs.cnotSpaceDepthTradeoff} target="_blank" rel="noopener noreferrer">arXiv:1907.05087</a>,
-        <a href={refs.ancillaCostTradeoff} target="_blank" rel="noopener noreferrer">arXiv:1405.6073</a>)
-      </p>
-    </div>
-  </details>
-
-  <h2>Qudit ZX-calculus</h2>
-
-  <p class="muted">
-    The <strong>ZX-calculus</strong> and <strong>ZH-calculus</strong> are diagrammatic languages used to simplify circuits,
-    prove equalities, and build automated optimisers (diagram rewriting → circuit extraction).
-  </p>
-
-  <details class="offer">
-    <summary>Circuit extraction from qudit ZX-calculus diagrams (arbitrary d)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">85/100</span> · Importance <span class="pill">90/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Build an extraction pipeline for <strong>qudit ZX diagrams</strong>:
-        take a simplified diagram and output an equivalent circuit in a chosen qudit gate set.
-        A strong project outcome is:
-      </p>
-      <ul>
-        <li>a well-defined “extractable” normal form for qudit diagrams (analogue of qubit graph-like forms),</li>
-        <li>an extraction algorithm with clear complexity/limits,</li>
-        <li>a prototype implementation + benchmarks.</li>
-      </ul>
-      <p>
-        This matters because rewriting is only practically useful if we can reliably come back to circuits
-        that run on hardware (or simulators).
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> for qubits, extraction is supported in mature tooling (notably PyZX) and backed by strong
-        simplification techniques; there are also completeness results for ZX and extensions to qutrit stabilizer fragments.
-        <strong>Still open:</strong> qudit extraction methods that are dimension-generic and work beyond small hand-crafted cases.
-        Also, extraction can be computationally hard in the worst case, so the key is to identify the right “practical fragments”.
-        (<a href={refs.pyzx} target="_blank" rel="noopener noreferrer">arXiv:1904.04735</a>,
-        <a href={refs.zxGraphSimplification} target="_blank" rel="noopener noreferrer">arXiv:1902.03178</a>,
-        <a href={refs.zxExtractionHardness} target="_blank" rel="noopener noreferrer">arXiv:2202.09194</a>,
-        <a href={refs.zxCompleteFiniteDim} target="_blank" rel="noopener noreferrer">arXiv:2405.10896</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Circuit extraction from qutrit ZX-calculus diagrams</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">75/100</span> · Importance <span class="pill">85/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Build an end-to-end <strong>qutrit</strong> pipeline:
-        (1) simplify a qutrit ZX diagram, then (2) extract a reasonably efficient qutrit circuit (in a chosen gate set),
-        and (3) benchmark the results (gate count/depth vs baselines).
-      </p>
-      <p>
-        This is important because qutrit ZX theory exists, but practical “push-button” workflows are still much less standard
-        than in the qubit world; so this project directly improves the tooling gap.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> the qutrit ZX calculus is complete for stabilizer quantum mechanics, and there are concrete
-        constructions for qutrit diagonal gates via phase gadgets.
-        <strong>Still open:</strong> robust extraction conventions, good benchmark coverage, and tool integration comparable to PyZX for qubits.
-        (<a href={refs.qutritZXStabilizerComplete} target="_blank" rel="noopener noreferrer">arXiv:1803.00696</a>,
-        <a href={refs.qutritPhaseGadgets} target="_blank" rel="noopener noreferrer">arXiv:2204.13681</a>,
-        <a href={refs.pyzx} target="_blank" rel="noopener noreferrer">arXiv:1904.04735</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>A ZX-like calculus built around two-level gates (hardware-native qudit operations)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">85/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Develop a diagrammatic rewrite language whose <strong>primitive generators</strong> match
-        <em>two-level</em> qudit operations (gates that act non-trivially only on a pair of levels; a common “hardware-native” situation).
-        The project should aim to:
-      </p>
-      <ul>
-        <li>define the generator set and its semantics (as matrices),</li>
-        <li>propose a core set of rewrite rules (soundness first; completeness for a useful fragment if feasible),</li>
-        <li>show how it plugs into compilation (diagram rewriting → synthesis/extraction in the same gate set).</li>
-      </ul>
-      <p>
-        This matters because it aligns diagrammatic reasoning with how some qudit hardware is actually controlled, reducing the gap between theory and compilation.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> qudit synthesis methods based on QR/two-level decompositions are well studied, and hardware-motivated compiler work exists for qudits (e.g., transmon qudits).
-        <strong>Still open:</strong> a “ZX-like” calculus that uses these two-level primitives directly and supports simplification/verification workflows.
-        (<a href={refs.quditCircuitsUniversal} target="_blank" rel="noopener noreferrer">quant-ph/0509161</a>,
-        <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
-      </p>
-    </div>
-  </details>
-  <!--
-  <details class="offer">
-    <summary>Phase decomposition methods for qupit algorithms (phase polynomials / phase gadgets)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">80/100</span> · Importance <span class="pill">85/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Adapt phase-polynomial / phase-gadget optimisation methods from qubits to
-        <strong>qupits</strong> (prime <em>p</em>) and/or qutrits. A concrete goal is to implement a pass that:
-      </p>
-      <ul>
-        <li>extracts a “phase layer” (diagonal structure) from circuits or diagrams,</li>
-        <li>simplifies/merges phases using algebra mod <em>p</em>,</li>
-        <li>re-synthesizes with fewer expensive multi-qudit gates.</li>
-      </ul>
-      <p>
-        This matters because phase structure is where many optimisations live (depth, entangling gate count),
-        and qudit generalisations can unlock reductions that are impossible in qubit-only encodings.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> phase-polynomial synthesis and optimisation is a cornerstone of qubit compilation,
-        and there are explicit qudit generalisations (including phase-polynomial optimisers and qudit phase-gadget synthesis),
-        plus a qutrit-focused phase gadget construction.
-        <strong>Still open:</strong> a robust, reusable implementation that integrates with qudit circuit flows and supports realistic architectures.
-        (<a href={refs.phasePolynomialsQubit} target="_blank" rel="noopener noreferrer">arXiv:1303.2042</a>,
-        <a href={refs.phasePolynomialsQudit} target="_blank" rel="noopener noreferrer">arXiv:1902.05634</a>,
-        <a href={refs.quditPhaseGadgetMethod} target="_blank" rel="noopener noreferrer">arXiv:2504.12710</a>,
-        <a href={refs.qutritPhaseGadgets} target="_blank" rel="noopener noreferrer">arXiv:2204.13681</a>)
-      </p>
-    </div>
-  </details>
-  -->
-  <!--
-  <h2>Qubit ZX / ZH-calculus</h2>
-
-  <details class="offer">
-    <summary>Explicitly derive local complementation in the ZH-calculus (hypergraph setting)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">70/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Turn “local complementation”-style transformations into clean, reusable
-        <strong>ZH derivations</strong> (i.e., derived rewrite rules inside the calculus).
-        The deliverable should be a small “lemma library”:
-      </p>
-      <ul>
-        <li>a statement of the transformation on (hyper)graph-like diagrams,</li>
-        <li>a fully diagrammatic proof inside ZH,</li>
-        <li>and a packaging suitable for automation (e.g., a rewrite tactic or rule schema).</li>
-      </ul>
-      <p>
-        This matters because local complementation is the workhorse behind many fast stabilizer/hypergraph simplifications,
-        and having it <em>derivable inside ZH</em> makes implementations more principled and easier to verify.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> ZH was designed to naturally represent hypergraph states and has strong completeness results;
-        it is explicitly linked to path-sum methods and includes hypergraph simplification rules.
-        Local complementation is well understood for graph states and has been generalised to hypergraph states.
-        <strong>Still open:</strong> clean, library-quality ZH derivations that are “ready to implement” and easy to reuse across projects.
-        (<a href={refs.zhIntro} target="_blank" rel="noopener noreferrer">arXiv:1805.02175</a>,
-        <a href={refs.zhComplete} target="_blank" rel="noopener noreferrer">arXiv:2103.06610</a>,
-        <a href={refs.zhPathsums} target="_blank" rel="noopener noreferrer">arXiv:2003.13564</a>,
-        <a href={refs.localComplementationGraphStates} target="_blank" rel="noopener noreferrer">quant-ph/0410154</a>,
-        <a href={refs.hypergraphLocalComplementation} target="_blank" rel="noopener noreferrer">arXiv:1612.01447</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Implement r-local complementation in ZH-calculus (or ZX-calculus)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">60/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Implement <strong>r-local complementation</strong> as a verified rewrite system (and ideally as code),
-        then test it on tasks like:
-      </p>
-      <ul>
-        <li>equivalence checking of (hyper)graph states,</li>
-        <li>diagram simplification (making later extraction easier),</li>
-        <li>building canonical representatives (normal forms) for classes of states.</li>
-      </ul>
-      <p>
-        This matters because these moves are exactly the kind of “local, structured” rewrite that can give huge wins in automation.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> tool ecosystems exist for ZX rewriting (e.g. PyZX), and recent work surveys and systematises
-        local operations and equivalence classes for hypergraph states, including local complementation variants.
-        <strong>Still open:</strong> turning r-local moves into a robust, testable implementation and evaluating where they help most in practice.
-        (<a href={refs.pyzx} target="_blank" rel="noopener noreferrer">arXiv:1904.04735</a>,
-        <a href={refs.zxGraphSimplification} target="_blank" rel="noopener noreferrer">arXiv:1902.03178</a>,
-        <a href={refs.hypergraphReview} target="_blank" rel="noopener noreferrer">arXiv:2512.02955</a>,
-        <a href={refs.lcOrbits} target="_blank" rel="noopener noreferrer">Quantum journal (LC orbits)</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Generalise local complementation in qudit ZX and investigate links to r-local complementations</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">85/100</span> · Importance <span class="pill">80/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Define and validate a <strong>qudit</strong> analogue of local complementation
-        inside qudit ZX (for stabilizer-like fragments), then study whether/how it connects to r-local complementation
-        ideas used in hypergraph settings.
-      </p>
-      <p>
-        This matters because it could lead to fast, diagram-native canonical forms and equivalence checkers for
-        higher-dimensional stabilizer states; a key ingredient for qudit compilation and verification.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> qutrit stabilizer ZX completeness exists, and the hypergraph literature contains multiple
-        local-complementation generalisations; there are also broad discussions of Clifford groups in multiple dimensions.
-        <strong>Still open:</strong> a clear “qudit ZX local complementation” rule set with proofs and a solid story relating it
-        to hypergraph/r-local transformations.
-        (<a href={refs.qutritZXStabilizerComplete} target="_blank" rel="noopener noreferrer">arXiv:1803.00696</a>,
-        <a href={refs.hypergraphReview} target="_blank" rel="noopener noreferrer">arXiv:2512.02955</a>,
-        <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Prove an Euler decomposition inside the ZH-calculus</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">65/100</span> · Importance <span class="pill">65/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Pick a standard single-qubit gate family (e.g., Clifford + rotations around Z/X),
-        and derive an explicit <strong>Euler-style decomposition</strong> purely within ZH.
-        Then package it as a reusable lemma for automated rewriting (a “standard identity” your tools can call).
-      </p>
-      <p>
-        This matters because completeness tells us “it can be done,” but practical automation also needs well-designed
-        lemma libraries; especially for standard decompositions that appear everywhere in compilation.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> ZH has completeness results and powerful simplification rules, including links to path-sum techniques.
-        Separate work develops complete/minimal equational theories for quantum circuits (useful inspiration for what a “good axiom library” looks like).
-        <strong>Still open:</strong> high-quality, reusable ZH-native derivations of standard circuit identities that are easy to deploy in tooling.
-        (<a href={refs.zhComplete} target="_blank" rel="noopener noreferrer">arXiv:2103.06610</a>,
-        <a href={refs.zhPathsums} target="_blank" rel="noopener noreferrer">arXiv:2003.13564</a>,
-        <a href={refs.equationalTheoryComplete} target="_blank" rel="noopener noreferrer">arXiv:2206.10577</a>,
-        <a href={refs.equationalTheoryMinimal} target="_blank" rel="noopener noreferrer">arXiv:2311.07476</a>)
-      </p>
-    </div>
-  </details>
-  -->
-
-    <h2>Linear optical circuits (LOv / LOfi)</h2>
-
-  <p class="muted">
-    In single-photon encodings, a photon delocalised over <em>d</em> modes behaves like a
-    <strong>d-level</strong> system. LOv-style graphical calculi represent linear-optical circuits built from
-    <strong>beam splitters</strong> and <strong>phase shifters</strong>, and support rewriting/normal forms.
-  </p>
-
-  <details class="offer">
-    <summary>Generalized Hadamard (Fourier) gates in LOv-calculus (prime & composite dimensions)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">75/100</span> · Importance <span class="pill">75/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Develop a <em>dimension-generic</em> and <em>rewrite-friendly</em> construction of the
-        generalized Hadamard gate <strong>H<sub>d</sub></strong> (i.e. the discrete Fourier transform / “mode-mixing” unitary)
-        as an LOv/linear-optical circuit (beam splitters + phase shifters), with a clear story for:
-        <strong>prime</strong> <em>d</em> (building blocks) and <strong>composite</strong> <em>d</em> (recursive assembly from prime factors).
-      </p>
-
-      <ul>
-        <li>
-          Specify the exact convention: which matrix you call <strong>H<sub>d</sub></strong> (phases / global phase),
-          and which LOv generators you allow (phase shifters, beam splitters, swaps/identities).
-        </li>
-        <li>
-          Produce explicit circuits for small primes (start with <em>d=2,3,5</em> and push toward <em>d=7</em>),
-          and identify reusable substructures.
-        </li>
-        <li>
-          Implement a generator: input <em>d</em> → output a circuit (plus a verifier that checks the produced matrix matches H<sub>d</sub>).
-        </li>
-        <li>
-          Extend to composite dimensions by a recursive scheme based on prime-factor “oracles”
-          (e.g. build H<sub>d<sup>k</sup></sub> from H<sub>d</sub>, and H<sub>dd′</sub> from H<sub>d</sub> and H<sub>d′</sub>).
-        </li>
-        <li>
-          Benchmark resource counts (beam splitters, phase shifters, depth) vs baseline “generic unitary” decompositions.
-        </li>
-      </ul>
-
-      <p>
-        <strong>Why it matters:</strong> Fourier/Hadamard mixing is the central primitive behind QFT-like transforms,
-        state preparation, and many photonic interferometer constructions. Having a structured, dimension-parametric
-        synthesis (especially for composite <em>d</em>) can become a reusable compiler pass and a good testbed for LOv rewriting.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        LOv/LOfi-style calculi provide a principled rewriting setting for linear optics (including completeness/normal-form
-        results in stronger photonic models), and have also been used as a bridge to complete equational theories for
-        standard quantum circuits. The missing piece here is a <em>specialised</em>, scalable, implementation-ready synthesis story
-        for <strong>H<sub>d</sub></strong> that exploits the Fourier structure rather than treating it as an arbitrary unitary.
-        (<a href={refs.lofiCalculus} target="_blank" rel="noopener noreferrer">arXiv:2402.17693</a>,
-        <a href={refs.equationalTheoryComplete} target="_blank" rel="noopener noreferrer">arXiv:2206.10577</a>,
-        <a href={refs.equationalTheoryMinimal} target="_blank" rel="noopener noreferrer">arXiv:2311.07476</a>)
-      </p>
-
-      <p class="refs">
-        <strong>Starting point:</strong>
-        <a href="/notes/generalized-hadamard-gates.pdf">PDF notes (draft)</a>.
-      </p>
-    </div>
-  </details>
-
-
-  <h2>Alternative mathematical viewpoints</h2>
-
-  <details class="offer">
-    <summary>Generalise "With a Few Square Roots, Quantum Computing is as Easy as π" to qutrits (cube roots of unity)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">85/100</span> · Importance <span class="pill">70/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Investigate whether the “few square roots” representability phenomenon has a
-        <strong>qutrit analogue</strong> (think “few cube roots of unity”).
-        A precise end goal is to produce either:
-      </p>
-      <ul>
-        <li>a theorem + constructive algorithm showing which qutrit unitaries are representable in a small algebraic extension, or</li>
-        <li>a clear obstruction (“here is why the analogue fails / needs a different ring”).</li>
-      </ul>
-      <p>
-        This matters because these algebraic characterisations often become exact synthesis algorithms (a direct bridge from math to compilers).
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> the “few square roots” phenomenon is formalised for qubits, and for qutrits there is a strong
-        body of exact synthesis work for Clifford-cyclotomic style gate sets (including normal forms).
-        <strong>Still open:</strong> a clean “qutrit/cube-root” analogue with a crisp ring/normal form story and constructive consequences.
-        (<a href={refs.fewSquareRoots} target="_blank" rel="noopener noreferrer">arXiv:2310.14056</a>,
-        <a href={refs.qutritCyclotomic} target="_blank" rel="noopener noreferrer">arXiv:2303.13644</a>,
-        <a href={refs.singleQuditCliffordT} target="_blank" rel="noopener noreferrer">arXiv:2011.07970</a>,
-        <a href={refs.multiQutritExactSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2405.08136</a>)
-      </p>
-    </div>
-  </details>
-
-  <details class="offer">
-    <summary>Geometric algebra / (generalised) Clifford algebra frameworks for qudits</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">80/100</span> · Importance <span class="pill">65/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Survey and extend algebraic frameworks that represent qudit states and gates via
-        <strong>generalised Clifford algebras</strong> (or geometric-algebra-like formalisms), and connect them to modern tooling:
-        stabilizers, circuit identities, ZX/ZH-style reasoning.
-      </p>
-      <p>
-        This matters because a good algebraic representation can turn “hard matrix identities” into “easy algebra,”
-        which can then feed into new compilation or verification methods.
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> there is work developing graphical/algebraic calculi for multi-qudit computation grounded in generalised Clifford algebras,
-        and broad references on Clifford groups across dimensions.
-        <strong>Still open:</strong> turning these viewpoints into practical compiler representations or rewrite systems that outperform or complement ZX/ZH approaches.
-        (<a href={refs.quditCliffordAlgebras} target="_blank" rel="noopener noreferrer">arXiv:1809.07809</a>,
-        <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
-      </p>
-    </div>
-  </details>
-
-  <h2>Outreach and educational tooling</h2>
-
-  <details class="offer">
-    <summary>Extend the outreach game "Les Chevaliers du Quantique" (new content + solution videos)</summary>
-    <div class="body">
-      <p class="scores">
-        <strong>Scores:</strong> Difficulty <span class="pill">30/100</span> · Importance <span class="pill">70/100</span>
-      </p>
-
-      <p>
-        <strong>Goal:</strong> Extend the game with clearly scoped, student-friendly deliverables:
-      </p>
-      <ul>
-        <li>design levels or challenge packs with explicit learning objectives, including additional generators and rules,</li>
-        <li>write and record short solution videos (explain the reasoning, not just the answer),</li>
-        <li>optionally run a lightweight evaluation (pre/post quiz or small user study) to measure learning impact.</li>
-      </ul>
-      <p>
-      This is more suited to someone who enjoys coding in Unity (which is why I procrastinate this).
-      </p>
-
-      <p>
-        <strong>State of the art:</strong>
-        <strong>Already done:</strong> the game exists publicly and has been shared as an educational resource.
-        <strong>Still open:</strong> more content, “guided solution” material, and (if desired) evidence about how it supports learning.
-        (<a href={refs.chevaliersGame} target="_blank" rel="noopener noreferrer">Game page</a>,
-        <a href={refs.chevaliersArticle} target="_blank" rel="noopener noreferrer">Education article</a>)
-      </p>
-    </div>
-  </details>
+    </section>
+
+    {topicSections.map((s) => (
+      <section id={`topic-${s.key}`} class="research-section">
+        <h2>{s.title}</h2>
+        <p class="muted">{s.description}</p>
+
+        <div class="tag-row" aria-label={`Topic key for ${s.title}`}>
+          <span class="tag">{s.key}</span>
+        </div>
+
+        {/* Related blog posts */}
+        {s.posts.length === 0 ? (
+          <p class="muted">No related blog posts yet.</p>
+        ) : (
+          <ol class="post-list">
+            {s.posts.map((post) => (
+              <li class="post-item">
+                <a class="post-link" href={`/blog/${post.id}/`}>
+                  {post.data.title}
+                </a>
+                <div class="post-meta">
+                  <time datetime={post.data.date.toISOString()}>{post.data.date.toISOString().slice(0, 10)}</time>
+                  {(post.data.research?.length ?? 0) > 0 ? (
+                    <span class="tags">
+                      {post.data.research.map((k) => (
+                        <span class="tag">{k}</span>
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
+                {post.data.description ? <p class="muted">{post.data.description}</p> : null}
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {/* -------------------- OFFERS BY TOPIC -------------------- */}
+        {s.key === "qudit-clifford" ? (
+          <>
+            <h3>Project ideas</h3>
+
+            <p class="muted">
+              A <strong>qudit</strong> is a <em>d</em>-level quantum system (a qubit is <em>d=2</em>, a qutrit is <em>d=3</em>).
+              <strong>Clifford</strong> circuits are the structured gate family behind stabilizer error correction and many
+              compilation and verification methods.
+            </p>
+
+            <details id="offer-clifford-qupits" class="offer" data-status="focus" open>
+              <summary>Axiomatization of Clifford circuits for qupits (prime dimension p)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--focus">Current focus</span>
+                  <span class="pill pill--score">My interest 95/100</span>
+                  <span class="pill">Difficulty 75/100</span>
+                  <span class="pill">Importance 85/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Design a compact, <em>sound and complete</em> set of circuit identities
+                  (generators + relations / rewrite rules) for <strong>multi-qupit</strong> Clifford circuits (prime
+                  dimension <em>p</em>), in a form suitable for <strong>automated rewriting</strong>.
+                </p>
+                <p>
+                  “Sound and complete” here means:
+                  (1) every rule is correct as a matrix identity, and
+                  (2) every true equality of qupit Clifford circuits can be derived using the rules.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong>
+                  <strong>Already done:</strong> there is now a complete rewrite rule set for <em>multi-qutrit</em> Clifford circuits
+                  (a landmark result for odd prime dimension), and the general Clifford structure for arbitrary dimensions is
+                  documented in several foundational works.
+                  <strong>Still open:</strong> a dimension-parametric presentation that works for general prime <em>p</em> (not only
+                  <em>p=3</em>), with a normal form and an implementation that scales.
+                  (<a href={refs.qutritCliffordRules} target="_blank" rel="noopener noreferrer">arXiv:2508.14670</a>,
+                  <a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
+                  <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="focus">
+              <summary>Axiomatization of single-qupit Clifford circuits (one wire)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--focus">Current focus</span>
+                  <span class="pill pill--score">My interest 90/100</span>
+                  <span class="pill">Difficulty 55/100</span>
+                  <span class="pill">Importance 70/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Build a <em>rewrite-friendly</em> “dictionary” of identities for the
+                  <strong>1-qupit Clifford group</strong> (prime dimension <em>p</em>).
+                  Concretely, the project should deliver:
+                </p>
+                <ul>
+                  <li>a small set of generators (e.g., Fourier/phase-like gates) and a finite set of relations (rewrite rules);</li>
+                  <li>a <strong>canonical normal form</strong> (every 1-qupit Clifford reduces to a unique, standard circuit);</li>
+                  <li>
+                    an implementation that takes a 1-wire Clifford circuit and <strong>normalizes</strong> it automatically.
+                  </li>
+                </ul>
+
+                <p>
+                  This matters because 1-wire is the cleanest “sandbox” where you can make proofs rigorous and build tooling
+                  that later scales to multi-qudit compilation and verification.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong>
+                  <strong>Already done:</strong> the structure of qudit Clifford operations is well understood at the group-theory
+                  level, with constructive characterizations and generating sets.
+                  <strong>Still open (tooling-wise):</strong> turning that understanding into a <em>small</em>, implementation-ready
+                  rewrite system + normal form, with automated tests and (ideally) machine-checked proofs.
+                  (<a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
+                  <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
+                  <a href={refs.qubitCliffordPresentation} target="_blank" rel="noopener noreferrer">arXiv:1310.6813</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="open">
+              <summary>Axiomatization of Clifford circuits for qudits (arbitrary dimension d, including composite)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--open">Open / exploratory</span>
+                  <span class="pill pill--score">My interest 80/100</span>
+                  <span class="pill">Difficulty 90/100</span>
+                  <span class="pill">Importance 90/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Extend Clifford-circuit axiomatizations beyond prime <em>p</em> to
+                  <strong>arbitrary dimension d</strong> (including composite <em>d</em>), and produce:
+                </p>
+                <ul>
+                  <li>a clear choice of generators for “arbitrary-d Clifford circuits” (including phase conventions),</li>
+                  <li>a practical <strong>normal form</strong> (what is “canonical” in composite d?),</li>
+                  <li>an implementation strategy (e.g., rewriting + decision procedure) and a benchmark suite.</li>
+                </ul>
+
+                <p>
+                  This matters because many realistic platforms and encodings naturally produce composite dimensions
+                  (e.g. <em>d=4</em>), and dimension-generic compilation/verification is a key missing piece for qudit tooling.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong>
+                  <strong>Already done:</strong> constructive stabilizer/Clifford descriptions exist for arbitrary dimensions, and
+                  there are “dimension-uniform” viewpoints.
+                  <strong>Still open:</strong> a small, usable circuit rewrite theory that stays manageable in composite dimensions,
+                  with a clean normal form and an implementation that works in practice.
+                  (<a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
+                  <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
+                  <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="open">
+              <summary>
+                Axiomatization of CNOT-dihedral circuits for qupits/qutrits (Pauli + controlled-addition + phase gates)
+              </summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--open">Open / exploratory</span>
+                  <span class="pill pill--score">My interest 55/100</span>
+                  <span class="pill">Difficulty 80/100</span>
+                  <span class="pill">Importance 75/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Define a qudit analogue of the <strong>CNOT-dihedral</strong> fragment (roughly: “linear reversible structure + structured phases”), and then:
+                </p>
+                <ul>
+                  <li>either give a <strong>finite presentation</strong> (generators + relations) with a usable normal form,</li>
+                  <li>or identify precisely where/why finiteness fails in higher dimension.</li>
+                </ul>
+
+                <p>
+                  This matters because CNOT-dihedral-style fragments capture “phase logic” and directly feed into qutrit/qupit optimizers (especially for diagonal unitaries).
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong>
+                  for qubits, finite presentations and synthesis methods exist (phase polynomials).
+                  For qutrits/qudits, phase-gadget and phase-polynomial optimizers exist, but a clean “qudit CNOT-dihedral” rewrite theory is not yet standard.
+                  (<a href={refs.cnotDihedralPresentation} target="_blank" rel="noopener noreferrer">arXiv:1701.00140</a>,
+                  <a href={refs.cnotDihedralSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2006.12042</a>,
+                  <a href={refs.phasePolynomialsQubit} target="_blank" rel="noopener noreferrer">arXiv:1303.2042</a>,
+                  <a href={refs.phasePolynomialsQudit} target="_blank" rel="noopener noreferrer">arXiv:1902.05634</a>,
+                  <a href={refs.qutritPhaseGadgets} target="_blank" rel="noopener noreferrer">arXiv:2204.13681</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="incubating">
+              <summary>Axiomatization of Clifford circuits in even dimensions (power-of-two and beyond)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--incubating">Tomorrow-problem</span>
+                  <span class="pill pill--score">My interest 65/100</span>
+                  <span class="pill">Difficulty 95/100</span>
+                  <span class="pill">Importance 80/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Pin down what “breaks” in even dimensions, then build an axiomatization (rules + normal
+                  form) tailored to <strong>even-d Clifford circuits</strong> (e.g. ququarts <em>d=4</em>, or more generally
+                  <em>d=2^k</em>).
+                </p>
+
+                <p>
+                  This matters because many experimental qudit platforms naturally provide access to higher transmon levels
+                  (often <em>d=4</em> is a very concrete target), and even-d is where many odd-prime tricks stop being plug-and-play.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong>
+                  <strong>Already done:</strong> general Clifford reviews exist; hardware-motivated compilation work exists for even-d
+                  systems.
+                  <strong>Still open:</strong> a rewriting-oriented axiomatization that cleanly handles even-d subtleties and supports
+                  automated normalization.
+                  (<a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>,
+                  <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
+                  <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
+                </p>
+              </div>
+            </details>
+          </>
+        ) : null}
+
+        {s.key === "linear-optics" ? (
+          <>
+            <h3>Project ideas</h3>
+
+            <p class="muted">
+              In single-photon encodings, a photon delocalised over <em>d</em> modes behaves like a <strong>d-level</strong> system.
+              LOv/LOfi-style graphical calculi represent linear-optical circuits built from <strong>beam splitters</strong> and{" "}
+              <strong>phase shifters</strong>, and support rewriting/normal forms.
+            </p>
+
+            <details id="offer-lov-hadamard" class="offer" data-status="focus" open>
+              <summary>Generalized Hadamard (Fourier) gates in LOv-calculus (prime & composite dimensions)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--focus">Current focus</span>
+                  <span class="pill pill--score">My interest 95/100</span>
+                  <span class="pill">Difficulty 75/100</span>
+                  <span class="pill">Importance 75/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Develop a <em>dimension-generic</em> and <em>rewrite-friendly</em> construction of the
+                  generalized Hadamard gate <strong>H<sub>d</sub></strong> (i.e. the discrete Fourier transform / “mode-mixing” unitary)
+                  as an LOv/linear-optical circuit (beam splitters + phase shifters), with a clear story for <strong>prime</strong>{" "}
+                  <em>d</em> and <strong>composite</strong> <em>d</em>.
+                </p>
+
+                <ul>
+                  <li>
+                    Specify the exact convention: which matrix you call <strong>H<sub>d</sub></strong> (phases / global phase), and
+                    which LOv generators you allow.
+                  </li>
+                  <li>
+                    Produce explicit circuits for small primes (start with <em>d=2,3,5</em> and push toward <em>d=7</em>), and
+                    identify reusable substructures.
+                  </li>
+                  <li>
+                    Implement a generator: input <em>d</em> → output a circuit (plus a verifier that checks the produced matrix
+                    matches <strong>H<sub>d</sub></strong>).
+                  </li>
+                  <li>
+                    Extend to composite dimensions by a recursive scheme based on prime-factor “oracles” (e.g. build{" "}
+                    <strong>H<sub>d<sup>k</sup></sub></strong> from <strong>H<sub>d</sub></strong>, and{" "}
+                    <strong>H<sub>dd′</sub></strong> from <strong>H<sub>d</sub></strong> and <strong>H<sub>d′</sub></strong>).
+                  </li>
+                  <li>Benchmark resource counts (beam splitters, phase shifters, depth) vs baseline decompositions.</li>
+                </ul>
+
+                <p>
+                  <strong>Why it matters:</strong> Fourier/Hadamard mixing is a central primitive behind QFT-like transforms,
+                  state preparation, and interferometer constructions. Having a structured, dimension-parametric synthesis
+                  (especially for composite <em>d</em>) can become a reusable compiler pass and a good testbed for LOv rewriting.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong> LOv/LOfi-style calculi provide principled rewriting for linear optics, and have
+                  also been used as a bridge to complete equational theories for standard quantum circuits. The missing piece
+                  here is a specialised, scalable, implementation-ready synthesis story for <strong>H<sub>d</sub></strong> that exploits
+                  Fourier structure rather than treating it as an arbitrary unitary.
+                  (<a href={refs.lofiCalculus} target="_blank" rel="noopener noreferrer">arXiv:2402.17693</a>,
+                  <a href={refs.equationalTheoryComplete} target="_blank" rel="noopener noreferrer">arXiv:2206.10577</a>,
+                  <a href={refs.equationalTheoryMinimal} target="_blank" rel="noopener noreferrer">arXiv:2311.07476</a>)
+                </p>
+
+                <p class="refs">
+                  <strong>Starting point:</strong> <a href="/notes/generalized-hadamard-gates.pdf">PDF notes (draft)</a>.
+                </p>
+              </div>
+            </details>
+          </>
+        ) : null}
+
+        {s.key === "outreach" ? (
+          <>
+            <h3>Project ideas</h3>
+
+            <details id="offer-chevaliers" class="offer" data-status="open" open>
+              <summary>Extend the outreach game "Les Chevaliers du Quantique" (web port + new content + solution videos)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--open">Actively looking for help</span>
+                  <span class="pill pill--score">My interest 85/100</span>
+                  <span class="pill">Difficulty 30/100</span>
+                  <span class="pill">Importance 70/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Get a minimal but solid <strong>web version</strong> out (the “bare minimum” I plan to do),
+                  and if you're up for it, push further with clearly scoped, student-friendly deliverables:
+                </p>
+                <ul>
+                  <li>design levels or challenge packs with explicit learning objectives, including extra rules,</li>
+                  <li>write/record short solution videos (explain the reasoning, not just the answer),</li>
+                  <li>upgrade the quality of the physical game as well potentially,</li>
+                  <li>optionally run a lightweight evaluation (pre/post quiz or small user study).</li>
+                </ul>
+
+                <p class="muted">
+                  I'm not a game developer, so I'll happily take a “make it work, keep it simple” approach but I would
+                  really love to have someone co-driving this.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong> the game exists publicly and has been shared as an educational resource.
+                  The open part is more content + guided solution material, and (if desired) evidence about learning impact.
+                  (<a href={refs.chevaliersGame} target="_blank" rel="noopener noreferrer">Game page</a>)
+                </p>
+              </div>
+            </details>
+          </>
+        ) : null}
+
+        {s.key === "algebraic-viewpoints" ? (
+          <>
+            <h3>Project ideas</h3>
+
+            <details class="offer" data-status="open">
+              <summary>Generalise "With a Few Square Roots, Quantum Computing is as Easy as π" to qutrits (cube roots of unity)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--open">Open / exploratory</span>
+                  <span class="pill pill--score">My interest 65/100</span>
+                  <span class="pill">Difficulty 85/100</span>
+                  <span class="pill">Importance 70/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Investigate whether the “few square roots” representability phenomenon has a
+                  <strong>qutrit analogue</strong> (think “few cube roots of unity”).
+                  A precise end goal is to produce either:
+                </p>
+                <ul>
+                  <li>a theorem + constructive algorithm for which qutrit unitaries are representable in a small algebraic extension, or</li>
+                  <li>a clear obstruction (why the analogue fails / needs a different ring).</li>
+                </ul>
+
+                <p>
+                  This matters because these algebraic characterisations often become exact synthesis algorithms (a direct bridge from math to compilers).
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong>
+                  qutrit exact synthesis work exists for Clifford-cyclotomic gate sets (including normal forms); the open part is
+                  a crisp “cube-root” analogue with a clean ring + constructive consequences.
+                  (<a href={refs.fewSquareRoots} target="_blank" rel="noopener noreferrer">arXiv:2310.14056</a>,
+                  <a href={refs.qutritCyclotomic} target="_blank" rel="noopener noreferrer">arXiv:2303.13644</a>,
+                  <a href={refs.singleQuditCliffordT} target="_blank" rel="noopener noreferrer">arXiv:2011.07970</a>,
+                  <a href={refs.multiQutritExactSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2405.08136</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="incubating">
+              <summary>Geometric algebra / (generalised) Clifford algebra frameworks for qudits</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--incubating">Tomorrow-problem</span>
+                  <span class="pill pill--score">My interest 70/100</span>
+                  <span class="pill">Difficulty 80/100</span>
+                  <span class="pill">Importance 65/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Survey and extend algebraic frameworks that represent qudit states and gates via
+                  <strong>generalised Clifford algebras</strong> (or geometric-algebra-like formalisms), and connect them to modern tooling:
+                  stabilizers, circuit identities, ZX/ZH-style reasoning.
+                </p>
+
+                <p class="muted">
+                  This one is genuinely a “tomorrow problem” for me: I'm interested, but I'm still actively building the background to do it properly. I feel like maybe Spinors might be involved as well, I don't really have the knowledge yet.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong> there is work developing algebraic calculi for multi-qudit computation grounded in generalised Clifford algebras,
+                  and broad references on Clifford groups across dimensions. The open part is translating these viewpoints into practical compiler representations or
+                  rewrite systems that complement ZX/ZH approaches.
+                  (<a href={refs.quditCliffordAlgebras} target="_blank" rel="noopener noreferrer">arXiv:1809.07809</a>,
+                  <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
+                </p>
+              </div>
+            </details>
+          </>
+        ) : null}
+
+        {s.key === "equational-theory" ? (
+          <>
+            <h3>Project ideas</h3>
+            <p class="muted">
+              I don't currently have a fully written “offer” here, but this is a core theme behind my interests (especially in higher dimensions).
+              If you want a reading + tooling project that grows into something publishable, ping me.
+            </p>
+          </>
+        ) : null}
+
+        {s.key === "zx-zh" ? (
+          <>
+            <h3>Project ideas</h3>
+
+            <p class="muted">
+              I'm currently more focused on higher-dimensional circuit structure than on ZX tooling, so these are explicitly in the “backlog / optional” bucket.
+              If you're strongly motivated (especially on the implementation side), I'm still happy to discuss.
+            </p>
+
+            <details class="offer" data-status="parked">
+              <summary>Circuit extraction from qudit ZX-calculus diagrams (arbitrary d)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--parked">Backlog / parked</span>
+                  <span class="pill pill--score">My interest 40/100</span>
+                  <span class="pill">Difficulty 85/100</span>
+                  <span class="pill">Importance 90/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Build an extraction pipeline for <strong>qudit ZX diagrams</strong>:
+                  take a simplified diagram and output an equivalent circuit in a chosen qudit gate set.
+                </p>
+                <ul>
+                  <li>a well-defined “extractable” normal form for qudit diagrams,</li>
+                  <li>an extraction algorithm with clear complexity/limits,</li>
+                  <li>a prototype implementation + benchmarks.</li>
+                </ul>
+
+                <p>
+                  <strong>State of the art:</strong> for qubits, extraction exists in mature tooling (notably PyZX) and is backed by strong simplification.
+                  Qudit extraction that is dimension-generic is much less standard, and extraction can be hard in the worst case - so the key is practical fragments.
+                  (<a href={refs.pyzx} target="_blank" rel="noopener noreferrer">arXiv:1904.04735</a>,
+                  <a href={refs.zxGraphSimplification} target="_blank" rel="noopener noreferrer">arXiv:1902.03178</a>,
+                  <a href={refs.zxExtractionHardness} target="_blank" rel="noopener noreferrer">arXiv:2202.09194</a>,
+                  <a href={refs.zxCompleteFiniteDim} target="_blank" rel="noopener noreferrer">arXiv:2405.10896</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="parked">
+              <summary>Circuit extraction from qutrit ZX-calculus diagrams</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--parked">Backlog / parked</span>
+                  <span class="pill pill--score">My interest 45/100</span>
+                  <span class="pill">Difficulty 75/100</span>
+                  <span class="pill">Importance 85/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Build an end-to-end <strong>qutrit</strong> pipeline:
+                  (1) simplify a qutrit ZX diagram, then (2) extract a reasonably efficient qutrit circuit, and (3) benchmark.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong> qutrit ZX is complete for stabilizer quantum mechanics; qutrit diagonal constructions via phase gadgets exist.
+                  The open part is robust extraction conventions and tool integration comparable to PyZX.
+                  (<a href={refs.qutritZXStabilizerComplete} target="_blank" rel="noopener noreferrer">arXiv:1803.00696</a>,
+                  <a href={refs.qutritPhaseGadgets} target="_blank" rel="noopener noreferrer">arXiv:2204.13681</a>,
+                  <a href={refs.pyzx} target="_blank" rel="noopener noreferrer">arXiv:1904.04735</a>)
+                </p>
+              </div>
+            </details>
+
+            <details class="offer" data-status="parked">
+              <summary>A ZX-like calculus built around two-level gates (hardware-native qudit operations)</summary>
+              <div class="body">
+                <p class="meta">
+                  <span class="pill pill--parked">Backlog / parked</span>
+                  <span class="pill pill--score">My interest 45/100</span>
+                  <span class="pill">Difficulty 85/100</span>
+                  <span class="pill">Importance 75/100</span>
+                </p>
+
+                <p>
+                  <strong>Goal:</strong> Develop a diagrammatic rewrite language whose primitive generators match <em>two-level</em> qudit operations
+                  (gates acting non-trivially only on a pair of levels).
+                </p>
+                <ul>
+                  <li>define generators + semantics,</li>
+                  <li>propose core rewrite rules (soundness first; completeness for a useful fragment if feasible),</li>
+                  <li>show how it plugs into compilation (rewriting → synthesis/extraction in the same gate set).</li>
+                </ul>
+
+                <p>
+                  <strong>State of the art:</strong> synthesis via two-level/QR decompositions is well studied; hardware-motivated compiler work exists for qudits.
+                  The open part is a “ZX-like” calculus that uses these primitives directly and supports simplification/verification workflows.
+                  (<a href={refs.quditCircuitsUniversal} target="_blank" rel="noopener noreferrer">quant-ph/0509161</a>,
+                  <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
+                </p>
+              </div>
+            </details>
+          </>
+        ) : null}
+
+        {s.key === "circuit-fragments" ? (
+          <>
+            <h3>Project ideas</h3>
+
+            <p class="muted">
+              These are ideas I'd be okay to supervise, but they're not my main motivation right now. If one of these is *your* passion project, I'm still happy to talk.
+            </p>
+
+            <details class="offer-group">
+              <summary>Backlog ideas (click to expand)</summary>
+              <div class="body">
+                <details class="offer" data-status="parked">
+                  <summary>Axiomatization of single-qupit Clifford+(T) / cyclotomic circuits (one wire)</summary>
+                  <div class="body">
+                    <p class="meta">
+                      <span class="pill pill--parked">Backlog / parked</span>
+                      <span class="pill pill--score">My interest 45/100</span>
+                      <span class="pill">Difficulty 70/100</span>
+                      <span class="pill">Importance 75/100</span>
+                    </p>
+
+                    <p>
+                      <strong>Goal:</strong> Study a single-qudit analogue of “Clifford+T” (more generally: Clifford-cyclotomic gate sets) on one wire:
+                    </p>
+                    <ul>
+                      <li>choose a concrete gate set (qutrit or general odd prime dimension),</li>
+                      <li>define a <strong>normal form</strong> and a synthesis algorithm,</li>
+                      <li>turn it into code (small exact synthesizer / normalizer),</li>
+                      <li>measure “non-Clifford cost” (analogue of T-count).</li>
+                    </ul>
+
+                    <p>
+                      (<a href={refs.singleQutritCliffordT} target="_blank" rel="noopener noreferrer">arXiv:1803.05047</a>,
+                      <a href={refs.singleQuditCliffordT} target="_blank" rel="noopener noreferrer">arXiv:2011.07970</a>,
+                      <a href={refs.qutritCyclotomic} target="_blank" rel="noopener noreferrer">arXiv:2303.13644</a>,
+                      <a href={refs.multiQutritExactSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2405.08136</a>)
+                    </p>
+                  </div>
+                </details>
+
+                <details class="offer" data-status="parked">
+                  <summary>Exploit generalised qudit controlled-X decompositions to improve algorithms (compression/storage tradeoffs)</summary>
+                  <div class="body">
+                    <p class="meta">
+                      <span class="pill pill--parked">Backlog / parked</span>
+                      <span class="pill pill--score">My interest 40/100</span>
+                      <span class="pill">Difficulty 65/100</span>
+                      <span class="pill">Importance 75/100</span>
+                    </p>
+
+                    <p>
+                      <strong>Goal:</strong> Use known qudit decompositions (controlled-addition / “CINC”-style gates) to get measurable improvements in concrete algorithms:
+                    </p>
+                    <ul>
+                      <li>a benchmark suite (arithmetic blocks, oracles, diagonal gadgets),</li>
+                      <li>alternative encodings (qubits vs qutrits/qudits),</li>
+                      <li>quantitative tradeoffs (two-qudit gate count, depth, ancillas, runtime/memory).</li>
+                    </ul>
+
+                    <p>
+                      (<a href={refs.quditsReview} target="_blank" rel="noopener noreferrer">arXiv:2008.00959</a>,
+                      <a href={refs.quditCircuitsUniversal} target="_blank" rel="noopener noreferrer">quant-ph/0509161</a>,
+                      <a href={refs.multiControlledQudit} target="_blank" rel="noopener noreferrer">arXiv:2303.12979</a>,
+                      <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
+                    </p>
+                  </div>
+                </details>
+
+                <details class="offer" data-status="parked">
+                  <summary>"Fault Tolerance by Construction": extend the framework to qudit circuits</summary>
+                  <div class="body">
+                    <p class="meta">
+                      <span class="pill pill--parked">Backlog / parked</span>
+                      <span class="pill pill--score">My interest 45/100</span>
+                      <span class="pill">Difficulty 90/100</span>
+                      <span class="pill">Importance 95/100</span>
+                    </p>
+
+                    <p>
+                      <strong>Goal:</strong> Extend “fault-equivalence-preserving rewrite” ideas from qubits to <strong>qudits</strong>.
+                      Deliverables could include: a qudit noise model + fault equivalence notion, qudit-safe rewrites, and a small prototype pipeline.
+                    </p>
+
+                    <p>
+                      (<a href={refs.faultToleranceByConstruction} target="_blank" rel="noopener noreferrer">arXiv:2506.17181</a>,
+                      <a href={refs.quditFaultTolerance} target="_blank" rel="noopener noreferrer">quant-ph/9802007</a>,
+                      <a href={refs.quditZH} target="_blank" rel="noopener noreferrer">arXiv:2307.10095</a>,
+                      <a href={refs.zxCompleteFiniteDim} target="_blank" rel="noopener noreferrer">arXiv:2405.10896</a>)
+                    </p>
+                  </div>
+                </details>
+
+                <details class="offer" data-status="parked">
+                  <summary>Clifford+ancilla minimisation (gate count/depth vs number of ancillas)</summary>
+                  <div class="body">
+                    <p class="meta">
+                      <span class="pill pill--parked">Backlog / parked</span>
+                      <span class="pill pill--score">My interest 35/100</span>
+                      <span class="pill">Difficulty 75/100</span>
+                      <span class="pill">Importance 85/100</span>
+                    </p>
+
+                    <p>
+                      <strong>Goal:</strong> Build optimisation methods for Clifford(-dominant) circuits that treat <strong>ancillas as an explicit resource</strong>,
+                      producing a Pareto tradeoff (CNOT count/depth vs number of ancillas).
+                    </p>
+
+                    <p>
+                      (<a href={refs.qsynthPaper} target="_blank" rel="noopener noreferrer">arXiv:2504.00634</a>,
+                      <a href={refs.qsynthRepo} target="_blank" rel="noopener noreferrer">Q-Synth (code)</a>,
+                      <a href={refs.depthOptimalCliffordSAT} target="_blank" rel="noopener noreferrer">arXiv:2305.01674</a>,
+                      <a href={refs.cnotSpaceDepthTradeoff} target="_blank" rel="noopener noreferrer">arXiv:1907.05087</a>,
+                      <a href={refs.ancillaCostTradeoff} target="_blank" rel="noopener noreferrer">arXiv:1405.6073</a>)
+                    </p>
+                  </div>
+                </details>
+              </div>
+            </details>
+
+            {/* If you ever want to *fully hide* the backlog from the public page, you can wrap the whole <details class="offer-group"> ... </details>
+                in a conditional flag or comment it out. I kept it visible but clearly labeled “Backlog / parked”. */}
+          </>
+        ) : null}
+      </section>
+    ))}
+
+    {/* Optional debug (remove anytime) */}
+    {postsWithUnknownKeys.length ? (
+      <details style="margin-top: 2rem;">
+        <summary class="muted">Debug: posts with unknown research keys</summary>
+        <ul>
+          {postsWithUnknownKeys.map((p) => (
+            <li>
+              <a href={`/blog/${p.id}/`}>{p.title}</a> - missing topics for: {p.extra.join(", ")}
+            </li>
+          ))}
+        </ul>
+      </details>
+    ) : null}
+  </article>
 
   <style>
-    /* Offers accordion (details/summary) */
-    details.offer {
+    .ideas {
+      max-width: 75ch;
+      margin: 0 auto;
+    }
+
+    .hero {
+      margin-bottom: 2rem;
+    }
+
+    .lead {
+      font-size: 1.08rem;
+      line-height: 1.6;
+      margin-top: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .muted {
+      color: var(--color-muted);
+    }
+
+    .subtle {
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+      font-size: 1.05rem;
+      opacity: 0.95;
+    }
+
+    /* Spotlight cards */
+    .spotlight {
+      margin-top: 1.5rem;
+      padding: 1.25rem;
       border: 1px solid var(--color-border);
-      border-radius: 0.75rem;
-      padding: 0.75rem 1rem;
-      margin: 0 0 0.75rem;
+      border-radius: 1rem;
+      background: color-mix(in oklab, var(--color-bg) 92%, var(--color-accent) 8%);
     }
 
-    details.offer summary {
-      cursor: pointer;
-      font-weight: 700;
-      list-style: none;
-    }
-
-    details.offer summary::-webkit-details-marker {
-      display: none;
-    }
-
-    details.offer summary:focus-visible {
-      outline: 3px solid var(--color-accent);
-      outline-offset: 3px;
-      border-radius: 6px;
-    }
-
-    details.offer summary::before {
-      content: "▸";
-      display: inline-block;
-      margin-right: 0.5rem;
-      transform: translateY(1px);
-    }
-
-    details.offer[open] summary::before {
-      transform: rotate(90deg) translateY(1px);
-    }
-
-    details.offer .body {
+    .spotlight-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
       margin-top: 0.75rem;
     }
 
-    details.offer .body > :last-child {
-      margin-bottom: 0;
+    @media (min-width: 760px) {
+      .spotlight-grid {
+        grid-template-columns: 1fr 1fr;
+      }
     }
 
-    .scores {
-      margin-top: 0;
-      margin-bottom: 0.75rem;
+    .spotlight-card {
+      display: block;
+      text-decoration: none;
+      border: 1px solid var(--color-border);
+      border-radius: 0.9rem;
+      padding: 0.9rem 1rem;
+      background: var(--color-bg);
+      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .spotlight-card:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-border) 45%);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .spotlight-card--soon {
+      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+    }
+
+    .spotlight-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .spotlight-title {
+      margin: 0.2rem 0 0.35rem;
+      font-size: 1.02rem;
+      color: var(--color-text);
+    }
+
+    .meter-row {
+      margin-top: 0.65rem;
+    }
+
+    meter {
+      width: 100%;
+      height: 0.75rem;
+    }
+
+    /* Legend */
+    .legend {
+      margin-top: 2rem;
+    }
+
+    .legend-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 0.75rem 0 0;
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .legend-item {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* Topic grid */
+    .browse {
+      margin-top: 2rem;
+    }
+
+    .topic-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    @media (min-width: 760px) {
+      .topic-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .topic-card {
+      text-decoration: none;
+      border: 1px solid var(--color-border);
+      border-radius: 0.9rem;
+      padding: 0.9rem 1rem;
+      background: var(--color-bg);
+      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .topic-card:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-border) 45%);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .topic-title {
+      font-weight: 750;
+      margin-bottom: 0.25rem;
+      color: var(--color-text);
+    }
+
+    .topic-desc {
+      margin: 0;
+    }
+
+    .topic-meta {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      margin-top: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    /* Posts list */
+    .research-section {
+      margin-top: 2.5rem;
+      scroll-margin-top: 5rem;
+    }
+
+    .post-list {
+      padding-left: 1.25rem;
+      margin: 0.75rem 0 1rem;
+    }
+
+    .post-item {
+      margin: 0 0 0.85rem;
+    }
+
+    .post-link {
+      font-weight: 650;
+    }
+
+    .post-meta {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0.15rem;
+    }
+
+    .tags {
+      display: inline-flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    /* Tags & pills */
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 0.75rem 0 1rem;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 0.12rem 0.5rem;
+      border: 1px solid var(--color-border);
+      border-radius: 999px;
+      font-size: 0.9rem;
+      line-height: 1.2;
+      background: color-mix(in oklab, var(--color-bg) 92%, var(--color-border) 8%);
     }
 
     .pill {
       display: inline-block;
-      padding: 0.1rem 0.45rem;
+      padding: 0.12rem 0.5rem;
       border: 1px solid var(--color-border);
       border-radius: 999px;
       font-size: 0.9rem;
       line-height: 1.2;
       transform: translateY(-1px);
+      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+    }
+
+    .pill--score {
+      background: color-mix(in oklab, var(--color-bg) 90%, var(--color-accent) 10%);
+      border-color: color-mix(in oklab, var(--color-border) 65%, var(--color-accent) 35%);
+    }
+
+    .pill--focus {
+      background: color-mix(in oklab, var(--color-bg) 84%, var(--color-accent) 16%);
+      border-color: color-mix(in oklab, var(--color-border) 60%, var(--color-accent) 40%);
+    }
+
+    .pill--open {
+      background: color-mix(in oklab, var(--color-bg) 90%, var(--color-accent) 10%);
+      border-color: color-mix(in oklab, var(--color-border) 70%, var(--color-accent) 30%);
+    }
+
+    .pill--incubating {
+      background: color-mix(in oklab, var(--color-bg) 92%, orange 8%);
+      border-color: color-mix(in oklab, var(--color-border) 78%, orange 22%);
+    }
+
+    .pill--parked {
+      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+      opacity: 0.95;
+    }
+
+    /* Offers accordion (details/summary) */
+    details.offer,
+    details.offer-group {
+      border: 1px solid var(--color-border);
+      border-radius: 0.9rem;
+      padding: 0.75rem 1rem;
+      margin: 0 0 0.75rem;
+      background: var(--color-bg);
+    }
+
+    details.offer summary,
+    details.offer-group summary {
+      cursor: pointer;
+      font-weight: 750;
+      list-style: none;
+    }
+
+    details.offer summary::-webkit-details-marker,
+    details.offer-group summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.offer summary:focus-visible,
+    details.offer-group summary:focus-visible {
+      outline: 3px solid var(--color-accent);
+      outline-offset: 3px;
+      border-radius: 8px;
+    }
+
+    details.offer summary::before,
+    details.offer-group summary::before {
+      content: "▸";
+      display: inline-block;
+      margin-right: 0.55rem;
+      transform: translateY(1px);
+      transition: transform 140ms ease;
+    }
+
+    details.offer[open] summary::before,
+    details.offer-group[open] summary::before {
+      transform: rotate(90deg) translateY(1px);
+    }
+
+    details.offer .body,
+    details.offer-group .body {
+      margin-top: 0.75rem;
+    }
+
+    details.offer .body > :last-child,
+    details.offer-group .body > :last-child {
+      margin-bottom: 0;
+    }
+
+    .meta {
+      margin-top: 0;
+      margin-bottom: 0.85rem;
+      display: flex;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+      align-items: center;
     }
 
     .refs {
       margin-top: 1rem;
+    }
+
+    /* Small motion polish (disable if user prefers reduced motion) */
+    details.offer[open] .body,
+    details.offer-group[open] .body {
+      animation: fadeSlide 160ms ease-out;
+    }
+
+    @keyframes fadeSlide {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .spotlight-card,
+      .topic-card,
+      details.offer summary::before,
+      details.offer-group summary::before {
+        transition: none;
+      }
+
+      details.offer[open] .body,
+      details.offer-group[open] .body {
+        animation: none;
+      }
+    }
+
+    /* CTA */
+    .cta {
+      margin-top: 2.75rem;
+      padding: 1.25rem;
+      border: 1px solid var(--color-border);
+      border-radius: 1rem;
+      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+    }
+
+    .cta-link {
+      font-weight: 750;
+      text-decoration: none;
+      border-bottom: 1px solid currentColor;
     }
   </style>
 </BaseLayout>
