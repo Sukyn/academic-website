@@ -20,14 +20,20 @@ export async function getStaticPaths() {
 const { post } = Astro.props;
 const { Content, headings } = await render(post);
 
+// Safeguards
+const tags = post.data.tags ?? [];
+const hasToc = headings?.length > 0;
+
 // Related posts (by shared tags)
 const allPosts = (await getCollection("posts", ({ data }) => {
   return import.meta.env.PROD ? data.draft !== true : true;
-}))
-  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+})).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
 // score by number of shared tags
-function sharedTagScore(a: CollectionEntry<"posts">, b: CollectionEntry<"posts">) {
+function sharedTagScore(
+  a: CollectionEntry<"posts">,
+  b: CollectionEntry<"posts">
+) {
   const set = new Set(a.data.tags ?? []);
   let score = 0;
   for (const t of b.data.tags ?? []) if (set.has(t)) score++;
@@ -38,89 +44,104 @@ const related = allPosts
   .filter((p) => p.id !== post.id)
   .map((p) => ({ post: p, score: sharedTagScore(post, p) }))
   .filter(({ score }) => score > 0)
-  .sort((x, y) => y.score - x.score || y.post.data.date.valueOf() - x.post.data.date.valueOf())
+  .sort(
+    (x, y) =>
+      y.score - x.score ||
+      y.post.data.date.valueOf() - x.post.data.date.valueOf()
+  )
   .slice(0, 3)
   .map(({ post }) => post);
 
-
 const WORDS_PER_MINUTE = 200;
 
-function readingTimeFromText(text) {
+function readingTimeFromText(text: string) {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.ceil(words / WORDS_PER_MINUTE));
   return `(${minutes} min read)`;
 }
+
+// Load Mermaid only if the post actually contains a mermaid fence
+const hasMermaid =
+  /```mermaid\b/.test(post.body) || post.body.includes("language-mermaid");
 ---
 
-<script
-  src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
-  defer
-></script>
+{hasMermaid ? (
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
+) : null}
 
-<script>
-  function mermaidTheme() {
-    return document.documentElement.dataset.theme === "dark"
-      ? "dark"
-      : "default";
-  }
+{hasMermaid ? (
+  <script>
+    (() => {
+      // TS-safe access to Mermaid on the global object
+      const getMermaid = () => (globalThis as any).mermaid as any | undefined;
 
-  function renderMermaid() {
-    const mermaidAPI = window.mermaid;
-    if (!mermaidAPI) return;
+      function mermaidTheme() {
+        return document.documentElement.dataset.theme === "dark"
+          ? "dark"
+          : "default";
+      }
 
-    const blocks = Array.from(
-      document.querySelectorAll("pre > code.language-mermaid")
-    );
+      // Convert fenced blocks into <div class="mermaid"> containers (idempotent)
+      function ensureMermaidContainers() {
+        const blocks = Array.from(
+          document.querySelectorAll("pre > code.language-mermaid")
+        );
 
-    if (blocks.length === 0) return;
+        for (const codeEl of blocks) {
+          const pre = codeEl.parentElement;
+          if (!(pre instanceof HTMLElement)) continue;
 
-    mermaidAPI.initialize({
-      startOnLoad: false,
-      theme: mermaidTheme(),
-      securityLevel: "strict",
-    });
+          const source = codeEl.textContent ?? "";
 
-    for (const codeEl of blocks) {
-      const pre = codeEl.parentElement;
-      if (!pre || pre.dataset.mermaidRendered === "true") continue;
+          const container = document.createElement("div");
+          container.className = "mermaid";
+          container.dataset.source = source;
+          container.textContent = source;
 
-      const source = codeEl.textContent ?? "";
+          pre.replaceWith(container);
+        }
+      }
 
-      const container = document.createElement("div");
-      container.className = "mermaid";
-      container.dataset.source = source;
-      container.textContent = source;
+      function renderMermaid() {
+        const mermaidAPI = getMermaid();
+        if (!mermaidAPI) return;
 
-      pre.replaceWith(container);
-      pre.dataset.mermaidRendered = "true";
-    }
+        ensureMermaidContainers();
 
-    mermaidAPI.run({ querySelector: ".mermaid" });
-  }
+        const nodes = Array.from(document.querySelectorAll(".mermaid"));
+        if (nodes.length === 0) return;
 
-  // Initial load (after DOM + CDN script)
-  document.addEventListener("DOMContentLoaded", renderMermaid);
+        mermaidAPI.initialize({
+          startOnLoad: false,
+          theme: mermaidTheme(),
+          securityLevel: "strict",
+        });
 
-  // Astro client-side navigation
-  document.addEventListener("astro:page-load", renderMermaid);
+        // Clear prior render (important for theme changes)
+        for (const n of nodes) {
+          if (!(n instanceof HTMLElement)) continue;
+          n.removeAttribute("data-processed"); // Mermaid uses this internally
+          n.innerHTML = "";
+          n.textContent = n.dataset.source ?? "";
+        }
 
-  // Re-render on theme change
-  const obs = new MutationObserver(() => {
-    const nodes = document.querySelectorAll(".mermaid");
-    for (const n of nodes) {
-      n.innerHTML = "";
-      n.textContent = n.dataset.source ?? "";
-    }
-    renderMermaid();
-  });
+        mermaidAPI.run({ querySelector: ".mermaid" });
+      }
 
-  obs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
-  });
-</script>
+      // Initial load
+      document.addEventListener("DOMContentLoaded", renderMermaid);
+      // Astro client-side navigation
+      document.addEventListener("astro:page-load", renderMermaid);
 
-
+      // Re-render on theme change
+      const obs = new MutationObserver(renderMermaid);
+      obs.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
+    })();
+  </script>
+) : null}
 
 <BaseLayout
   title={post.data.title}
@@ -138,20 +159,24 @@ function readingTimeFromText(text) {
 
         <span class="reading-time">{readingTimeFromText(post.body)}</span>
 
-        <span class="tags">
-          {post.data.tags.map((t) => (
-            <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
-          ))}
-        </span>
+        {tags.length > 0 ? (
+          <span class="tags" aria-label="Tags">
+            {tags.map((t) => (
+              <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
+            ))}
+          </span>
+        ) : null}
 
         {post.data.draft ? <span class="pill">Draft</span> : null}
       </div>
     </header>
 
-    <div class="article-grid">
-      <aside class="toc-col" aria-label="Table of contents">
-        <TableOfContents headings={headings} />
-      </aside>
+    <div class={`article-grid ${hasToc ? "article-grid--with-toc" : ""}`}>
+      {hasToc ? (
+        <aside class="toc-col" aria-label="Table of contents">
+          <TableOfContents headings={headings} />
+        </aside>
+      ) : null}
 
       <div class="content-col prose">
         {post.data.coverImage ? (
@@ -170,6 +195,7 @@ function readingTimeFromText(text) {
 
         <Content />
         <Giscus />
+
         {related.length > 0 ? (
           <section class="related">
             <h2>Related posts</h2>
@@ -194,17 +220,13 @@ function readingTimeFromText(text) {
         <footer class="footer">
           <a href="/blog">← Back to Blog</a>
         </footer>
-
       </div>
     </div>
   </article>
 
   <style>
-    /* -------------------------
-       Small page-specific spacing
-       ------------------------- */
     .header {
-      margin-bottom: 0.5rem; /* ↓ was 1.25rem */
+      margin-bottom: 0.5rem;
     }
 
     .tags {
@@ -217,97 +239,82 @@ function readingTimeFromText(text) {
       margin-top: 2rem;
     }
 
-    /* Base: 1 column layout (mobile + default) */
     .article-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 0.75rem; /* ↓ was 1.25rem */
+      gap: 0.75rem;
     }
 
-    /* Mobile: TOC goes above content */
     @media (max-width: 979px) {
       .toc-col {
         order: -1;
       }
     }
 
-    /* Desktop behavior */
     @media (min-width: 980px) {
-      /* Make blog posts use a wider container */
       :global(main.container) {
         width: min(100%, 1400px);
       }
 
-      /* Default: TOC OPEN => two columns */
-      .article-grid {
+      .article-grid--with-toc {
         grid-template-columns: 240px minmax(0, 1fr);
-        gap: 1.5rem; /* ↓ was 2.25rem */
+        gap: 1.5rem;
         align-items: start;
       }
 
-      /* Sticky TOC column */
-      .toc-col {
+      .article-grid--with-toc .toc-col {
         position: sticky;
         top: 0.75rem;
         max-height: calc(100vh - 6rem);
         overflow: auto;
 
         display: flex;
-        justify-content: flex-start; /* feels less "floaty" */
+        justify-content: flex-start;
       }
 
-      /* Content width in the 2-col layout */
-      .content-col.prose {
+      .article-grid--with-toc .content-col.prose {
         max-width: 110ch;
-        margin-inline: 0; /* don't auto-center inside grid */
+        margin-inline: 0;
         width: 100%;
       }
 
-      /* -------------------------
-         TOC CLOSED => single column
-         ------------------------- */
-      .article-grid:has(.toc:not([open])) {
+      .article-grid--with-toc:has(.toc:not([open])) {
         grid-template-columns: 1fr;
         gap: 0rem;
       }
 
-      /* Center content again when single column */
-      .article-grid:has(.toc:not([open])) .content-col.prose {
+      .article-grid--with-toc:has(.toc:not([open])) .content-col.prose {
         margin-inline: auto;
       }
 
-      /* Place the "Table of contents" pill near the content, not floating */
-      .article-grid:has(.toc:not([open])) .toc-col {
-        justify-content: center; /* centered above content */
-        position: static;        /* no sticky needed when closed */
+      .article-grid--with-toc:has(.toc:not([open])) .toc-col {
+        justify-content: center;
+        position: static;
         max-height: none;
         overflow: visible;
       }
-
-
     }
 
     .related {
-  margin-top: 2.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--color-border);
-}
+      margin-top: 2.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--color-border);
+    }
 
-.related-list {
-  list-style: none;
-  padding: 0;
-  margin: 0.75rem 0 0;
-}
+    .related-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.75rem 0 0;
+    }
 
-.related-item {
-  padding: 0.75rem 0;
-  border-top: 1px solid var(--color-border);
-}
+    .related-item {
+      padding: 0.75rem 0;
+      border-top: 1px solid var(--color-border);
+    }
 
-.related-item:first-child {
-  border-top: none;
-  padding-top: 0;
-}
-
+    .related-item:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
   </style>
 </BaseLayout>
