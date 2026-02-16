@@ -13,6 +13,7 @@ export default defineConfig({
   markdown: {
     // ✅ important: don't highlight ```mermaid blocks
     syntaxHighlight: {
+      type: "shiki",
       excludeLangs: ["mermaid"],
     },
     remarkPlugins: [remarkMath, remarkCallouts],
@@ -22,6 +23,7 @@ export default defineConfig({
     mdx({
       // ✅ same for MDX pipeline
       syntaxHighlight: {
+        type: "shiki",
         excludeLangs: ["mermaid"],
       },
       remarkPlugins: [remarkMath, remarkCallouts],
