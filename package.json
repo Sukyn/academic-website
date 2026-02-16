@@ -19,6 +19,7 @@
     "bibtex-parse-js": "^0.0.24",
     "katex": "^0.16.27",
     "mermaid": "^11.12.2",
+    "minisearch": "^7.2.0",
     "rehype-github-alerts": "^4.2.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
