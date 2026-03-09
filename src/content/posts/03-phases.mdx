@@ -1,0 +1,408 @@
+---
+
+title: "Why quantum phases matter"
+date: 2026-03-07
+tags: ["quantum-computing", "phases", "qudits", "circuits","linear-optics"]
+research: ["linear-optics", "qudit-clifford"]
+description: "A gentle introduction to quantum phase: what it is, why it matters, and how we engineer it in qubit and qudit devices."
+coverImage: "/og/interference.png"
+draft: false
+------------
+
+Quantum phase is one of those ideas that sounds suspiciously like mathematical decoration until it suddenly runs the whole show.
+
+If amplitudes tell you **how much** of each basis state you have, phase tells you **how those pieces line up as waves**. And in quantum computing, lining up waves is the difference between "nothing interesting happens" and "here is your speedup."
+
+> [!INFO]
+> One-sentence takeaway:
+>
+> **Probabilities come from magnitudes, but interference comes from phases.**
+
+This post is about that hidden part of the quantum state: what phase is, why it matters, how quantum gates manipulate it, and why phases become especially elegant in $d$-level systems such as qutrits and qudits.
+
+---
+
+## States are vectors, not just probabilities
+
+A 1-qubit pure state is written as
+
+$$
+|\psi\rangle = \alpha |0\rangle + \beta |1\rangle,
+\qquad |\alpha|^2 + |\beta|^2 = 1.
+$$
+
+If you measure in the computational basis, you get outcome $0$ with probability $|\alpha|^2$ and outcome $1$ with probability $|\beta|^2$.
+
+So far, so familiar.
+
+But notice something important: $\alpha$ and $\beta$ are **complex** numbers, not just ordinary real numbers. That means they have both a magnitude and a phase. A convenient way to write that is
+
+$$
+\alpha = r_0 e^{i\phi_0},
+\qquad
+\beta = r_1 e^{i\phi_1}.
+$$
+
+The magnitudes $r_0$ and $r_1$ affect the raw measurement probabilities. The angles $\phi_0$ and $\phi_1$ are the phases.
+
+And here is the first twist:
+
+* multiplying the **whole** state by the same phase does not change any physics;
+* changing the phase of one component **relative** to another usually does.
+
+That distinction is the difference between **global phase** and **relative phase**.
+
+---
+
+## Global phase: real mathematically, invisible physically
+
+Suppose you replace $|\psi\rangle$ by
+$
+e^{i\gamma}|\psi\rangle.
+$
+
+Then every amplitude gets multiplied by the same complex number of magnitude $1$. Measurement probabilities do not change, because
+
+$$
+|e^{i\gamma}\alpha|^2 = |\alpha|^2,
+\qquad
+|e^{i\gamma}\beta|^2 = |\beta|^2.
+$$
+
+So $|\psi\rangle$ and $e^{i\gamma}|\psi\rangle$ represent the same physical state.
+
+This is why quantum people often say that global phase is "unobservable." It is there in the math, but nature does not let you see it directly for an isolated state.
+
+A simple example is that
+$
+|0\rangle
+\text{ and }
+-|0\rangle
+$
+are physically the same state.
+
+This is usually the first moment in a quantum course when everybody narrows their eyes slightly.
+
+---
+
+## Relative phase: the part that actually does things
+
+Now compare these two states:
+
+$$
+|+\rangle = \frac{|0\rangle + |1\rangle}{\sqrt{2}},
+\qquad
+|-\rangle = \frac{|0\rangle - |1\rangle}{\sqrt{2}}.
+$$
+
+If you measure both in the computational basis, you get the same probabilities:
+
+* $0$ with probability $\tfrac12$,
+* $1$ with probability $\tfrac12$.
+
+So if you only looked at those probabilities, you might think the states are basically the same.
+
+They are not.
+
+The difference is the **relative phase** between the two components. In $|+\rangle$, the $|0\rangle$ and $|1\rangle$ parts have the same sign. In $|-\rangle$, they differ by a phase of $\pi$.
+
+That minus sign is not cosmetic. It changes how the amplitudes interfere.
+
+Apply a Hadamard gate $H$:
+
+$$
+H|+\rangle = |0\rangle,
+\qquad
+H|-\rangle = |1\rangle.
+$$
+
+So two states with exactly the same computational-basis probabilities can be turned into **different certain outcomes** by a later gate. That is phase becoming observable through interference.
+
+> [!INFO]
+> "Phase is invisible" is only half true.
+>
+> A phase is invisible if you never let amplitudes interfere.
+> Quantum algorithms are basically elaborate ways of making them interfere on purpose.
+
+<div style="text-align:center; margin: 1.5rem 0;">
+  <img
+    src="/public/og/blochsphere.png"
+    alt="Bloch sphere showing |+⟩ and |−⟩ on opposite points of the equator"
+    width="420"
+  />
+</div>
+---
+
+## A one-parameter family of phases
+
+A very useful family of states is
+
+$$
+|\psi_\theta\rangle = \frac{|0\rangle + e^{i\theta}|1\rangle}{\sqrt{2}}.
+$$
+
+If you measure immediately in the computational basis, the answer is boring: both outcomes still happen with probability $\tfrac12$.
+
+But if you apply $H$ first, then
+
+$$
+H|\psi_\theta\rangle
+=
+
+\frac{(1+e^{i\theta})|0\rangle + (1-e^{i\theta})|1\rangle}{2}.
+$$
+
+Now the output probabilities depend on $\theta$:
+
+$$
+\Pr(0) = \frac{1+\cos\theta}{2},
+\qquad
+\Pr(1) = \frac{1-\cos\theta}{2}.
+$$
+
+So phase differences get converted into measurable probabilities.
+
+This is the core mechanism behind interference in quantum circuits, and also the reason people care so much about controlling phases accurately in the lab.
+
+---
+
+## What a phase gate does
+
+The simplest way to manipulate phase on a qubit is with a diagonal gate:
+
+$$
+P(\theta) =
+\begin{pmatrix}
+1 & 0 \\
+0 & e^{i\theta}
+\end{pmatrix}.
+$$
+
+Its action is
+
+$$
+P(\theta)|0\rangle = |0\rangle,
+\qquad
+P(\theta)|1\rangle = e^{i\theta}|1\rangle.
+$$
+
+So it leaves $|0\rangle$ alone and rotates the phase of $|1\rangle$.
+
+This is a perfect example of a gate that does **nothing to computational-basis labels** and **everything to phase**.
+
+Some famous special cases are
+
+$$
+Z = P(\pi),
+\qquad
+S = P\left(\frac{\pi}{2}\right),
+\qquad
+T = P\left(\frac{\pi}{4}\right).
+$$
+
+These show up everywhere in circuit synthesis, fault tolerance, and compilation.
+
+A good mental picture is:
+
+* $X$ flips basis states;
+* $P(\theta)$ leaves basis states where they are, but paints one of them with a phase.
+
+That sounds mild, until you remember that painted amplitudes interfere later.
+
+---
+
+## Controlled phase: where phase becomes entangling
+
+A 2-qubit controlled-phase gate acts by attaching a phase only to one basis vector, usually $|11\rangle$:
+
+$$
+CP(\theta)|ab\rangle = e^{i\theta ab}|ab\rangle.
+$$
+
+In particular,
+$
+CZ = CP(\pi)
+$
+sends
+$
+|11\rangle \mapsto -|11\rangle
+$
+and leaves $|00\rangle$, $|01\rangle$, and $|10\rangle$ unchanged.
+
+Again, this looks almost too simple. Only one basis state gets a minus sign.
+
+But that one sign is enough to create entanglement once the qubits are in superposition. This is a recurring theme in quantum computing:
+
+> Tiny-looking phase changes in the computational basis can have dramatic effects after a basis change.
+
+This is also why diagonal gates are so important in circuit theory. They are easy to describe, easy to compose, and surprisingly powerful once you mix them with non-diagonal gates like Hadamards.
+
+---
+
+## Why circuit people like phases so much
+
+A lot of circuit rewriting can be summarized like this:
+
+1. some gates **move basis labels around**;
+2. some gates **attach phases to basis labels**.
+
+That separation is extremely useful.
+
+For example, a reversible classical-looking transformation might send a basis state $|x\rangle$ to $|f(x)\rangle$, while a diagonal phase gate does
+
+$$
+|x\rangle \mapsto e^{i\varphi(x)}|x\rangle.
+$$
+
+When you compose them, the phase function gets transported by substitution. This is one reason phase-based normal forms are so valuable: they let you talk about a circuit in terms of "where the labels go" and "what phase each label picks up."
+
+You do not need category theory or compiler theory to appreciate the punchline:
+
+> If you understand phase, you understand a surprisingly large fraction of what quantum circuit optimization is trying to organize.
+
+---
+
+## Qudits: phases get cleaner, not messier
+
+So far we used qubits, where the basis is ${|0\rangle, |1\rangle}$.
+
+A **qudit** is a $d$-level quantum system with basis
+$
+|0\rangle, |1\rangle, \dots, |d-1\rangle.
+$
+
+For qudits, phase gates become even more natural. Instead of modifying just one basis vector, you can assign a phase to each basis label:
+
+$$
+|j\rangle \mapsto e^{i\phi_j}|j\rangle.
+$$
+
+When the dimension is $d$, a very common primitive is
+$
+\omega = e^{2\pi i/d},
+$
+the basic $d$th root of unity. Then a standard qudit phase gate is the "clock" gate
+
+$$
+Z_d |j\rangle = \omega^j |j\rangle.
+$$
+
+For a qutrit, where $d=3$, that means
+
+$$
+Z_3|0\rangle = |0\rangle,\qquad
+Z_3|1\rangle = \omega |1\rangle,\qquad
+Z_3|2\rangle = \omega^2 |2\rangle.
+$$
+
+This is one reason qudit phases are mathematically pleasant: basis labels and modular arithmetic fit together very cleanly.
+
+And once you start allowing phases that depend on the label in more structured ways, like
+$
+\omega^{f(j)},
+$
+you get a whole family of useful diagonal gates. In prime dimensions especially, arithmetic behaves nicely, which is one reason prime-dimensional qudits are so attractive theoretically.
+
+---
+
+## How do we make phases in practice?
+
+Here is the pleasantly universal answer:
+
+> To make a phase, you engineer a difference in how components of the state evolve.
+
+That can happen in several ways, depending on the hardware.
+
+### In photonics
+
+If a qudit is encoded across optical modes, then a phase shift can come from changing the path length or refractive index in one mode. In simple terms, one wave travels a slightly different optical distance and accumulates a phase.
+
+So for mode encoding, you can implement something like
+$
+|j\rangle \mapsto e^{i\phi_j}|j\rangle
+$
+by applying separate phase shifters to the different modes.
+
+This is one of the reasons photonics is such a natural place to think about phase: the hardware is literally built out of interference.
+
+A nice outreach example is the LEGO interferometer from the University of Nottingham’s Photon Bricks project, which uses lasers, mirrors, and beam splitters to make interferometry tangible for learners ([University of Nottingham, 2025](https://www.nottingham.ac.uk/news/photon-bricks-a-lego-set-for-playful-quantum-explorations)).
+
+<figure>
+  <img
+    src="/public/og/lego-interferometer.jpg"
+    alt="A LEGO interferometer with green laser beams travelling through mirrors and beam splitters on a LEGO baseplate"
+    loading="lazy"
+  />
+  <figcaption>
+    LEGO interferometer from the Photon Bricks project at the University of Nottingham.
+  </figcaption>
+</figure>
+
+### In trapped ions, neutral atoms, or similar platforms
+
+Different internal levels can accumulate different dynamical phases because they have different energies, or because a laser induces a controlled energy shift.
+
+Very schematically, if a level has energy $E_j$, then time evolution contributes a phase
+$
+e^{-iE_j t/\hbar}.
+$
+
+So by carefully choosing durations, detunings, and pulse shapes, one can imprint relative phases between qudit levels.
+
+### In superconducting devices
+
+Higher levels of an anharmonic oscillator can be used as qutrits or qudits. Microwave pulses, detunings, and frame updates can control relative phases between these levels.
+
+The engineering details differ from photonics or ions, but the abstract idea is the same: different basis states acquire different phases under a tailored evolution.
+
+---
+
+## The unifying picture
+
+Across all these platforms, "doing a phase gate" usually means one of two things:
+
+* physically let different components of the state accumulate different phases;
+* or describe the same effect in software as a change of reference frame.
+
+Either way, the circuit-level description is the same: a diagonal gate.
+
+That is one of the nice things about phases. The lab implementation can be platform-specific, but the abstract mathematics is beautifully uniform.
+
+---
+
+## Why this matters for qudits in particular
+
+For qubits, phase gates already matter because they control interference and entanglement.
+
+For qudits, they matter even more because:
+
+* there are more basis states to phase;
+* arithmetic modulo $d$ gives a natural structure to those phases;
+* many useful circuit families can be described as "relabel the basis" plus "attach a phase depending on the label."
+
+That is exactly why qudit circuit theories so often end up organizing themselves around diagonal phases.
+
+If you ever see a paper talking about "affine transformations plus diagonal phase layers," this is the idea hiding underneath: one part moves the labels, the other part writes phases on them.
+
+---
+
+## Final thought
+
+A phase is the part of a quantum state that looks easiest to ignore right up until it becomes the only thing that matters.
+
+It does not change raw computational-basis probabilities by itself. It does not look like a bit flip. It does not announce itself loudly.
+
+But phase is what makes interference possible, what gives diagonal gates their bite, what turns minus signs into entanglement, and what makes many quantum circuit formalisms worth studying in the first place.
+
+So if amplitudes are the actors, phase is the timing.
+
+And in quantum computing, timing is plot.
+
+<div class="video-container">
+  <iframe
+    src="https://www.youtube.com/embed/3BfXsOJXpw4"
+    frameborder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+    allowfullscreen
+  ></iframe>
+</div>
