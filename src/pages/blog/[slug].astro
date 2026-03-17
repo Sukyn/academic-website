@@ -1,9 +1,11 @@
----
+﻿---
 import TableOfContents from "../../components/TableOfContents.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import Giscus from "../../components/Giscus.astro";
 import { getCollection, render } from "astro:content";
 import type { CollectionEntry } from "astro:content";
+import { formatDate, readingTimeFromText } from "../../lib/format";
+import { getVisiblePosts } from "../../lib/posts";
 
 // Build one page per post (static output)
 export async function getStaticPaths() {
@@ -25,9 +27,7 @@ const tags = post.data.tags ?? [];
 const hasToc = headings?.length > 0;
 
 // Related posts (by shared tags)
-const allPosts = (await getCollection("posts", ({ data }) => {
-  return import.meta.env.PROD ? data.draft !== true : true;
-})).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const allPosts = await getVisiblePosts();
 
 // score by number of shared tags
 function sharedTagScore(
@@ -52,21 +52,17 @@ const related = allPosts
   .slice(0, 3)
   .map(({ post }) => post);
 
-const WORDS_PER_MINUTE = 200;
-
-function readingTimeFromText(text: string) {
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  const minutes = Math.max(1, Math.ceil(words / WORDS_PER_MINUTE));
-  return `(${minutes} min read)`;
-}
-
 // Load Mermaid only if the post actually contains a mermaid fence
 const hasMermaid =
   /```mermaid\b/.test(post.body) || post.body.includes("language-mermaid");
 ---
 
 {hasMermaid ? (
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
+  <script
+    is:inline
+    src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"
+    defer
+  ></script>
 ) : null}
 
 {hasMermaid ? (
@@ -147,14 +143,15 @@ const hasMermaid =
   title={post.data.title}
   description={post.data.description ?? "Blog post."}
   ogImage={post.data.coverImage ?? "/og/default.png"}
+  includeKatex={true}
 >
   <article class="article">
     <header class="header prose">
       <h1>{post.data.title}</h1>
 
-      <div class="meta">
+      <div class="post-meta">
         <time datetime={post.data.date.toISOString()}>
-          {post.data.date.toISOString().slice(0, 10)}
+          {formatDate(post.data.date)}
         </time>
 
         <span class="reading-time">{readingTimeFromText(post.body)}</span>
@@ -167,7 +164,7 @@ const hasMermaid =
           </span>
         ) : null}
 
-        {post.data.draft ? <span class="pill">Draft</span> : null}
+        {post.data.draft ? <span class="pill draft">Draft</span> : null}
       </div>
     </header>
 
@@ -205,10 +202,10 @@ const hasMermaid =
                   <a href={`/blog/${p.id}/`}>{p.data.title}</a>
                   <div class="post-meta">
                     <time datetime={p.data.date.toISOString()}>
-                      {p.data.date.toISOString().slice(0, 10)}
+                      {formatDate(p.data.date)}
                     </time>
                     {p.data.description ? (
-                      <span class="muted"> — {p.data.description}</span>
+                      <span class="muted"> - {p.data.description}</span>
                     ) : null}
                   </div>
                 </li>
@@ -218,7 +215,7 @@ const hasMermaid =
         ) : null}
 
         <footer class="footer">
-          <a href="/blog">← Back to Blog</a>
+          <a href="/blog">&larr; Back to blog</a>
         </footer>
       </div>
     </div>
@@ -318,3 +315,4 @@ const hasMermaid =
     }
   </style>
 </BaseLayout>
+

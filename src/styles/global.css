@@ -3,38 +3,45 @@
    ========================= */
 :root {
   /* Typography */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-sans: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+    Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
 
   /* Layout */
-  --content-width: 95ch; /* main container width */
-  --reading-width: 95ch; /* prose width for long text */
+  --content-width: 88ch; /* main container width */
+  --reading-width: 74ch; /* prose width for long text */
 
   /* Light theme */
-  --color-bg: #ffffff;
-  --color-text: #0f172a;
-  --color-muted: #475569;
-  --color-border: rgba(15, 23, 42, 0.14);
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
+  --color-bg: #f6f3ea;
+  --color-bg-grid: rgba(15, 23, 42, 0.06);
+  --color-bg-glow: rgba(37, 99, 235, 0.12);
+  --color-bg-glow-2: rgba(22, 163, 74, 0.09);
+  --color-text: #10203a;
+  --color-muted: #52627a;
+  --color-border: rgba(16, 32, 58, 0.14);
+  --color-accent: #0f5cc0;
+  --color-accent-hover: #0b4ba2;
 
   /* Surfaces (subtle panels) */
-  --color-surface: rgba(15, 23, 42, 0.03);
-  --color-surface-2: rgba(15, 23, 42, 0.06);
+  --color-surface: rgba(255, 255, 255, 0.76);
+  --color-surface-2: rgba(255, 255, 255, 0.9);
 }
 
 :root[data-theme="dark"] {
-  --color-bg: #0b1220;
-  --color-text: #e5e7eb;
-  --color-muted: #9ca3af;
-  --color-border: rgba(229, 231, 235, 0.14);
-  --color-accent: #60a5fa;
-  --color-accent-hover: #93c5fd;
+  --color-bg: #0b1323;
+  --color-bg-grid: rgba(148, 163, 184, 0.12);
+  --color-bg-glow: rgba(56, 189, 248, 0.12);
+  --color-bg-glow-2: rgba(16, 185, 129, 0.1);
+  --color-text: #e5ecf5;
+  --color-muted: #a7b4c6;
+  --color-border: rgba(229, 236, 245, 0.14);
+  --color-accent: #7cc6ff;
+  --color-accent-hover: #a9dcff;
 
-  --color-surface: rgba(229, 231, 235, 0.06);
-  --color-surface-2: rgba(229, 231, 235, 0.09);
+  --color-surface: rgba(11, 19, 35, 0.68);
+  --color-surface-2: rgba(17, 24, 39, 0.84);
 }
 
 :root:not([data-theme="dark"]) {
@@ -61,12 +68,31 @@ body {
 }
 
 body {
+  position: relative;
+  min-height: 100vh;
   font-family: var(--font-sans);
-  background: var(--color-bg);
+  background:
+    radial-gradient(circle at left top, var(--color-bg-glow), transparent 34%),
+    radial-gradient(circle at 85% 12%, var(--color-bg-glow-2), transparent 30%),
+    var(--color-bg);
   color: var(--color-text);
-  line-height: 1.65;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(to right, transparent 31px, var(--color-bg-grid) 32px),
+    linear-gradient(to bottom, transparent 31px, var(--color-bg-grid) 32px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.8), transparent 88%);
 }
 
 img {
@@ -103,7 +129,7 @@ select {
 }
 
 main.container {
-  padding-block: 2rem;
+  padding-block: clamp(2rem, 4vw, 3rem);
 }
 
 .page {
@@ -130,9 +156,10 @@ main.container {
 h1,
 h2,
 h3 {
+  font-family: var(--font-display);
   line-height: 1.2;
   margin: 0 0 0.75rem;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 h1 {

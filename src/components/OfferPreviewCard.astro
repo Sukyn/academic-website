@@ -1,0 +1,84 @@
+---
+import type { OfferSummary } from "../data/offerSummaries";
+
+const { offer } = Astro.props as { offer: OfferSummary };
+---
+
+<button
+  class="offer-preview-card"
+  type="button"
+  data-offer-modal-trigger={offer.id}
+  aria-haspopup="dialog"
+  aria-controls={`${offer.id}-dialog`}
+>
+  <div class="offer-preview-meta">
+    <span class={`pill ${offer.statusClass}`}>{offer.status}</span>
+    <span class="pill">{offer.fitBadge}</span>
+  </div>
+
+  <h4>{offer.title}</h4>
+
+  <p>
+    <strong>Background:</strong> {offer.background}
+  </p>
+
+  <p class="offer-preview-foot">
+    <strong>First milestone:</strong> {offer.firstMilestone}
+  </p>
+</button>
+
+<style>
+  .offer-preview-card {
+    appearance: none;
+    display: block;
+    width: 100%;
+    padding: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+    background: var(--color-bg);
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .offer-preview-card:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-border) 45%);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  .offer-preview-card:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+
+  .offer-preview-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .offer-preview-card h4 {
+    margin: 0 0 0.55rem;
+    color: var(--color-text);
+    font-size: 1rem;
+  }
+
+  .offer-preview-card p {
+    margin: 0;
+    color: var(--color-muted);
+  }
+
+  .offer-preview-foot {
+    margin-top: 0.6rem !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .offer-preview-card {
+      transition: none;
+    }
+  }
+</style>

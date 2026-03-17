@@ -1,23 +1,82 @@
 ---
+import { profileLinks, siteProfile } from "../data/site";
 import BaseLayout from "../layouts/BaseLayout.astro";
 ---
-<BaseLayout title="Contact">
-  <h1>Contact</h1>
 
-  <h2>Email</h2>
-  <p id="email"></p>
+<BaseLayout
+  title="Contact"
+  description="Email, profiles, and ways to get in touch about research, collaborations, and project ideas."
+>
+  <section class="prose">
+    <h1>Contact</h1>
 
-  <script>
-    // simple bot-resistant email rendering
-    const user = "colin.blake";
-    const domain = "inria.fr";
-    document.getElementById("email").textContent =
-      `${user}@${domain}`;
-  </script>
+    <p>
+      If you want to talk about qudits, circuit rewriting, diagrammatic methods,
+      or one of the research ideas on this site, email is the fastest route.
+    </p>
 
-  <h2>Links</h2>
-  <ul>
-    <li><a href="https://scholar.google.com/citations?user=ocfCHPcAAAAJ&hl=fr&oi=sra" target="_blank" rel="noreferrer">Google Scholar</a></li>
-    <li><a href="https://www.linkedin.com/in/colin-blake/" target="_blank" rel="noreferrer">LinkedIn</a></li>
-  </ul>
+    <p>
+      I am currently a PhD student, so I am not able to supervise student
+      projects on my own. If you are a student writing about one of these ideas,
+      it is best if you already have, or could bring, formal supervision on your
+      side.
+    </p>
+
+    <div class="contact-card">
+      <p class="eyebrow">Best way to reach me</p>
+      <p class="contact-line">
+        <a class="contact-mail" href={`mailto:${siteProfile.email}`}>
+          {siteProfile.email}
+        </a>
+      </p>
+      <p class="muted">{siteProfile.affiliation}</p>
+      <p class="muted">
+        A short note about your background, interests, or the page, paper, or
+        project you are writing about is always helpful.
+      </p>
+    </div>
+
+    <h2>Useful links</h2>
+    <div class="button-row">
+      {profileLinks.map((link) => (
+        <a
+          class="button ghost"
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {link.label}
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <style>
+    .contact-card {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid var(--color-border);
+      border-radius: 1rem;
+      background: var(--color-surface);
+    }
+
+    .eyebrow {
+      margin-bottom: 0.4rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+    }
+
+    .contact-line {
+      margin-bottom: 0.5rem;
+    }
+
+    .contact-mail {
+      font-size: 1.15rem;
+      font-weight: 700;
+      text-decoration-thickness: 3px;
+    }
+  </style>
 </BaseLayout>

@@ -12,7 +12,7 @@
   }
 </style>
 
-<script>
+<script is:inline>
   (() => {
     const el = document.getElementById("zx-wallpaper");
     if (!(el instanceof HTMLCanvasElement)) return;
@@ -218,11 +218,20 @@
       raf = 0;
     }
 
+    function startWhenIdle() {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(() => startLoop(), { timeout: 250 });
+        return;
+      }
+
+      window.setTimeout(startLoop, 120);
+    }
+
     // Init once
     resize();
     init();
     draw();
-    startLoop();
+    startWhenIdle();
 
     window.addEventListener("resize", () => {
       resize();

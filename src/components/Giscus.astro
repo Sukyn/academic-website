@@ -1,4 +1,4 @@
----
+﻿---
 const {
   repo = import.meta.env.PUBLIC_GISCUS_REPO,
   repoId = import.meta.env.PUBLIC_GISCUS_REPO_ID,
@@ -6,7 +6,7 @@ const {
   categoryId = import.meta.env.PUBLIC_GISCUS_CATEGORY_ID,
 } = Astro.props;
 
-// Petit garde-fou: si pas configuré, on n'affiche rien.
+// Keep comments fully optional when env vars are missing.
 const enabled = Boolean(repo && repoId && category && categoryId);
 ---
 
@@ -15,6 +15,7 @@ const enabled = Boolean(repo && repoId && category && categoryId);
     <h2>Comments</h2>
 
     <script
+  is:inline
   src="https://giscus.app/client.js"
   data-repo={repo}
   data-repo-id={repoId}
@@ -26,7 +27,7 @@ const enabled = Boolean(repo && repoId && category && categoryId);
   data-emit-metadata="0"
   data-input-position="bottom"
   data-theme="light"
-  data-lang="fr"
+  data-lang="en"
   crossorigin="anonymous"
   async
 ></script>
@@ -80,3 +81,4 @@ const enabled = Boolean(repo && repoId && category && categoryId);
     margin-top: 0;
   }
 </style>
+

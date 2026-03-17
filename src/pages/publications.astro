@@ -1,38 +1,143 @@
 ---
+import { publicationNotesById } from "../data/publicationNotes";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { parseBibtexToPubs } from "../lib/bibtex";
 
-// Import BibTeX as plain text at build time
 import bibtex from "../content/publications.bibtex?raw";
 
 const pubs = parseBibtexToPubs(bibtex);
+
+function publicationLinks(url?: string) {
+  if (!url) return [];
+
+  try {
+    const parsed = new URL(url);
+
+    if (parsed.hostname.includes("arxiv.org")) {
+      const match = parsed.pathname.match(/\/abs\/(.+)$/);
+      const pdfPath = match ? `https://arxiv.org/pdf/${match[1]}.pdf` : undefined;
+
+      return [
+        { label: "arXiv", href: url },
+        ...(pdfPath ? [{ label: "PDF", href: pdfPath }] : []),
+      ];
+    }
+
+    if (parsed.hostname.includes("doi.org")) {
+      return [{ label: "DOI", href: url }];
+    }
+  } catch {
+    return [{ label: "Open", href: url }];
+  }
+
+  return [{ label: "Open", href: url }];
+}
+
+const pubsWithLinks = pubs.map((pub) => ({
+  ...pub,
+  links: publicationLinks(pub.url),
+  note: publicationNotesById[pub.id],
+}));
 ---
 
-
-<BaseLayout title="Publications" description="Selected publications and preprints.">
-  <section class="prose">
+<BaseLayout
+  title="Publications"
+  description="Selected papers and preprints on quantum circuits, qudits, and equational theories."
+>
+  <section class="prose publications-page">
     <h1>Publications</h1>
 
-    {pubs.length === 0 ? (
+    {pubsWithLinks.length === 0 ? (
       <p class="muted">No publications yet.</p>
     ) : (
-      <ol>
-        {pubs.map((p) => (
-          <li>
-            <strong>{p.title}</strong>
-            {p.year ? <span class="muted"> ({p.year})</span> : null}
-            {p.venue ? <div class="muted">{p.venue}</div> : null}
-            {p.authors ? <div class="muted">{p.authors}</div> : null}
-            {p.url ? (
-              <div>
-                <a href={p.url} target="_blank" rel="noopener noreferrer">
-                  Link
-                </a>
+      <ol class="pub-list">
+        {pubsWithLinks.map((publication) => (
+          <li id={publication.id} class="pub-item">
+            <div class="pub-head">
+              <strong>{publication.title}</strong>
+              <span class="pub-badge">
+                {publication.note?.status ?? publication.venue ?? "Paper"}
+              </span>
+              {publication.year ? <span class="pub-badge">{publication.year}</span> : null}
+            </div>
+            {publication.authors ? <p class="muted">{publication.authors}</p> : null}
+            {publication.venue ? <p class="pub-meta">{publication.venue}</p> : null}
+            {publication.note?.summary ? (
+              <p class="pub-summary">{publication.note.summary}</p>
+            ) : null}
+            {publication.links.length > 0 ? (
+              <div class="button-row">
+                {publication.links.map((link) => (
+                  <a
+                    class="button ghost"
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {link.label}
+                  </a>
+                ))}
               </div>
             ) : null}
           </li>
         ))}
       </ol>
     )}
+
+    <p class="muted">
+      If you want slides or other supplementary material around these papers,
+      feel free to <a href="/contact">email me</a>.
+    </p>
   </section>
+
+  <style>
+    .publications-page {
+      max-width: 78ch;
+    }
+
+    .pub-list {
+      list-style: none;
+      padding: 0;
+      margin: 1.5rem 0;
+    }
+
+    .pub-item {
+      padding: 1.2rem 0;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .pub-item:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .pub-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .pub-meta {
+      margin-bottom: 0.45rem;
+      font-size: 0.95rem;
+      color: var(--color-muted);
+    }
+
+    .pub-summary {
+      margin-bottom: 0.9rem;
+    }
+
+    .pub-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--color-border);
+      font-size: 0.88rem;
+      color: var(--color-muted);
+      background: var(--color-surface);
+    }
+  </style>
 </BaseLayout>

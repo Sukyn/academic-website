@@ -1,15 +1,17 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import OfferDetailModal from "../components/OfferDetailModal.astro";
+import OfferPreviewCard from "../components/OfferPreviewCard.astro";
+import OfferSummaryBlock from "../components/OfferSummaryBlock.astro";
 import { getCollection } from "astro:content";
+import { offerSummariesByTopic, offerSummaryById } from "../data/offerSummaries";
 
 /**
  * Centralised reference list so the page stays maintainable.
- * (All links are public and student-friendly entry points: arXiv, journals, or project pages.)
+ * (All links are public entry points: arXiv, journals, or project pages.)
  */
 const refs = {
   // --- Clifford groups / axiomatization (qudits & qubits)
-  qutritCliffordRules: "https://arxiv.org/abs/2508.14670",
-  qubitCliffordPresentation: "https://arxiv.org/abs/1310.6813",
   quditCliffordArbitraryD: "https://arxiv.org/abs/quant-ph/0506065",
   quditCliffordIdeal: "https://arxiv.org/abs/1307.5087",
   cliffordReview: "https://arxiv.org/abs/1810.10259",
@@ -87,7 +89,7 @@ const refs = {
 /**
  * Category hub for this page:
  * - You list categories you have ideas for.
- * - Under each category, we show related blog posts that share a "research" key.
+ * - In development, research keys are cross-checked against posts to catch taxonomy drift.
  *
  * IMPORTANT: these keys come from frontmatter `research: [...]` in posts.
  * Example: research: ["equational-theory", "circuit-fragments"]
@@ -97,60 +99,85 @@ const topics = [
     key: "qudit-clifford",
     title: "Qudit Clifford structure & tooling",
     description:
-      "Prime and composite dimensions, presentations/relations, normal forms, rewriting-friendly tooling.",
+      "Prime and composite dimensions, presentations, normal forms, and rewriting-friendly tooling.",
+    ideaCount: 2,
+    status: "Current focus",
+    statusClass: "pill--focus",
+    bestFor: "researchers or self-directed M2/PhD-level collaborators who also enjoy proof assistants or tooling",
   },
   {
     key: "linear-optics",
     title: "Linear optics (LOv/LOfi)",
     description:
-      "Linear-optical circuit calculi, normal forms, and structured synthesis constructions (Fourier/Hadamard).",
+      "Linear-optical circuit calculi, normal forms, and structured Fourier/Hadamard constructions.",
+    ideaCount: 1,
+    status: "Open / exploratory",
+    statusClass: "pill--open",
+    bestFor: "researchers or independent collaborators who like constructive synthesis and concrete benchmarks",
   },
   {
     key: "outreach",
     title: "Outreach & educational tooling",
     description:
       "Student-facing projects: playable content, web ports, and guided solution material.",
+    ideaCount: 1,
+    status: "Actively looking for help",
+    statusClass: "pill--open",
+    bestFor: "collaborators who want a fast first deliverable with outreach value",
   },
   {
     key: "algebraic-viewpoints",
     title: "Alternative algebraic viewpoints",
     description:
       "Cyclotomic/exact synthesis perspectives, Clifford/geometric algebra formalisms, and compiler-friendly representations.",
+    ideaCount: 2,
+    status: "Tomorrow-problem",
+    statusClass: "pill--incubating",
+    bestFor: "self-directed researchers or advanced students with a strong algebra background",
   },
   {
     key: "equational-theory",
     title: "Equational theories & rewriting",
-    description: "Axioms, completeness/minimality, normal forms, rewriting systems.",
+    description: "Axioms, completeness and minimality questions, normal forms, and rewriting systems.",
+    ideaCount: 3,
+    status: "Current focus",
+    statusClass: "pill--focus",
+    bestFor: "researchers who want theorem work with compiler consequences",
   },
   {
     key: "circuit-fragments",
     title: "Circuit fragments & expressivity",
     description:
-      "Gate sets, fragments, expressivity, and reasoning inside fragments (often as 'backlog' topics).",
+      "Gate sets, fragments, expressivity, and reasoning inside fragments.",
+    ideaCount: 4,
+    status: "Current focus",
+    statusClass: "pill--focus",
+    bestFor: "researchers who already know the direction they want",
   },
   {
     key: "zx-zh",
     title: "Diagrammatic reasoning (ZX/ZH)",
     description:
-      "Graphical calculi, rewriting automation, extraction, and tooling (currently lower priority for me).",
+      "Graphical calculi, rewriting automation, extraction, and tooling.",
+    ideaCount: 3,
+    status: "Backlog / parked",
+    statusClass: "pill--parked",
+    bestFor: "implementation-heavy collaborators who want a graphical-calculus project",
   },
 ];
 
 // Load posts (hide drafts in prod)
-const allPosts = (
-  await getCollection("posts", ({ data }) => {
-    return import.meta.env.PROD ? data.draft !== true : true;
-  })
-).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
-
-function hasKey(postKeys: string[] = [], key: string) {
-  const set = new Set(postKeys.map((t) => t.toLowerCase()));
-  return set.has(key.toLowerCase());
-}
+const allPosts = import.meta.env.DEV
+  ? (
+      await getCollection("posts", ({ data }) => {
+        return import.meta.env.PROD ? data.draft !== true : true;
+      })
+    ).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+  : [];
 
 const topicSections = topics.map((t) => ({
   ...t,
-  posts: allPosts.filter((p) => hasKey(p.data.research ?? [], t.key)),
+  offers: offerSummariesByTopic[t.key as keyof typeof offerSummariesByTopic],
 }));
 
 // (Optional) quick check: posts with research keys not covered by topics (useful while tagging)
@@ -163,34 +190,20 @@ const postsWithUnknownKeys = allPosts
     extra: (p.data.research ?? []).filter((k) => !knownKeys.has(k.toLowerCase())),
   }));
 
-/**
- * "Front-of-page" quick links to show what you're most motivated by *right now*.
- * (Keeps the long list from feeling like the main message.)
- */
 const focusNow = [
   {
-    title: "Clifford for qupits (prime p): axioms + normal forms + tooling",
-    href: "#offer-clifford-qupits",
-    note: "Some people are already working on this but I'm not aware of their progression. It would surely need the help of automatic tools such as Rocq or another prover.",
-    interest: 95,
-    status: "Current focus",
-  },
-  {
     title: "LOv: structured decomposition of the generalized Hadamard / Fourier gate",
-    href: "#offer-lov-hadamard",
-    note: "I have clues, I feel like I need to relax the constraints from the original problem. I'd like this to be done, it would help understand better the inner structure of the Hadamard gate.",
-    interest: 95,
-    status: "Current focus",
+    offerId: "offer-lov-hadamard",
+    note: "A good match if you like explicit constructions, matrix identities, and turning a pattern into a small generator or benchmark.",
+    status: "Open / exploratory",
+    statusClass: "pill--open",
   },
-];
-
-const alsoSoon = [
   {
-    title: '"Les Chevaliers du Quantique": web port + content + solutions',
-    href: "#offer-chevaliers",
-    note: "I'm planning to do the bare-minimum port soon, namely have a web version of the game. I have a Trello for this project.",
-    interest: 85,
+    title: '"Les Chevaliers du Quantique": extensions + challenge packs + guided solutions',
+    offerId: "offer-chevaliers",
+    note: "The playable web version exists now; the next step is to extend it with stronger content, challenge structure, and clearer pedagogy.",
     status: "Actively looking for help",
+    statusClass: "pill--open",
   },
 ];
 
@@ -204,58 +217,68 @@ const legend = [
 
 <BaseLayout
   title="Ideas"
-  description="Project / supervision ideas with clear priority signals, plus related blog posts when available."
+  description="Research and collaboration ideas with clear priority signals, practical fit notes, and related reading."
 >
   <article class="ideas">
     <header class="hero">
-      <h1>Ideas</h1>
+      <h1>Research ideas and collaboration directions</h1>
 
       <p class="lead">
-        This page is a curated list of <strong>project ideas</strong>.
-        I try to be explicit about <strong>my current motivation</strong> for each idea, so you can quickly see what
-        I'm excited to push forward right now vs. what's more exploratory.
+        I am currently a PhD student, so this is <strong>not</strong> a supervision
+        page. It is mainly a map of research problems I would be excited to
+        discuss with other researchers, plus a small number of lighter side
+        projects.
       </p>
 
       <p class="muted">
-        If you're interested, please <a href="/contact">get in touch</a>. I'm happy to adapt scope to your background
-        (math-heavy, tooling-heavy, or "balanced").
+        If something clicks, <a href="/contact">write to me</a>.
       </p>
     </header>
 
-    <section class="spotlight" aria-label="Current focus">
+    <section id="right-now" class="spotlight" aria-label="Current focus">
       <h2>Right now</h2>
       <p class="muted">
-        If you only read one part of this page, read this: these are the two topics I'm most excited to work on (but not working on!) at the moment.
+        If you only read one part of this page, read this: these are the ideas I would be happiest to push forward
+        soon.
       </p>
 
       <div class="spotlight-grid">
         {focusNow.map((x) => (
-          <a class="spotlight-card" href={x.href}>
+          <button
+            class="spotlight-card"
+            type="button"
+            data-offer-modal-trigger={x.offerId}
+            aria-haspopup="dialog"
+            aria-controls={`${x.offerId}-dialog`}
+          >
             <div class="spotlight-head">
-              <span class="pill pill--focus">{x.status}</span>
-              <span class="pill pill--score">Interest {x.interest}/100</span>
+              <span class={`pill ${x.statusClass}`}>{x.status}</span>
             </div>
             <h3 class="spotlight-title">{x.title}</h3>
             <p class="muted">{x.note}</p>
-            <div class="meter-row" aria-label={`Interest meter for ${x.title}`}>
-              <meter min="0" max="100" value={x.interest}></meter>
-            </div>
-          </a>
+          </button>
         ))}
       </div>
+    </section>
 
-      <h3 class="subtle">Also soon</h3>
-      <div class="spotlight-grid">
-        {alsoSoon.map((x) => (
-          <a class="spotlight-card spotlight-card--soon" href={x.href}>
-            <div class="spotlight-head">
-              <span class="pill pill--open">{x.status}</span>
-              <span class="pill pill--score">Interest {x.interest}/100</span>
+    <section id="topic-index" class="browse">
+      <h2>Browse by topic</h2>
+      <p class="muted">
+        Each card tells you where my energy currently is, how much material lives there, and who the topic usually fits
+        best.
+      </p>
+
+      <div class="topic-grid">
+        {topicSections.map((s) => (
+          <a class="topic-card" href={`#topic-${s.key}`}>
+            <div class="topic-card-head">
+              <div class="topic-title">{s.title}</div>
+              <span class={`pill ${s.statusClass}`}>{s.status}</span>
             </div>
-            <h3 class="spotlight-title">{x.title}</h3>
-            <p class="muted">{x.note}</p>
-            <div class="meter-row" aria-label={`Interest meter for ${x.title}`}>
-              <meter min="0" max="100" value={x.interest}></meter>
+            <p class="topic-desc muted">{s.description}</p>
+            <div class="topic-meta">
+              <span class="pill">{s.ideaCount} {s.ideaCount === 1 ? "idea" : "ideas"}</span>
+              <span class="muted">Best for {s.bestFor}</span>
             </div>
           </a>
         ))}
@@ -277,134 +300,32 @@ const legend = [
     {topicSections.map((s) => (
       <section id={`topic-${s.key}`} class="research-section">
         <h2>{s.title}</h2>
-        <p class="muted">{s.description}</p>
-
-        <div class="tag-row" aria-label={`Topic key for ${s.title}`}>
-          <span class="tag">{s.key}</span>
+        <div class="topic-meta">
+          <span class={`pill ${s.statusClass}`}>{s.status}</span>
+          <span class="pill">{s.ideaCount} {s.ideaCount === 1 ? "idea" : "ideas"}</span>
+          <span class="muted">Best for {s.bestFor}</span>
         </div>
-
-        {/* Related blog posts */}
-        {s.posts.length === 0 ? (
-          <p class="muted">No related blog posts yet.</p>
-        ) : (
-          <ol class="post-list">
-            {s.posts.map((post) => (
-              <li class="post-item">
-                <a class="post-link" href={`/blog/${post.id}/`}>
-                  {post.data.title}
-                </a>
-                <div class="post-meta">
-                  <time datetime={post.data.date.toISOString()}>{post.data.date.toISOString().slice(0, 10)}</time>
-                  {(post.data.research?.length ?? 0) > 0 ? (
-                    <span class="tags">
-                      {post.data.research.map((k) => (
-                        <span class="tag">{k}</span>
-                      ))}
-                    </span>
-                  ) : null}
-                </div>
-                {post.data.description ? <p class="muted">{post.data.description}</p> : null}
-              </li>
-            ))}
-          </ol>
-        )}
+        <p class="muted">{s.description}</p>
 
         {/* -------------------- OFFERS BY TOPIC -------------------- */}
         {s.key === "qudit-clifford" ? (
           <>
-            <h3>Project ideas</h3>
-
             <p class="muted">
               A <strong>qudit</strong> is a <em>d</em>-level quantum system (a qubit is <em>d=2</em>, a qutrit is <em>d=3</em>).
               <strong>Clifford</strong> circuits are the structured gate family behind stabilizer error correction and many
               compilation and verification methods.
             </p>
 
-            <details id="offer-clifford-qupits" class="offer" data-status="focus" open>
-              <summary>Axiomatization of Clifford circuits for qupits (prime dimension p)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--focus">Current focus</span>
-                  <span class="pill pill--score">My interest 95/100</span>
-                  <span class="pill">Difficulty 75/100</span>
-                  <span class="pill">Importance 85/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-arbitrary-d-clifford"
+              labelledBy="offer-arbitrary-d-clifford-title"
+            >
+              <h3 id="offer-arbitrary-d-clifford-title" class="offer-modal__title">
+                Axiomatization of Clifford circuits for qudits (arbitrary dimension d, including composite)
+              </h3>
 
-                <p>
-                  <strong>Goal:</strong> Design a compact, <em>sound and complete</em> set of circuit identities
-                  (generators + relations / rewrite rules) for <strong>multi-qupit</strong> Clifford circuits (prime
-                  dimension <em>p</em>), in a form suitable for <strong>automated rewriting</strong>.
-                </p>
-                <p>
-                  "Sound and complete" here means:
-                  (1) every rule is correct as a matrix identity, and
-                  (2) every true equality of qupit Clifford circuits can be derived using the rules.
-                </p>
-
-                <p>
-                  <strong>State of the art:</strong>
-                  <strong>Already done:</strong> there is now a complete rewrite rule set for <em>multi-qutrit</em> Clifford circuits
-                  (a landmark result for odd prime dimension), and the general Clifford structure for arbitrary dimensions is
-                  documented in several foundational works.
-                  <strong>Still open:</strong> a dimension-parametric presentation that works for general prime <em>p</em> (not only
-                  <em>p=3</em>), with a normal form and an implementation that scales.
-                  (<a href={refs.qutritCliffordRules} target="_blank" rel="noopener noreferrer">arXiv:2508.14670</a>,
-                  <a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
-                  <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>)
-                </p>
-              </div>
-            </details>
-
-            <details class="offer" data-status="focus">
-              <summary>Axiomatization of single-qupit Clifford circuits (one wire)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--focus">Current focus</span>
-                  <span class="pill pill--score">My interest 90/100</span>
-                  <span class="pill">Difficulty 55/100</span>
-                  <span class="pill">Importance 70/100</span>
-                </p>
-
-                <p>
-                  <strong>Goal:</strong> Build a <em>rewrite-friendly</em> "dictionary" of identities for the
-                  <strong>1-qupit Clifford group</strong> (prime dimension <em>p</em>).
-                  Concretely, the project should deliver:
-                </p>
-                <ul>
-                  <li>a small set of generators (e.g., Fourier/phase-like gates) and a finite set of relations (rewrite rules);</li>
-                  <li>a <strong>canonical normal form</strong> (every 1-qupit Clifford reduces to a unique, standard circuit);</li>
-                  <li>
-                    an implementation that takes a 1-wire Clifford circuit and <strong>normalizes</strong> it automatically.
-                  </li>
-                </ul>
-
-                <p>
-                  This matters because 1-wire is the cleanest "sandbox" where you can make proofs rigorous and build tooling
-                  that later scales to multi-qudit compilation and verification.
-                </p>
-
-                <p>
-                  <strong>State of the art:</strong>
-                  <strong>Already done:</strong> the structure of qudit Clifford operations is well understood at the group-theory
-                  level, with constructive characterizations and generating sets.
-                  <strong>Still open (tooling-wise):</strong> turning that understanding into a <em>small</em>, implementation-ready
-                  rewrite system + normal form, with automated tests and (ideally) machine-checked proofs.
-                  (<a href={refs.quditCliffordArbitraryD} target="_blank" rel="noopener noreferrer">quant-ph/0506065</a>,
-                  <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>,
-                  <a href={refs.qubitCliffordPresentation} target="_blank" rel="noopener noreferrer">arXiv:1310.6813</a>)
-                </p>
-              </div>
-            </details>
-
-            <details class="offer" data-status="open">
-              <summary>Axiomatization of Clifford circuits for qudits (arbitrary dimension d, including composite)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--open">Open / exploratory</span>
-                  <span class="pill pill--score">My interest 80/100</span>
-                  <span class="pill">Difficulty 90/100</span>
-                  <span class="pill">Importance 90/100</span>
-                </p>
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-arbitrary-d-clifford"]} />
 
                 <p>
                   <strong>Goal:</strong> Extend Clifford-circuit axiomatizations beyond prime <em>p</em> to
@@ -432,17 +353,18 @@ const legend = [
                   <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
 
-            <details class="offer" data-status="incubating">
-              <summary>Axiomatization of Clifford circuits in even dimensions (power-of-two and beyond)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--incubating">Tomorrow-problem</span>
-                  <span class="pill pill--score">My interest 65/100</span>
-                  <span class="pill">Difficulty 95/100</span>
-                  <span class="pill">Importance 80/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-even-d-clifford"
+              labelledBy="offer-even-d-clifford-title"
+            >
+              <h3 id="offer-even-d-clifford-title" class="offer-modal__title">
+                Axiomatization of Clifford circuits in even dimensions (power-of-two and beyond)
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-even-d-clifford"]} />
 
                 <p>
                   <strong>Goal:</strong> Pin down what "breaks" in even dimensions, then build an axiomatization (rules + normal
@@ -466,29 +388,25 @@ const legend = [
                   <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
           </>
         ) : null}
 
         {s.key === "linear-optics" ? (
           <>
-            <h3>Project ideas</h3>
-
             <p class="muted">
               In single-photon encodings, a photon delocalised over <em>d</em> modes behaves like a <strong>d-level</strong> system.
               LOv/LOfi-style graphical calculi represent linear-optical circuits built from <strong>beam splitters</strong> and{" "}
               <strong>phase shifters</strong>, and support rewriting/normal forms.
             </p>
 
-            <details id="offer-lov-hadamard" class="offer" data-status="focus" open>
-              <summary>Generalized Hadamard (Fourier) gates in LOv-calculus (prime & composite dimensions)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--focus">Current focus</span>
-                  <span class="pill pill--score">My interest 95/100</span>
-                  <span class="pill">Difficulty 75/100</span>
-                  <span class="pill">Importance 75/100</span>
-                </p>
+            <OfferDetailModal id="offer-lov-hadamard" labelledBy="offer-lov-hadamard-title">
+              <h3 id="offer-lov-hadamard-title" class="offer-modal__title">
+                Generalized Hadamard (Fourier) gates in LOv-calculus (prime & composite dimensions)
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-lov-hadamard"]} />
 
                 <p>
                   <strong>Goal:</strong> Develop a <em>dimension-generic</em> and <em>rewrite-friendly</em> construction of the
@@ -507,7 +425,7 @@ const legend = [
                     identify reusable substructures.
                   </li>
                   <li>
-                    Implement a generator: input <em>d</em> → output a circuit (plus a verifier that checks the produced matrix
+                    Implement a generator: input <em>d</em> &rarr; output a circuit (plus a verifier that checks the produced matrix
                     matches <strong>H<sub>d</sub></strong>).
                   </li>
                   <li>
@@ -538,31 +456,28 @@ const legend = [
                   <strong>Starting point:</strong> <a href="/notes/generalized-hadamard-gates.pdf">PDF notes (draft)</a>.
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
           </>
         ) : null}
 
         {s.key === "outreach" ? (
           <>
-            <h3>Project ideas</h3>
+            <OfferDetailModal id="offer-chevaliers" labelledBy="offer-chevaliers-title">
+              <h3 id="offer-chevaliers-title" class="offer-modal__title">
+                Extend the outreach game "Les Chevaliers du Quantique" (new content + challenge packs + guided solutions)
+              </h3>
 
-            <details id="offer-chevaliers" class="offer" data-status="open" open>
-              <summary>Extend the outreach game "Les Chevaliers du Quantique" (web port + new content + solution videos)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--open">Actively looking for help</span>
-                  <span class="pill pill--score">My interest 85/100</span>
-                  <span class="pill">Difficulty 30/100</span>
-                  <span class="pill">Importance 70/100</span>
-                </p>
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-chevaliers"]} />
 
                 <p>
-                  <strong>Goal:</strong> Get a minimal but solid <strong>web version</strong> out (the "bare minimum" I plan to do),
-                  and if you're up for it, push further with clearly scoped, student-friendly deliverables:
+                  <strong>Goal:</strong> Build on the existing <strong>playable web version</strong> with clearly scoped
+                  extensions:
                 </p>
                 <ul>
-                  <li>design levels or challenge packs with explicit learning objectives, including extra rules,</li>
+                  <li>design new levels or challenge packs with explicit learning objectives, including extra rules,</li>
                   <li>write/record short solution videos (explain the reasoning, not just the answer),</li>
+                  <li>improve progression, onboarding, and the guided pedagogical layer around the web version,</li>
                   <li>upgrade the quality of the physical game as well potentially,</li>
                   <li>optionally run a lightweight evaluation (pre/post quiz or small user study).</li>
                 </ul>
@@ -573,28 +488,28 @@ const legend = [
                 </p>
 
                 <p>
-                  <strong>State of the art:</strong> the game exists publicly and has been shared as an educational resource.
-                  The open part is more content + guided solution material, and (if desired) evidence about learning impact.
+                  <strong>State of the art:</strong> the game exists publicly as an educational resource, and the web version
+                  is now playable. The open part is extending it with more content, better guided solution material, and
+                  (if desired) evidence about learning impact.
                   (<a href={refs.chevaliersGame} target="_blank" rel="noopener noreferrer">Game page</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
           </>
         ) : null}
 
         {s.key === "algebraic-viewpoints" ? (
           <>
-            <h3>Project ideas</h3>
+            <OfferDetailModal
+              id="offer-qutrit-few-roots"
+              labelledBy="offer-qutrit-few-roots-title"
+            >
+              <h3 id="offer-qutrit-few-roots-title" class="offer-modal__title">
+                Generalise "With a Few Square Roots, Quantum Computing is as Easy as &pi;" to qutrits (cube roots of unity)
+              </h3>
 
-            <details class="offer" data-status="open">
-              <summary>Generalise "With a Few Square Roots, Quantum Computing is as Easy as π" to qutrits (cube roots of unity)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--open">Open / exploratory</span>
-                  <span class="pill pill--score">My interest 65/100</span>
-                  <span class="pill">Difficulty 85/100</span>
-                  <span class="pill">Importance 70/100</span>
-                </p>
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-qutrit-few-roots"]} />
 
                 <p>
                   <strong>Goal:</strong> Investigate whether the "few square roots" representability phenomenon has a
@@ -620,17 +535,18 @@ const legend = [
                   <a href={refs.multiQutritExactSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2405.08136</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
 
-            <details class="offer" data-status="incubating">
-              <summary>Geometric algebra / (generalised) Clifford algebra frameworks for qudits</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--incubating">Tomorrow-problem</span>
-                  <span class="pill pill--score">My interest 70/100</span>
-                  <span class="pill">Difficulty 80/100</span>
-                  <span class="pill">Importance 65/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-geometric-algebra-qudits"
+              labelledBy="offer-geometric-algebra-qudits-title"
+            >
+              <h3 id="offer-geometric-algebra-qudits-title" class="offer-modal__title">
+                Geometric algebra / (generalised) Clifford algebra frameworks for qudits
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-geometric-algebra-qudits"]} />
 
                 <p>
                   <strong>Goal:</strong> Survey and extend algebraic frameworks that represent qudit states and gates via
@@ -650,28 +566,28 @@ const legend = [
                   <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
           </>
         ) : null}
 
         {s.key === "equational-theory" ? (
           <>
-            <h3>Project ideas</h3>
             <p class="muted">
               This is a core theme behind my recent work on affine-plus-diagonal fragments, normal forms, and completeness proofs.
               The three offers below are direct follow-ups to a recent prime-dimensional result.
               (<a href={refs.primeAffineDiagonalFragments} target="_blank" rel="noopener noreferrer">arXiv:2603.06466</a>)
             </p>
 
-            <details id="offer-scaling-generators" class="offer" data-status="open">
-              <summary>Reduce the scaling generators in prime-dimensional affine / phase calculi</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--open">Open / exploratory</span>
-                  <span class="pill pill--score">My interest 75/100</span>
-                  <span class="pill">Difficulty 60/100</span>
-                  <span class="pill">Importance 70/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-scaling-generators"
+              labelledBy="offer-scaling-generators-title"
+            >
+              <h3 id="offer-scaling-generators-title" class="offer-modal__title">
+                Reduce the scaling generators in prime-dimensional affine / phase calculi
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-scaling-generators"]} />
 
                 <p>
                   <strong>Goal:</strong> Replace the current family of one-wire scaling generators <strong>M<sub>x</sub></strong>
@@ -698,17 +614,18 @@ const legend = [
                   <a href={refs.quditCliffordIdeal} target="_blank" rel="noopener noreferrer">arXiv:1307.5087</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
 
-            <details id="offer-beyond-prime-dimensions" class="offer" data-status="open">
-              <summary>Beyond prime dimensions: affine-plus-diagonal calculi over prime powers and finite rings</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--open">Open / exploratory</span>
-                  <span class="pill pill--score">My interest 85/100</span>
-                  <span class="pill">Difficulty 90/100</span>
-                  <span class="pill">Importance 95/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-beyond-prime-dimensions"
+              labelledBy="offer-beyond-prime-dimensions-title"
+            >
+              <h3 id="offer-beyond-prime-dimensions-title" class="offer-modal__title">
+                Beyond prime dimensions: affine-plus-diagonal calculi over prime powers and finite rings
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-beyond-prime-dimensions"]} />
 
                 <p>
                   <strong>Goal:</strong> Extend the prime-dimensional affine-plus-diagonal / phase-polynomial story to
@@ -736,17 +653,18 @@ const legend = [
                   <a href={refs.cliffordReview} target="_blank" rel="noopener noreferrer">arXiv:1810.10259</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
 
-            <details id="offer-higher-degree-phase-hierarchies" class="offer" data-status="open">
-              <summary>Higher-degree phase fragments and refined phase hierarchies for qudits</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--open">Open / exploratory</span>
-                  <span class="pill pill--score">My interest 82/100</span>
-                  <span class="pill">Difficulty 88/100</span>
-                  <span class="pill">Importance 85/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-higher-degree-phase-hierarchies"
+              labelledBy="offer-higher-degree-phase-hierarchies-title"
+            >
+              <h3 id="offer-higher-degree-phase-hierarchies-title" class="offer-modal__title">
+                Higher-degree phase fragments and refined phase hierarchies for qudits
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-higher-degree-phase-hierarchies"]} />
 
                 <p>
                   <strong>Goal:</strong> Push the affine-plus-diagonal fragments beyond the current linear / quadratic / cubic layers,
@@ -776,28 +694,27 @@ const legend = [
                   <a href={refs.quditPhaseGadgetMethod} target="_blank" rel="noopener noreferrer">arXiv:2504.12710</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
           </>
         ) : null}
 
         {s.key === "zx-zh" ? (
           <>
-            <h3>Project ideas</h3>
-
             <p class="muted">
               I'm currently more focused on higher-dimensional circuit structure than on ZX tooling, so these are explicitly in the "backlog / optional" bucket.
               If you're strongly motivated (especially on the implementation side), I'm still happy to discuss.
             </p>
 
-            <details class="offer" data-status="parked">
-              <summary>Circuit extraction from qudit ZX-calculus diagrams (arbitrary d)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--parked">Backlog / parked</span>
-                  <span class="pill pill--score">My interest 40/100</span>
-                  <span class="pill">Difficulty 85/100</span>
-                  <span class="pill">Importance 90/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-qudit-zx-extraction"
+              labelledBy="offer-qudit-zx-extraction-title"
+            >
+              <h3 id="offer-qudit-zx-extraction-title" class="offer-modal__title">
+                Circuit extraction from qudit ZX-calculus diagrams (arbitrary d)
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-qudit-zx-extraction"]} />
 
                 <p>
                   <strong>Goal:</strong> Build an extraction pipeline for <strong>qudit ZX diagrams</strong>:
@@ -818,17 +735,18 @@ const legend = [
                   <a href={refs.zxCompleteFiniteDim} target="_blank" rel="noopener noreferrer">arXiv:2405.10896</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
 
-            <details class="offer" data-status="parked">
-              <summary>Circuit extraction from qutrit ZX-calculus diagrams</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--parked">Backlog / parked</span>
-                  <span class="pill pill--score">My interest 45/100</span>
-                  <span class="pill">Difficulty 75/100</span>
-                  <span class="pill">Importance 85/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-qutrit-zx-extraction"
+              labelledBy="offer-qutrit-zx-extraction-title"
+            >
+              <h3 id="offer-qutrit-zx-extraction-title" class="offer-modal__title">
+                Circuit extraction from qutrit ZX-calculus diagrams
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-qutrit-zx-extraction"]} />
 
                 <p>
                   <strong>Goal:</strong> Build an end-to-end <strong>qutrit</strong> pipeline:
@@ -843,17 +761,18 @@ const legend = [
                   <a href={refs.pyzx} target="_blank" rel="noopener noreferrer">arXiv:1904.04735</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
 
-            <details class="offer" data-status="parked">
-              <summary>A ZX-like calculus built around two-level gates (hardware-native qudit operations)</summary>
-              <div class="body">
-                <p class="meta">
-                  <span class="pill pill--parked">Backlog / parked</span>
-                  <span class="pill pill--score">My interest 45/100</span>
-                  <span class="pill">Difficulty 85/100</span>
-                  <span class="pill">Importance 75/100</span>
-                </p>
+            <OfferDetailModal
+              id="offer-two-level-zx"
+              labelledBy="offer-two-level-zx-title"
+            >
+              <h3 id="offer-two-level-zx-title" class="offer-modal__title">
+                A ZX-like calculus built around two-level gates (hardware-native qudit operations)
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-two-level-zx"]} />
 
                 <p>
                   <strong>Goal:</strong> Develop a diagrammatic rewrite language whose primitive generators match <em>two-level</em> qudit operations
@@ -862,7 +781,7 @@ const legend = [
                 <ul>
                   <li>define generators + semantics,</li>
                   <li>propose core rewrite rules (soundness first; completeness for a useful fragment if feasible),</li>
-                  <li>show how it plugs into compilation (rewriting → synthesis/extraction in the same gate set).</li>
+                  <li>show how it plugs into compilation (rewriting &rarr; synthesis/extraction in the same gate set).</li>
                 </ul>
 
                 <p>
@@ -872,30 +791,27 @@ const legend = [
                   <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
                 </p>
               </div>
-            </details>
+            </OfferDetailModal>
           </>
         ) : null}
 
         {s.key === "circuit-fragments" ? (
           <>
-            <h3>Project ideas</h3>
-
             <p class="muted">
-              These are ideas I'd be okay to supervise, but they're not my main motivation right now. If one of these is *your* passion project, I'm still happy to talk.
+              These are active research directions around fragments, synthesis, and optimization. Some are broader and
+              riskier than others, but they are part of the current picture rather than a parked backlog.
             </p>
 
-            <details class="offer-group">
-              <summary>Backlog ideas (click to expand)</summary>
-              <div class="body">
-                <details class="offer" data-status="parked">
-                  <summary>Axiomatization of single-qupit Clifford+(T) / cyclotomic circuits (one wire)</summary>
-                  <div class="body">
-                    <p class="meta">
-                      <span class="pill pill--parked">Backlog / parked</span>
-                      <span class="pill pill--score">My interest 45/100</span>
-                      <span class="pill">Difficulty 70/100</span>
-                      <span class="pill">Importance 75/100</span>
-                    </p>
+            <OfferDetailModal
+              id="offer-single-qupit-clifford-t"
+              labelledBy="offer-single-qupit-clifford-t-title"
+            >
+              <h3 id="offer-single-qupit-clifford-t-title" class="offer-modal__title">
+                Axiomatization of single-qupit Clifford+(T) / cyclotomic circuits (one wire)
+              </h3>
+
+              <div class="offer-modal__body">
+                    <OfferSummaryBlock offer={offerSummaryById["offer-single-qupit-clifford-t"]} />
 
                     <p>
                       <strong>Goal:</strong> Study a single-qudit analogue of "Clifford+T" (more generally: Clifford-cyclotomic gate sets) on one wire:
@@ -914,17 +830,18 @@ const legend = [
                       <a href={refs.multiQutritExactSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2405.08136</a>)
                     </p>
                   </div>
-                </details>
+            </OfferDetailModal>
 
-                <details class="offer" data-status="parked">
-                  <summary>Exploit generalised qudit controlled-X decompositions to improve algorithms (compression/storage tradeoffs)</summary>
-                  <div class="body">
-                    <p class="meta">
-                      <span class="pill pill--parked">Backlog / parked</span>
-                      <span class="pill pill--score">My interest 40/100</span>
-                      <span class="pill">Difficulty 65/100</span>
-                      <span class="pill">Importance 75/100</span>
-                    </p>
+            <OfferDetailModal
+              id="offer-controlled-x-algorithms"
+              labelledBy="offer-controlled-x-algorithms-title"
+            >
+              <h3 id="offer-controlled-x-algorithms-title" class="offer-modal__title">
+                Exploit generalised qudit controlled-X decompositions to improve algorithms (compression/storage tradeoffs)
+              </h3>
+
+              <div class="offer-modal__body">
+                    <OfferSummaryBlock offer={offerSummaryById["offer-controlled-x-algorithms"]} />
 
                     <p>
                       <strong>Goal:</strong> Use known qudit decompositions (controlled-addition / "CINC"-style gates) to get measurable improvements in concrete algorithms:
@@ -942,17 +859,18 @@ const legend = [
                       <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
                     </p>
                   </div>
-                </details>
+            </OfferDetailModal>
 
-                <details class="offer" data-status="parked">
-                  <summary>"Fault Tolerance by Construction": extend the framework to qudit circuits</summary>
-                  <div class="body">
-                    <p class="meta">
-                      <span class="pill pill--parked">Backlog / parked</span>
-                      <span class="pill pill--score">My interest 45/100</span>
-                      <span class="pill">Difficulty 90/100</span>
-                      <span class="pill">Importance 95/100</span>
-                    </p>
+            <OfferDetailModal
+              id="offer-fault-tolerance-by-construction"
+              labelledBy="offer-fault-tolerance-by-construction-title"
+            >
+              <h3 id="offer-fault-tolerance-by-construction-title" class="offer-modal__title">
+                "Fault Tolerance by Construction": extend the framework to qudit circuits
+              </h3>
+
+              <div class="offer-modal__body">
+                    <OfferSummaryBlock offer={offerSummaryById["offer-fault-tolerance-by-construction"]} />
 
                     <p>
                       <strong>Goal:</strong> Extend "fault-equivalence-preserving rewrite" ideas from qubits to <strong>qudits</strong>.
@@ -966,17 +884,18 @@ const legend = [
                       <a href={refs.zxCompleteFiniteDim} target="_blank" rel="noopener noreferrer">arXiv:2405.10896</a>)
                     </p>
                   </div>
-                </details>
+            </OfferDetailModal>
 
-                <details class="offer" data-status="parked">
-                  <summary>Clifford+ancilla minimisation (gate count/depth vs number of ancillas)</summary>
-                  <div class="body">
-                    <p class="meta">
-                      <span class="pill pill--parked">Backlog / parked</span>
-                      <span class="pill pill--score">My interest 35/100</span>
-                      <span class="pill">Difficulty 75/100</span>
-                      <span class="pill">Importance 85/100</span>
-                    </p>
+            <OfferDetailModal
+              id="offer-clifford-ancilla-minimisation"
+              labelledBy="offer-clifford-ancilla-minimisation-title"
+            >
+              <h3 id="offer-clifford-ancilla-minimisation-title" class="offer-modal__title">
+                Clifford+ancilla minimisation (gate count/depth vs number of ancillas)
+              </h3>
+
+              <div class="offer-modal__body">
+                    <OfferSummaryBlock offer={offerSummaryById["offer-clifford-ancilla-minimisation"]} />
 
                     <p>
                       <strong>Goal:</strong> Build optimisation methods for Clifford(-dominant) circuits that treat <strong>ancillas as an explicit resource</strong>,
@@ -991,19 +910,25 @@ const legend = [
                       <a href={refs.ancillaCostTradeoff} target="_blank" rel="noopener noreferrer">arXiv:1405.6073</a>)
                     </p>
                   </div>
-                </details>
-              </div>
-            </details>
-
-            {/* If you ever want to *fully hide* the backlog from the public page, you can wrap the whole <details class="offer-group"> ... </details>
-                in a conditional flag or comment it out. I kept it visible but clearly labeled "Backlog / parked". */}
+            </OfferDetailModal>
           </>
         ) : null}
+
+        {s.offers.length > 0 ? (
+          <section class="offer-browser" aria-label={`${s.title} projects`}>
+            <div class="offer-browser-grid">
+              {s.offers.map((offer) => (
+                <OfferPreviewCard offer={offer} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
       </section>
     ))}
 
-    {/* Optional debug (remove anytime) */}
-    {postsWithUnknownKeys.length ? (
+    {/* Keep taxonomy debugging in development only. */}
+    {import.meta.env.DEV && postsWithUnknownKeys.length ? (
       <details style="margin-top: 2rem;">
         <summary class="muted">Debug: posts with unknown research keys</summary>
         <ul>
@@ -1016,6 +941,51 @@ const legend = [
       </details>
     ) : null}
   </article>
+
+  <script>
+    (() => {
+      const marker = "__offerModalBindings";
+      if ((window as typeof window & { [key: string]: boolean })[marker]) return;
+      (window as typeof window & { [key: string]: boolean })[marker] = true;
+
+      function openOfferModal(id: string | undefined) {
+        if (!id) return;
+        const dialog = document.getElementById(`${id}-dialog`);
+        if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
+        dialog.showModal();
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const trigger = target.closest("[data-offer-modal-trigger]");
+        if (trigger instanceof HTMLElement) {
+          event.preventDefault();
+          openOfferModal(trigger.dataset.offerModalTrigger);
+          return;
+        }
+
+        const closeButton = target.closest("[data-offer-modal-close]");
+        if (closeButton instanceof HTMLElement) {
+          const dialog = closeButton.closest("dialog");
+          if (dialog instanceof HTMLDialogElement) dialog.close();
+          return;
+        }
+
+        if (target instanceof HTMLDialogElement) {
+          const rect = target.getBoundingClientRect();
+          const clickedBackdrop =
+            event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom;
+
+          if (clickedBackdrop) target.close();
+        }
+      });
+    })();
+  </script>
 
   <style>
     .ideas {
@@ -1036,13 +1006,6 @@ const legend = [
 
     .muted {
       color: var(--color-muted);
-    }
-
-    .subtle {
-      margin-top: 1.25rem;
-      margin-bottom: 0.5rem;
-      font-size: 1.05rem;
-      opacity: 0.95;
     }
 
     /* Spotlight cards */
@@ -1068,12 +1031,17 @@ const legend = [
     }
 
     .spotlight-card {
+      appearance: none;
       display: block;
-      text-decoration: none;
+      width: 100%;
       border: 1px solid var(--color-border);
       border-radius: 0.9rem;
       padding: 0.9rem 1rem;
       background: var(--color-bg);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
       transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
     }
 
@@ -1083,8 +1051,9 @@ const legend = [
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
     }
 
-    .spotlight-card--soon {
-      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+    .spotlight-card:focus-visible {
+      outline: 3px solid var(--color-accent);
+      outline-offset: 3px;
     }
 
     .spotlight-head {
@@ -1099,15 +1068,6 @@ const legend = [
       margin: 0.2rem 0 0.35rem;
       font-size: 1.02rem;
       color: var(--color-text);
-    }
-
-    .meter-row {
-      margin-top: 0.65rem;
-    }
-
-    meter {
-      width: 100%;
-      height: 0.75rem;
     }
 
     /* Legend */
@@ -1163,6 +1123,14 @@ const legend = [
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
     }
 
+    .topic-card-head {
+      display: flex;
+      gap: 0.75rem;
+      align-items: start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
     .topic-title {
       font-weight: 750;
       margin-bottom: 0.25rem;
@@ -1181,49 +1149,31 @@ const legend = [
       flex-wrap: wrap;
     }
 
+    .offer-browser {
+      margin-top: 1.25rem;
+    }
+
+    .offer-browser-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    @media (min-width: 760px) {
+      .offer-browser-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
     /* Posts list */
     .research-section {
       margin-top: 2.5rem;
       scroll-margin-top: 5rem;
     }
 
-    .post-list {
-      padding-left: 1.25rem;
-      margin: 0.75rem 0 1rem;
-    }
-
-    .post-item {
-      margin: 0 0 0.85rem;
-    }
-
-    .post-link {
-      font-weight: 650;
-    }
-
-    .post-meta {
-      display: flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-top: 0.15rem;
-    }
-
-    .tags {
-      display: inline-flex;
-      gap: 0.4rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
     /* Tags & pills */
-    .tag-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin: 0.75rem 0 1rem;
-    }
-
-    .tag {
+    :global(.tag) {
       display: inline-block;
       padding: 0.12rem 0.5rem;
       border: 1px solid var(--color-border);
@@ -1233,7 +1183,7 @@ const legend = [
       background: color-mix(in oklab, var(--color-bg) 92%, var(--color-border) 8%);
     }
 
-    .pill {
+    :global(.pill) {
       display: inline-block;
       padding: 0.12rem 0.5rem;
       border: 1px solid var(--color-border);
@@ -1244,125 +1194,43 @@ const legend = [
       background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
     }
 
-    .pill--score {
-      background: color-mix(in oklab, var(--color-bg) 90%, var(--color-accent) 10%);
-      border-color: color-mix(in oklab, var(--color-border) 65%, var(--color-accent) 35%);
-    }
-
-    .pill--focus {
+    :global(.pill--focus) {
       background: color-mix(in oklab, var(--color-bg) 84%, var(--color-accent) 16%);
       border-color: color-mix(in oklab, var(--color-border) 60%, var(--color-accent) 40%);
     }
 
-    .pill--open {
+    :global(.pill--open) {
       background: color-mix(in oklab, var(--color-bg) 90%, var(--color-accent) 10%);
       border-color: color-mix(in oklab, var(--color-border) 70%, var(--color-accent) 30%);
     }
 
-    .pill--incubating {
+    :global(.pill--incubating) {
       background: color-mix(in oklab, var(--color-bg) 92%, orange 8%);
       border-color: color-mix(in oklab, var(--color-border) 78%, orange 22%);
     }
 
-    .pill--parked {
+    :global(.pill--parked) {
       background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
       opacity: 0.95;
     }
 
-    /* Offers accordion (details/summary) */
-    details.offer,
-    details.offer-group {
-      border: 1px solid var(--color-border);
-      border-radius: 0.9rem;
-      padding: 0.75rem 1rem;
-      margin: 0 0 0.75rem;
-      background: var(--color-bg);
+    .offer-modal__title {
+      margin: 0 0 1rem;
+      padding-right: 0;
     }
 
-    details.offer summary,
-    details.offer-group summary {
-      cursor: pointer;
-      font-weight: 750;
-      list-style: none;
-    }
-
-    details.offer summary::-webkit-details-marker,
-    details.offer-group summary::-webkit-details-marker {
-      display: none;
-    }
-
-    details.offer summary:focus-visible,
-    details.offer-group summary:focus-visible {
-      outline: 3px solid var(--color-accent);
-      outline-offset: 3px;
-      border-radius: 8px;
-    }
-
-    details.offer summary::before,
-    details.offer-group summary::before {
-      content: "▸";
-      display: inline-block;
-      margin-right: 0.55rem;
-      transform: translateY(1px);
-      transition: transform 140ms ease;
-    }
-
-    details.offer[open] summary::before,
-    details.offer-group[open] summary::before {
-      transform: rotate(90deg) translateY(1px);
-    }
-
-    details.offer .body,
-    details.offer-group .body {
-      margin-top: 0.75rem;
-    }
-
-    details.offer .body > :last-child,
-    details.offer-group .body > :last-child {
+    .offer-modal__body > :last-child {
       margin-bottom: 0;
-    }
-
-    .meta {
-      margin-top: 0;
-      margin-bottom: 0.85rem;
-      display: flex;
-      gap: 0.45rem;
-      flex-wrap: wrap;
-      align-items: center;
     }
 
     .refs {
       margin-top: 1rem;
     }
 
-    /* Small motion polish (disable if user prefers reduced motion) */
-    details.offer[open] .body,
-    details.offer-group[open] .body {
-      animation: fadeSlide 160ms ease-out;
-    }
-
-    @keyframes fadeSlide {
-      from {
-        opacity: 0;
-        transform: translateY(-4px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
     @media (prefers-reduced-motion: reduce) {
       .spotlight-card,
-      .topic-card,
-      details.offer summary::before,
-      details.offer-group summary::before {
+      .topic-card {
         transition: none;
-      }
-
-      details.offer[open] .body,
-      details.offer-group[open] .body {
-        animation: none;
       }
     }
 
@@ -1382,3 +1250,4 @@ const legend = [
     }
   </style>
 </BaseLayout>
+

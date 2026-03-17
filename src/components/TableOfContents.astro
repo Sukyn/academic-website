@@ -1,4 +1,4 @@
----
+﻿---
 import katex from "katex";
 
 type Heading = { depth: number; slug: string; text: string };
@@ -111,7 +111,7 @@ function renderTocLabel(input: string) {
   .toc-summary::-webkit-details-marker { display: none; }
 
   .toc-summary::before {
-    content: "▸";
+    content: "\25B8";
     display: inline-block;
     transform: translateY(1px);
   }
@@ -156,17 +156,13 @@ function renderTocLabel(input: string) {
   details.toc[open] {
     padding: 0.7rem 0.9rem;
     margin: 0.35rem 0 0.85rem;
-    overflow: hidden; /* ✅ keeps content inside rounded border */
+    overflow: hidden;
   }
 
   details.toc[open] .toc-nav {
     margin-top: 0.65rem;
-
-    /* ✅ this is the key */
     max-height: min(60vh, 22rem);
     overflow: auto;
-
-    /* optional: breathing room so scrollbar doesn't sit on text */
     padding-right: 0.25rem;
   }
   :root:not([data-theme="dark"]) details.toc .toc-nav {
@@ -201,3 +197,4 @@ details.toc[open] .toc-nav {
   overscroll-behavior: contain;
 }
 </style>
+

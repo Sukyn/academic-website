@@ -1,0 +1,59 @@
+---
+import type { OfferSummary } from "../data/offerSummaries";
+
+const { offer } = Astro.props as { offer: OfferSummary };
+---
+
+<section class="offer-snapshot" aria-label="At a glance">
+  <div class="offer-snapshot-item">
+    <p class="offer-snapshot-label">Who this fits</p>
+    <p>{offer.fit}</p>
+  </div>
+
+  <div class="offer-snapshot-item">
+    <p class="offer-snapshot-label">Background</p>
+    <p>{offer.background}</p>
+  </div>
+
+  <div class="offer-snapshot-item">
+    <p class="offer-snapshot-label">Likely output</p>
+    <p>{offer.output}</p>
+  </div>
+
+  <div class="offer-snapshot-item">
+    <p class="offer-snapshot-label">First milestone</p>
+    <p>{offer.firstMilestone}</p>
+  </div>
+</section>
+
+<style>
+  .offer-snapshot {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+    background: color-mix(in oklab, var(--color-bg) 95%, var(--color-accent) 5%);
+  }
+
+  .offer-snapshot-item p {
+    margin: 0;
+  }
+
+  .offer-snapshot-label {
+    margin-bottom: 0.2rem !important;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  @media (min-width: 760px) {
+    .offer-snapshot {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
