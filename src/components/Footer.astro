@@ -1,29 +1,33 @@
 ---
+import {
+  internalQuickLinks,
+  profileLinks,
+  siteProfile,
+} from "../data/site";
+
 const year = new Date().getFullYear();
 ---
 
 <footer class="site-footer">
   <div class="container footer-inner">
-    <p class="muted">© {year} Colin Blake</p>
+    <div class="footer-copy">
+      <p>&copy; {year} {siteProfile.name}</p>
+    </div>
 
     <ul class="footer-links">
+      {internalQuickLinks.map((link) => (
+        <li>
+          <a href={link.href}>{link.label}</a>
+        </li>
+      ))}
 
-      <li>
-        <a href="https://scholar.google.com/citations?user=ocfCHPcAAAAJ&hl=fr&oi=sra" target="_blank" rel="noopener noreferrer">
-          Google Scholar
-        </a>
-      </li>
-
-      <li>
-        <a href="https://www.linkedin.com/in/colin-blake/" target="_blank" rel="noopener noreferrer">
-          LinkedIn
-        </a>
-      </li>
-      <li>
-        <a href="https://github.com/Sukyn/" target="_blank" rel="noopener noreferrer">
-          GitHub
-        </a>
-      </li>
+      {profileLinks.map((link) => (
+        <li>
+          <a href={link.href} target="_blank" rel="noopener noreferrer">
+            {link.label}
+          </a>
+        </li>
+      ))}
     </ul>
   </div>
 
@@ -35,10 +39,14 @@ const year = new Date().getFullYear();
 
     .footer-inner {
       display: flex;
-      align-items: baseline;
+      align-items: start;
       justify-content: space-between;
       gap: 1rem;
       flex-wrap: wrap;
+    }
+
+    .footer-copy p {
+      margin-bottom: 0;
     }
 
     .footer-links {

@@ -1,0 +1,221 @@
+---
+export interface Props {
+  src?: string;
+  alt?: string;
+}
+
+const {
+  src = "/og/pp.jpg",
+  alt = "Stylized profile picture of Colin Blake",
+} = Astro.props;
+---
+
+<section class="scratch-profile" data-scratch-profile>
+  <div class="scratch-ticket">
+    <div class="scratch-window">
+      <img
+        src={src}
+        alt={alt}
+        width="240"
+        height="240"
+        loading="eager"
+        decoding="async"
+      />
+      <canvas class="scratch-cover" data-scratch-canvas aria-hidden="true"></canvas>
+    </div>
+  </div>
+</section>
+
+<script is:inline>
+  const SCRATCH_SELECTOR = "[data-scratch-profile]";
+
+  function bindScratchProfile(root) {
+    if (!(root instanceof HTMLElement) || root.dataset.bound === "true") return;
+    root.dataset.bound = "true";
+
+    const image = root.querySelector("img");
+    const canvas = root.querySelector("[data-scratch-canvas]");
+
+    if (!(image instanceof HTMLImageElement) || !(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    let ready = false;
+    let revealed = false;
+    let scratching = false;
+
+    const drawCover = () => {
+      const rect = image.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.clearRect(0, 0, rect.width, rect.height);
+      context.fillStyle = "#a7adb7";
+      context.fillRect(0, 0, rect.width, rect.height);
+    };
+
+    const reveal = () => {
+      if (revealed) return;
+      revealed = true;
+      root.dataset.revealed = "true";
+      canvas.style.pointerEvents = "none";
+    };
+
+    const clearedRatio = () => {
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let transparent = 0;
+      let samples = 0;
+
+      for (let i = 3; i < pixels.length; i += 32) {
+        samples += 1;
+        if (pixels[i] < 48) transparent += 1;
+      }
+
+      return samples === 0 ? 0 : transparent / samples;
+    };
+
+    const scratchAt = (clientX, clientY) => {
+      if (!ready || revealed) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const radius = Math.max(16, rect.width * 0.12);
+
+      context.save();
+      context.globalCompositeOperation = "destination-out";
+
+      const brush = context.createRadialGradient(x, y, radius * 0.2, x, y, radius);
+      brush.addColorStop(0, "rgba(0, 0, 0, 1)");
+      brush.addColorStop(1, "rgba(0, 0, 0, 0.2)");
+
+      context.fillStyle = brush;
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    };
+
+    const finishScratch = () => {
+      scratching = false;
+      if (!revealed && clearedRatio() > 0.22) reveal();
+    };
+
+    const onPointerDown = (event) => {
+      if (revealed) return;
+      scratching = true;
+      canvas.setPointerCapture?.(event.pointerId);
+      scratchAt(event.clientX, event.clientY);
+    };
+
+    const onPointerMove = (event) => {
+      if (!scratching || revealed) return;
+      scratchAt(event.clientX, event.clientY);
+    };
+
+    const prepare = () => {
+      if (ready) return;
+      ready = true;
+      root.dataset.ready = "true";
+      drawCover();
+    };
+
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", finishScratch);
+    canvas.addEventListener("pointercancel", finishScratch);
+    canvas.addEventListener("pointerleave", () => {
+      if (scratching) finishScratch();
+    });
+
+    if (image.complete) prepare();
+    else image.addEventListener("load", prepare, { once: true });
+
+    if ("ResizeObserver" in window) {
+      const resizeObserver = new ResizeObserver(() => {
+        if (!revealed) drawCover();
+      });
+      resizeObserver.observe(image);
+    }
+  }
+
+  function bindScratchProfiles() {
+    document.querySelectorAll(SCRATCH_SELECTOR).forEach(bindScratchProfile);
+  }
+
+  bindScratchProfiles();
+
+  if (!window["__scratchProfileListenerBound"]) {
+    window["__scratchProfileListenerBound"] = true;
+    document.addEventListener("astro:page-load", bindScratchProfiles);
+  }
+</script>
+
+<style>
+  .scratch-profile {
+    justify-self: center;
+    width: min(100%, 11rem);
+  }
+
+  .scratch-ticket {
+    width: 100%;
+  }
+
+  .scratch-window {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 0.9rem;
+    background: #a7adb7;
+  }
+
+  .scratch-window img,
+  .scratch-cover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .scratch-window img {
+    display: block;
+    object-fit: cover;
+    object-position: center 18%;
+    image-rendering: crisp-edges;
+  }
+
+  .scratch-cover {
+    display: none;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .scratch-cover:active {
+    cursor: grabbing;
+  }
+
+  .scratch-profile[data-ready="true"] .scratch-cover {
+    display: block;
+  }
+
+  .scratch-profile[data-revealed="true"] .scratch-cover {
+    opacity: 0;
+    transition: opacity 180ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scratch-profile[data-revealed="true"] .scratch-cover {
+      transition: none;
+    }
+  }
+</style>

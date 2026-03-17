@@ -1,39 +1,91 @@
-<button class="theme-toggle" type="button">
-  Theme
+<button
+  class="theme-toggle"
+  type="button"
+  aria-pressed="false"
+  aria-label="Switch to dark theme"
+  title="Switch to dark theme"
+>
+  <span class="theme-toggle__icon" aria-hidden="true">☀</span>
+  <span class="visually-hidden theme-toggle__text">Light theme active</span>
 </button>
 
-<script>
-  const KEY = "theme";
-  const btn = document.querySelector(".theme-toggle");
+<script is:inline>
+  const selector = ".theme-toggle";
 
-  const apply = (t) => {
-    if (t === "dark") document.documentElement.dataset.theme = "dark";
-    else delete document.documentElement.dataset.theme;
+  const syncThemeToggle = () => {
+    const btn = document.querySelector(selector);
+    if (!(btn instanceof HTMLButtonElement)) return;
+
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const nextLabel = isDark ? "Switch to light theme" : "Switch to dark theme";
+    const currentLabel = isDark ? "Dark theme active" : "Light theme active";
+    const text = btn.querySelector(".theme-toggle__text");
+    const icon = btn.querySelector(".theme-toggle__icon");
+
+    btn.setAttribute("aria-pressed", String(isDark));
+    btn.setAttribute("aria-label", nextLabel);
+    btn.title = nextLabel;
+
+    if (text) text.textContent = currentLabel;
+    if (icon) icon.textContent = isDark ? "☾" : "☀";
   };
 
-  const stored = localStorage.getItem(KEY);
-  if (stored) apply(stored);
+  const bindThemeToggle = () => {
+    const btn = document.querySelector(selector);
+    const themeApi = window.__theme;
 
-  btn?.addEventListener("click", () => {
-    const isDark = document.documentElement.dataset.theme === "dark";
-    const next = isDark ? "light" : "dark";
-    localStorage.setItem(KEY, next);
-    apply(next);
-  });
+    if (!(btn instanceof HTMLButtonElement) || !themeApi) return;
+
+    if (btn.dataset.bound !== "true") {
+      btn.dataset.bound = "true";
+      btn.addEventListener("click", () => {
+        const nextTheme =
+          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        themeApi.setTheme(nextTheme);
+      });
+    }
+
+    syncThemeToggle();
+  };
+
+  bindThemeToggle();
+  document.addEventListener("astro:page-load", bindThemeToggle);
+  document.addEventListener("theme:change", syncThemeToggle);
 </script>
 
 <style>
   .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
     border: 1px solid var(--color-border);
+    border-radius: 999px;
     background: transparent;
     color: var(--color-muted);
-    padding: 0.35rem 0.6rem;
-    border-radius: 0.6rem;
     cursor: pointer;
+    flex: 0 0 auto;
   }
-  .theme-toggle:hover { color: var(--color-text); }
+
+  .theme-toggle:hover {
+    color: var(--color-text);
+  }
+
   .theme-toggle:focus-visible {
     outline: 3px solid var(--color-accent);
     outline-offset: 3px;
+  }
+
+  .theme-toggle__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    font-size: 0.95rem;
+    line-height: 1;
+    font-weight: 700;
   }
 </style>

@@ -1,0 +1,25 @@
+---
+import OfferSnapshot from "./OfferSnapshot.astro";
+import type { OfferSummary } from "../data/offerSummaries";
+
+const { offer } = Astro.props as { offer: OfferSummary };
+---
+
+<p class="meta">
+  <span class={`pill ${offer.statusClass}`}>{offer.status}</span>
+  <span class="pill">{offer.fitBadge}</span>
+  <span class="pill">{offer.scope}</span>
+</p>
+
+<OfferSnapshot offer={offer} />
+
+<style>
+  .meta {
+    margin-top: 0;
+    margin-bottom: 0.85rem;
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+</style>

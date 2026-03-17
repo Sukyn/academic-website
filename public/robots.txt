@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.colin-blake.eu/sitemap-index.xml
+Sitemap: https://colin-blake.eu/sitemap-index.xml

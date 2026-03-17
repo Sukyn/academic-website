@@ -1,118 +1,51 @@
 ---
+import BlogArchiveList from "../components/BlogArchiveList.astro";
+import BlogPagination from "../components/BlogPagination.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { getCollection } from "astro:content";
+import {
+  getPageCount,
+  getPostsForPage,
+  getVisiblePosts,
+} from "../lib/posts";
 
-const POSTS_PER_PAGE = 5;
-
-// Draft handling:
-// - In dev: show everything
-// - In prod: hide draft posts
-const allPosts = (await getCollection("posts", ({ data }) => {
-  return import.meta.env.PROD ? data.draft !== true : true;
-})).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
-
-const pageCount = Math.max(1, Math.ceil(allPosts.length / POSTS_PER_PAGE));
-const posts = allPosts.slice(0, POSTS_PER_PAGE);
-
-const WORDS_PER_MINUTE = 200;
-
-const dateFmt = new Intl.DateTimeFormat("en-GB", {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-});
-
-function formatDate(d: Date) {
-  return dateFmt.format(d);
-}
-
-function readingTimeFromText(text: string) {
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  const minutes = Math.max(1, Math.ceil(words / WORDS_PER_MINUTE));
-  return `(${minutes} min read)`;
-}
+const allPosts = await getVisiblePosts();
+const pageCount = getPageCount(allPosts.length);
+const posts = getPostsForPage(allPosts, 1);
 ---
 
-<BaseLayout title="Blog" description="Writing, notes, and research updates.">
+<BaseLayout
+  title="Writing"
+  description="Expository posts and research notes on quantum circuits, qudits, and nearby mathematics."
+>
   <section class="prose">
-    <h1>Blog</h1>
+    <h1>Writing</h1>
+
+    <p class="lead">
+      These posts are where I try to make circuit algebra feel more legible:
+      sometimes by explaining a core idea gently, sometimes by writing down the
+      structural viewpoint I wish I had found earlier.
+    </p>
 
     {allPosts.length === 0 ? (
       <p class="muted">No posts yet. Check back soon.</p>
     ) : (
       <>
-        <ol class="post-list" aria-label="Posts">
-          {posts.map((post) => (
-            <li class="post-item">
-              <a class="post-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
-
-              <div class="post-meta">
-                <time datetime={post.data.date.toISOString()}>
-                  {formatDate(post.data.date)}
-                </time>
-
-                <span class="reading-time">{readingTimeFromText(post.body)}</span>
-
-                {(post.data.tags?.length ?? 0) > 0 ? (
-                  <span class="tags" aria-label="Tags">
-                    {post.data.tags.map((t) => (
-                      <a class="tag" href={`/tags/${encodeURIComponent(t)}/`}>{t}</a>
-                    ))}
-                  </span>
-                ) : null}
-
-                {post.data.draft ? <span class="pill draft">Draft</span> : null}
-              </div>
-
-              {post.data.description ? (
-                <p class="muted">{post.data.description}</p>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-
-        {pageCount > 1 ? (
-          <nav class="pagination" aria-label="Blog pagination">
-            <span class="muted">Page 1 of {pageCount}</span>
-            <a href="/blog/page/2">Next →</a>
-          </nav>
-        ) : null}
+        <h2>Archive</h2>
+        <BlogArchiveList posts={posts} />
+        <BlogPagination currentPage={1} pageCount={pageCount} />
       </>
     )}
 
-    <p class="rss-link"><a href="/rss.xml">RSS</a></p>
+    <p class="rss-link"><a href="/rss.xml">RSS feed</a></p>
   </section>
 
   <style>
-    .post-list { list-style: none; padding: 0; margin: 1.25rem 0 0; }
-    .post-item { padding: 1rem 0; border-top: 1px solid var(--color-border); }
-    .post-item:first-child { border-top: none; padding-top: 0; }
-
-    .post-link {
-      text-decoration: none;
-      font-weight: 750;
-    }
-    .post-link:hover {
-      text-decoration: underline;
-      text-underline-offset: 4px;
+    .lead {
+      font-size: 1.05rem;
     }
 
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
+    .rss-link {
       margin-top: 1.25rem;
     }
-
-    .pagination a {
-      text-decoration: none;
-    }
-    .pagination a:hover {
-      text-decoration: underline;
-      text-underline-offset: 4px;
-    }
-
-    .rss-link { margin-top: 1.25rem; }
   </style>
 </BaseLayout>

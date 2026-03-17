@@ -7,6 +7,8 @@ import "../styles/global.css";
 export interface Props {
   title: string;
   description?: string;
+  includeKatex?: boolean;
+  showWallpaper?: boolean;
 
   /** Absolute or site-relative (recommended: "/og/default.png") */
   ogImage?: string;
@@ -17,10 +19,16 @@ export interface Props {
 
 const {
   title,
-  description = "Academic website.",
+  description = "Quantum computing research, expository notes, and collaboration ideas by Colin Blake.",
+  includeKatex = false,
+  showWallpaper = false,
   ogImage,
   canonicalUrl,
 } = Astro.props;
+
+const siteName = "Colin Blake";
+const pageTitle =
+  title === "Home" || title === siteName ? siteName : `${title} | ${siteName}`;
 
 // Canonical URL (good for SEO + sharing)
 const canonical =
@@ -74,6 +82,17 @@ const isProd = import.meta.env.PROD;
         else delete document.documentElement.dataset.theme;
       };
 
+      const setTheme = (t) => {
+        try {
+          localStorage.setItem(KEY, t);
+        } catch {}
+
+        applyTheme(t);
+        document.dispatchEvent(new CustomEvent("theme:change", { detail: { theme: t } }));
+      };
+
+      window.__theme = { getTheme, setTheme };
+
       applyTheme(getTheme());
 
       // When Astro swaps pages on client-side navigation, ensure theme is set before the swap paints.
@@ -82,13 +101,15 @@ const isProd = import.meta.env.PROD;
       });
     </script>
 
-    <title>{title}</title>
+    <title>{pageTitle}</title>
     <meta name="description" content={description} />
+    <meta name="author" content={siteName} />
     <link rel="canonical" href={canonical} />
 
     <!-- OpenGraph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content={title} />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     {resolvedOgImage ? <meta property="og:image" content={resolvedOgImage} /> : null}
@@ -98,28 +119,31 @@ const isProd = import.meta.env.PROD;
       name="twitter:card"
       content={resolvedOgImage ? "summary_large_image" : "summary"}
     />
-    <meta name="twitter:title" content={title} />
+    <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     {resolvedOgImage ? <meta name="twitter:image" content={resolvedOgImage} /> : null}
 
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
-    />
+    {includeKatex ? (
+      <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.css"
+      />
+    ) : null}
 
     <!-- Cloudflare Web Analytics (prod-only) -->
     {isProd && cfToken ? (
       <script
+        is:inline
         defer
         src="https://static.cloudflareinsights.com/beacon.min.js"
-        data-cf-beacon={JSON.stringify({ token: cfToken, spa: true  })}
+        data-cf-beacon={JSON.stringify({ token: cfToken, spa: true })}
       />
     ) : null}
   </head>
 
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <ZXWallpaper />
+    {showWallpaper ? <ZXWallpaper /> : null}
     <div class="page">
       <Header />
       <main id="main-content" class="container">
