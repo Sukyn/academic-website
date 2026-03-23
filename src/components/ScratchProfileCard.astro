@@ -2,19 +2,31 @@
 export interface Props {
   src?: string;
   alt?: string;
+  sources?: string[];
 }
 
 const {
   src = "/og/pp.jpg",
   alt = "Stylized profile picture of Colin Blake",
+  sources,
 } = Astro.props;
+
+const imageSources = Array.from(
+  new Set(
+    sources ?? [src, "/og/pp-2.jpg", "/og/pp-3.jpg", "/og/pp-4.jpg", "/og/pp-5.png"],
+  ),
+);
 ---
 
-<section class="scratch-profile" data-scratch-profile>
+<section
+  class="scratch-profile"
+  data-scratch-profile
+  data-scratch-sources={JSON.stringify(imageSources)}
+>
   <div class="scratch-ticket">
     <div class="scratch-window">
       <img
-        src={src}
+        src={imageSources[0]}
         alt={alt}
         width="240"
         height="240"
@@ -43,13 +55,44 @@ const {
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    let ready = false;
-    let revealed = false;
-    let scratching = false;
+    let sources = [image.getAttribute("src") || image.src].filter(Boolean);
+    try {
+      const parsed = JSON.parse(root.dataset.scratchSources || "[]");
+      if (Array.isArray(parsed)) {
+        const validSources = parsed.filter((value) => typeof value === "string" && value.length > 0);
+        if (validSources.length) sources = validSources;
+      }
+    } catch {}
 
-    const drawCover = () => {
+    const assetCache = new Map();
+    let ready = false;
+    let scratching = false;
+    let revealed = false;
+    let currentIndex = 0;
+    let roundTimer = 0;
+    let transitioning = false;
+    let coverMode = "gray";
+    let coverSource = "";
+    let coverAsset = null;
+    let coverSnapshot = null;
+
+    const getCurrentSource = () => image.getAttribute("src") || image.currentSrc || image.src || "";
+
+    const updatePointerState = () => {
+      const isFinalReveal = revealed && currentIndex >= sources.length - 1;
+      canvas.style.pointerEvents = ready && !transitioning && !isFinalReveal ? "auto" : "none";
+    };
+
+    const setRevealed = (value) => {
+      revealed = value;
+      if (value) root.dataset.revealed = "true";
+      else delete root.dataset.revealed;
+      updatePointerState();
+    };
+
+    const resizeCanvas = () => {
       const rect = image.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+      if (!rect.width || !rect.height) return null;
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(rect.width * dpr);
@@ -58,16 +101,165 @@ const {
       canvas.style.height = `${rect.height}px`;
 
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return rect;
+    };
+
+    const drawDrawable = (drawable, rect) => {
+      const sourceWidth = "naturalWidth" in drawable ? drawable.naturalWidth : drawable.width;
+      const sourceHeight = "naturalHeight" in drawable ? drawable.naturalHeight : drawable.height;
+      if (!sourceWidth || !sourceHeight) return;
+
+      const scale = Math.max(rect.width / sourceWidth, rect.height / sourceHeight);
+      const drawWidth = sourceWidth * scale;
+      const drawHeight = sourceHeight * scale;
+      const offsetX = (rect.width - drawWidth) * 0.5;
+      const offsetY = (rect.height - drawHeight) * 0.18;
+
+      context.drawImage(drawable, offsetX, offsetY, drawWidth, drawHeight);
+    };
+
+    const saveCoverSnapshot = () => {
+      const snapshot = document.createElement("canvas");
+      snapshot.width = canvas.width;
+      snapshot.height = canvas.height;
+
+      const snapshotContext = snapshot.getContext("2d");
+      if (!snapshotContext) return;
+
+      snapshotContext.drawImage(canvas, 0, 0);
+      coverSnapshot = snapshot;
+    };
+
+    const drawCover = () => {
+      const rect = resizeCanvas();
+      if (!rect) return;
+
       context.clearRect(0, 0, rect.width, rect.height);
+
+      if (coverMode === "gray") {
+        context.fillStyle = "#a7adb7";
+        context.fillRect(0, 0, rect.width, rect.height);
+        return;
+      }
+
+      if (coverAsset) {
+        drawDrawable(coverAsset, rect);
+        return;
+      }
+
+      if (coverSnapshot) {
+        context.drawImage(coverSnapshot, 0, 0, rect.width, rect.height);
+        return;
+      }
+
       context.fillStyle = "#a7adb7";
       context.fillRect(0, 0, rect.width, rect.height);
     };
 
-    const reveal = () => {
-      if (revealed) return;
-      revealed = true;
-      root.dataset.revealed = "true";
-      canvas.style.pointerEvents = "none";
+    const loadAsset = (src) => {
+      if (!src) return Promise.resolve(null);
+      if (assetCache.has(src)) return assetCache.get(src);
+
+      const assetPromise = new Promise((resolve, reject) => {
+        const asset = new Image();
+        asset.decoding = "async";
+        asset.addEventListener("load", () => resolve(asset), { once: true });
+        asset.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+        asset.src = src;
+      }).catch((error) => {
+        assetCache.delete(src);
+        throw error;
+      });
+
+      assetCache.set(src, assetPromise);
+      return assetPromise;
+    };
+
+    const setGrayCover = () => {
+      coverMode = "gray";
+      coverSource = "";
+      coverAsset = null;
+      coverSnapshot = null;
+      drawCover();
+    };
+
+    const showImageCover = () => {
+      coverMode = "image";
+      coverSource = getCurrentSource();
+      coverAsset = null;
+
+      const rect = resizeCanvas();
+      if (!rect) return;
+
+      context.clearRect(0, 0, rect.width, rect.height);
+      drawDrawable(image, rect);
+      saveCoverSnapshot();
+
+      const source = coverSource;
+      void loadAsset(source)
+        .then((asset) => {
+          if (coverSource !== source) return;
+          coverAsset = asset;
+          if (!revealed) drawCover();
+        })
+        .catch(() => {});
+    };
+
+    const waitForImage = (nextSource) =>
+      new Promise((resolve) => {
+        if (getCurrentSource() === nextSource && image.complete) {
+          resolve();
+          return;
+        }
+
+        const cleanup = () => {
+          image.removeEventListener("load", onLoad);
+          image.removeEventListener("error", onError);
+        };
+
+        const onLoad = () => {
+          cleanup();
+          resolve();
+        };
+
+        const onError = () => {
+          cleanup();
+          resolve();
+        };
+
+        image.addEventListener("load", onLoad);
+        image.addEventListener("error", onError);
+        image.src = nextSource;
+      });
+
+    const advanceRound = () => {
+      if (roundTimer) {
+        window.clearTimeout(roundTimer);
+        roundTimer = 0;
+      }
+
+      if (currentIndex >= sources.length - 1) {
+        ready = false;
+        transitioning = false;
+        updatePointerState();
+        return;
+      }
+
+      const nextIndex = currentIndex + 1;
+      transitioning = true;
+      ready = false;
+      updatePointerState();
+
+      showImageCover();
+      setRevealed(false);
+
+      void waitForImage(sources[nextIndex]).then(() => {
+        currentIndex = nextIndex;
+        ready = true;
+        transitioning = false;
+        root.dataset.ready = "true";
+        updatePointerState();
+      });
     };
 
     const clearedRatio = () => {
@@ -84,7 +276,7 @@ const {
     };
 
     const scratchAt = (clientX, clientY) => {
-      if (!ready || revealed) return;
+      if (!ready || revealed || transitioning) return;
 
       const rect = canvas.getBoundingClientRect();
       const x = clientX - rect.left;
@@ -107,11 +299,25 @@ const {
 
     const finishScratch = () => {
       scratching = false;
-      if (!revealed && clearedRatio() > 0.22) reveal();
+      if (revealed || clearedRatio() <= 0.22) return;
+
+      setRevealed(true);
+
+      if (currentIndex >= sources.length - 1) {
+        ready = false;
+        updatePointerState();
+        return;
+      }
+
+      transitioning = true;
+      updatePointerState();
+      roundTimer = window.setTimeout(() => {
+        advanceRound();
+      }, 240);
     };
 
     const onPointerDown = (event) => {
-      if (revealed) return;
+      if (revealed || transitioning) return;
       scratching = true;
       canvas.setPointerCapture?.(event.pointerId);
       scratchAt(event.clientX, event.clientY);
@@ -123,10 +329,12 @@ const {
     };
 
     const prepare = () => {
-      if (ready) return;
       ready = true;
+      transitioning = false;
       root.dataset.ready = "true";
-      drawCover();
+      setGrayCover();
+      setRevealed(false);
+      updatePointerState();
     };
 
     canvas.addEventListener("pointerdown", onPointerDown);

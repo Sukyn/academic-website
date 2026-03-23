@@ -27,6 +27,11 @@ const refs = {
   // --- My current affine-plus-diagonal work (placeholder until the arXiv exists)
   primeAffineDiagonalFragments: "https://arxiv.org/abs/2603.06466",
 
+  // --- Control as structure / promise-style control
+  polycontrolledProps: "https://arxiv.org/abs/2602.09873",
+  controlledProps: "https://arxiv.org/abs/2508.21756",
+  comparatorsIncrementers: "https://arxiv.org/abs/2603.12917",
+
   // --- ZX / ZH calculi & tooling
   zxCompleteThesis: "https://arxiv.org/abs/2209.14894",
   zxCompleteFiniteDim: "https://arxiv.org/abs/2405.10896",
@@ -130,7 +135,7 @@ const topics = [
     title: "Alternative algebraic viewpoints",
     description:
       "Cyclotomic/exact synthesis perspectives, Clifford/geometric algebra formalisms, and compiler-friendly representations.",
-    ideaCount: 2,
+    ideaCount: 3,
     status: "Tomorrow-problem",
     statusClass: "pill--incubating",
     bestFor: "self-directed researchers or advanced students with a strong algebra background",
@@ -139,7 +144,7 @@ const topics = [
     key: "equational-theory",
     title: "Equational theories & rewriting",
     description: "Axioms, completeness and minimality questions, normal forms, and rewriting systems.",
-    ideaCount: 3,
+    ideaCount: 4,
     status: "Current focus",
     statusClass: "pill--focus",
     bestFor: "researchers who want theorem work with compiler consequences",
@@ -567,6 +572,49 @@ const legend = [
                 </p>
               </div>
             </OfferDetailModal>
+
+            <OfferDetailModal
+              id="offer-promised-props"
+              labelledBy="offer-promised-props-title"
+            >
+              <h3 id="offer-promised-props-title" class="offer-modal__title">
+                Promised PROPs: combine promise-style controls with controlled / polycontrolled PROPs
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-promised-props"]} />
+
+                <p>
+                  <strong>Goal:</strong> Compare the promise-style control patterns that show up in Vivien Vandaele's recent
+                  comparator / incrementer work with the control-functor viewpoint of controlled PROPs, and see whether there
+                  is a clean common framework: call it a <strong>promised PROP</strong>, a promise-sensitive controlled PROP,
+                  or something along those lines.
+                </p>
+
+                <ul>
+                  <li>identify which promise/control equations are already instances of controlled-PROP structure,</li>
+                  <li>decide where the extra "promise" data should live: points, annotations on wires, a modality, or something else,</li>
+                  <li>explain the ancilla-for-control trade as a structural theorem rather than a one-off circuit trick,</li>
+                  <li>test the framework on a small family such as comparators, incrementers, or multi-controlled constructions.</li>
+                </ul>
+
+                <p>
+                  This matters because several papers now seem to be saying the same conceptual thing in different dialects:
+                  control is structured, there are multiple control conventions floating around, and resource tradeoffs such as
+                  ancillas versus controls may want a compositional explanation rather than a circuit-by-circuit proof.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong> Delorme and Perdrix give a compact controlled-PROP axiomatization, Vivien's
+                  recent work proves a general ancilla/control trade for useful arithmetic blocks, and my own polycontrolled-PROP
+                  work already treats whole families of controls uniformly for qudit circuits. The open step is to isolate the
+                  right common abstraction and check that it actually leads to usable equations rather than just nicer terminology.
+                  (<a href={refs.comparatorsIncrementers} target="_blank" rel="noopener noreferrer">arXiv:2603.12917</a>,
+                  <a href={refs.controlledProps} target="_blank" rel="noopener noreferrer">arXiv:2508.21756</a>,
+                  <a href={refs.polycontrolledProps} target="_blank" rel="noopener noreferrer">arXiv:2602.09873</a>)
+                </p>
+              </div>
+            </OfferDetailModal>
           </>
         ) : null}
 
@@ -574,7 +622,7 @@ const legend = [
           <>
             <p class="muted">
               This is a core theme behind my recent work on affine-plus-diagonal fragments, normal forms, and completeness proofs.
-              The three offers below are direct follow-ups to a recent prime-dimensional result.
+              The four offers below are direct follow-ups to a recent prime-dimensional result.
               (<a href={refs.primeAffineDiagonalFragments} target="_blank" rel="noopener noreferrer">arXiv:2603.06466</a>)
             </p>
 
@@ -692,6 +740,48 @@ const legend = [
                   <a href={refs.cnotDihedralPresentation} target="_blank" rel="noopener noreferrer">arXiv:1701.00140</a>,
                   <a href={refs.phasePolynomialsQudit} target="_blank" rel="noopener noreferrer">arXiv:1902.05634</a>,
                   <a href={refs.quditPhaseGadgetMethod} target="_blank" rel="noopener noreferrer">arXiv:2504.12710</a>)
+                </p>
+              </div>
+            </OfferDetailModal>
+
+            <OfferDetailModal
+              id="offer-two-level-x-phase-affine"
+              labelledBy="offer-two-level-x-phase-affine-title"
+            >
+              <h3 id="offer-two-level-x-phase-affine-title" class="offer-modal__title">
+                Add the two-level X^{"{a,b}"} gate to prime-dimensional phase-affine circuits
+              </h3>
+
+              <div class="offer-modal__body">
+                <OfferSummaryBlock offer={offerSummaryById["offer-two-level-x-phase-affine"]} />
+
+                <p>
+                  <strong>Goal:</strong> Start from the prime-dimensional phase-affine fragment in my recent paper and adjoin the
+                  one-wire <strong>X^{"{a,b}"}</strong> gate, i.e. a two-level X gate acting non-trivially only on a chosen pair
+                  of levels. Then ask what survives:
+                </p>
+
+                <ul>
+                  <li>does the resulting fragment still sit inside a natural class of <strong>monomial</strong> unitaries,</li>
+                  <li>can the current affine-plus-diagonal normal forms be repaired to include these new generators,</li>
+                  <li>which interaction rules with translations, scalings, and diagonal phases are forced,</li>
+                  <li>and is there still any hope for a short local rewrite system?</li>
+                </ul>
+
+                <p>
+                  This matters because two-level gates are very natural from the hardware / synthesis side, so a positive answer
+                  would connect the current polynomial-style completeness story to a more realistic gate library. A negative answer
+                  would also be useful: it would tell us exactly where monomiality or rewrite-friendliness breaks.
+                </p>
+
+                <p>
+                  <strong>State of the art:</strong> the current phase-affine result gives a clean prime-dimensional completeness
+                  theorem for affine updates plus diagonal phases. Two-level qudit gates are already a standard synthesis primitive,
+                  but it is not clear whether adjoining <strong>X^{"{a,b}"}</strong> keeps the fragment tractable from an
+                  equational point of view or forces genuinely new invariants.
+                  (<a href={refs.primeAffineDiagonalFragments} target="_blank" rel="noopener noreferrer">arXiv:2603.06466</a>,
+                  <a href={refs.quditCircuitsUniversal} target="_blank" rel="noopener noreferrer">quant-ph/0509161</a>,
+                  <a href={refs.transmonQuditSynthesis} target="_blank" rel="noopener noreferrer">arXiv:2212.04496</a>)
                 </p>
               </div>
             </OfferDetailModal>
