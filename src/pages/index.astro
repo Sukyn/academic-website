@@ -13,6 +13,12 @@ const profileFacts = [
     value: "Open to research discussion and collaboration, but not currently available for formal student supervision.",
   },
 ];
+
+const recentTalk = {
+  title: "Reasoning for Qudit Circuits",
+  event: "MOCQUA doctoral day",
+  href: "/notes/slides_phd_presentation_2026.pdf",
+};
 ---
 
 <BaseLayout
@@ -82,6 +88,27 @@ const profileFacts = [
         </div>
       </article>
     </aside>
+  </section>
+
+  <section class="recent-talk" aria-labelledby="recent-talk-title">
+    <article class="recent-talk-card">
+      <p class="eyebrow">Recent talk</p>
+      <h2 id="recent-talk-title">{recentTalk.title}</h2>
+      <p>
+        Slides from my PhD presentation for the {recentTalk.event} are
+        available as a PDF.
+      </p>
+      <div class="button-row">
+        <a
+          class="button ghost"
+          href={recentTalk.href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open slides (PDF)
+        </a>
+      </div>
+    </article>
   </section>
 
   <style>
@@ -166,6 +193,24 @@ const profileFacts = [
 
     .profile-links {
       margin-top: 1rem;
+    }
+
+    .recent-talk {
+      margin-top: 1.5rem;
+    }
+
+    .recent-talk-card {
+      max-width: 46rem;
+      padding: 1.2rem;
+      border: 1px solid var(--color-border);
+      border-radius: 1.15rem;
+      background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+      box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    }
+
+    .recent-talk-card h2 {
+      margin-top: 0;
+      margin-bottom: 0.55rem;
     }
 
     @media (min-width: 980px) {
