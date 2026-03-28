@@ -71,9 +71,9 @@ function renderTocLabel(input: string) {
 ---
 
 {items.length > 0 ? (
-  <details class="toc" data-toc>
+  <details class="toc" data-toc open>
     <summary class="toc-summary" aria-label="Table of contents" title="Table of contents">
-      <span class="toc-title">Table of contents</span>
+      Table of contents
     </summary>
 
     <nav class="toc-nav" aria-label="Table of contents">
@@ -90,111 +90,44 @@ function renderTocLabel(input: string) {
 
 
 <style>
-  /* Base shell */
   details.toc {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    background: transparent;
+    background: var(--color-surface);
   }
 
-  /* Summary */
   .toc-summary {
     cursor: pointer;
-    list-style: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
     font-weight: 700;
+    font-family: var(--font-ui);
+  }
+
+  .toc-nav {
+    margin-top: 0.75rem;
+  }
+
+  .toc-list {
+    list-style: none;
     padding: 0;
     margin: 0;
   }
-  .toc-summary::-webkit-details-marker { display: none; }
 
-  .toc-summary::before {
-    content: "\25B8";
-    display: inline-block;
-    transform: translateY(1px);
-  }
-  details[open] > .toc-summary::before {
-    transform: rotate(90deg) translateY(1px);
+  .toc-item {
+    margin: 0.35rem 0;
   }
 
-  /* CLOSED: compact pill */
-  details.toc:not([open]) {
-    padding: 0.12rem 0.45rem;
-    margin: 0.15rem 0 0.55rem;
-    border-radius: 999px;
+  .toc-item.depth-3 {
+    padding-left: 1rem;
   }
-  details.toc:not([open]) .toc-title {
-    font-size: 0.9rem;
-    color: var(--color-muted);
-  }
-
-  /* OPEN: full card */
-  details.toc[open] {
-    padding: 0.7rem 0.9rem;
-    margin: 0.35rem 0 0.85rem; /* tighter */
-  }
-  details.toc[open] .toc-title { display: none; }
-
-  .toc-nav { margin-top: 0.65rem; }
-
-  .toc-list { list-style: none; padding: 0; margin: 0; }
-  .toc-item { margin: 0.32rem 0; }
-  .toc-item.depth-3 { padding-left: 1rem; opacity: 0.95; }
 
   .toc a {
     text-decoration: none;
-    color: var(--color-muted);
-  }
-  .toc a:hover {
     color: var(--color-text);
+  }
+
+  .toc a:hover {
     text-decoration: underline;
-    text-underline-offset: 4px;
   }
-
-  details.toc[open] {
-    padding: 0.7rem 0.9rem;
-    margin: 0.35rem 0 0.85rem;
-    overflow: hidden;
-  }
-
-  details.toc[open] .toc-nav {
-    margin-top: 0.65rem;
-    max-height: min(60vh, 22rem);
-    overflow: auto;
-    padding-right: 0.25rem;
-  }
-  :root:not([data-theme="dark"]) details.toc .toc-nav {
-  scrollbar-width: thin;
-  scrollbar-color: #ffffff transparent;
-}
-:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar { width: 10px; }
-:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar-track { background: transparent; }
-:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar-thumb {
-  background-color: #ffffff;
-  border-radius: 999px;
-  border: 2px solid var(--color-border);
-  background-clip: content-box;
-}
-:root:not([data-theme="dark"]) details.toc .toc-nav::-webkit-scrollbar-thumb:hover {
-  background-color: #f1f5f9;
-}
-
-:root[data-theme="dark"] details.toc .toc-nav {
-  scrollbar-width: thin;
-  scrollbar-color: #374151 transparent;
-}
-:root[data-theme="dark"] details.toc .toc-nav::-webkit-scrollbar-thumb {
-  background-color: #374151;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-:root[data-theme="dark"] details.toc .toc-nav::-webkit-scrollbar-thumb:hover {
-  background-color: #4b5563;
-}
-
-details.toc[open] .toc-nav {
-  overscroll-behavior: contain;
-}
 </style>
 

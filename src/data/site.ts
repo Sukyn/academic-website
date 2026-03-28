@@ -15,6 +15,6 @@ export const profileLinks = [
 
 export const internalQuickLinks = [
   { label: "Publications", href: "/publications" },
-  { label: "Writing", href: "/blog" },
+  { label: "Blog", href: "/blog" },
   { label: "Research ideas", href: "/offers" },
 ] as const;

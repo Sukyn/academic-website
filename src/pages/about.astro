@@ -27,14 +27,14 @@ const quickFacts = [
       equations turn into normal forms, rewrite systems, or small tools.
     </p>
 
-    <div class="fact-grid" aria-label="Quick facts">
+    <dl class="quick-facts" aria-label="Quick facts">
       {quickFacts.map((fact) => (
-        <article class="fact-card">
-          <p class="fact-label">{fact.label}</p>
-          <p>{fact.value}</p>
-        </article>
+        <div>
+          <dt>{fact.label}</dt>
+          <dd>{fact.value}</dd>
+        </div>
       ))}
-    </div>
+    </dl>
 
     <p>
       I am a PhD student in quantum computing at <strong>Inria</strong>, in
@@ -96,41 +96,28 @@ const quickFacts = [
   </section>
 
   <style>
-    .fact-grid {
-      display: grid;
-      gap: 0.85rem;
-      margin: 1rem 0 1.25rem;
+    .quick-facts {
+      margin: 1rem 0 1.5rem;
     }
 
-    .lead {
-      font-size: 1rem;
-      line-height: 1.55;
+    .quick-facts div {
+      padding: 0.6rem 0;
+      border-top: 1px solid var(--color-border);
     }
 
-    .fact-card {
-      padding: 0.9rem 1rem;
-      border: 1px solid var(--color-border);
-      border-radius: 1rem;
-      background: var(--color-surface);
+    .quick-facts div:last-child {
+      border-bottom: 1px solid var(--color-border);
     }
 
-    .fact-card p:last-child {
-      margin-bottom: 0;
-    }
-
-    .fact-label {
-      margin-bottom: 0.35rem;
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+    .quick-facts dt {
+      margin-bottom: 0.2rem;
+      font-family: var(--font-ui);
+      font-size: 0.9rem;
       color: var(--color-muted);
     }
 
-    @media (min-width: 760px) {
-      .fact-grid {
-        grid-template-columns: 1fr 1fr;
-      }
+    .quick-facts dd {
+      margin: 0;
     }
   </style>
 </BaseLayout>

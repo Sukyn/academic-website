@@ -1079,32 +1079,24 @@ const legend = [
 
   <style>
     .ideas {
-      max-width: 75ch;
+      max-width: 60rem;
       margin: 0 auto;
     }
 
     .hero {
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
     }
 
     .lead {
-      font-size: 1.08rem;
-      line-height: 1.6;
       margin-top: 0.75rem;
       margin-bottom: 0.75rem;
     }
 
-    .muted {
-      color: var(--color-muted);
-    }
-
-    /* Spotlight cards */
     .spotlight {
       margin-top: 1.5rem;
-      padding: 1.25rem;
+      padding: 1rem 1.1rem;
       border: 1px solid var(--color-border);
-      border-radius: 1rem;
-      background: color-mix(in oklab, var(--color-bg) 92%, var(--color-accent) 8%);
+      background: var(--color-surface);
     }
 
     .spotlight-grid {
@@ -1125,25 +1117,21 @@ const legend = [
       display: block;
       width: 100%;
       border: 1px solid var(--color-border);
-      border-radius: 0.9rem;
       padding: 0.9rem 1rem;
-      background: var(--color-bg);
+      background: var(--color-surface-2);
       color: inherit;
       font: inherit;
       text-align: left;
       cursor: pointer;
-      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
     }
 
     .spotlight-card:hover {
-      transform: translateY(-1px);
-      border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-border) 45%);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      background: var(--color-surface);
     }
 
     .spotlight-card:focus-visible {
-      outline: 3px solid var(--color-accent);
-      outline-offset: 3px;
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
     }
 
     .spotlight-head {
@@ -1156,11 +1144,9 @@ const legend = [
 
     .spotlight-title {
       margin: 0.2rem 0 0.35rem;
-      font-size: 1.02rem;
       color: var(--color-text);
     }
 
-    /* Legend */
     .legend {
       margin-top: 2rem;
     }
@@ -1180,7 +1166,6 @@ const legend = [
       flex-wrap: wrap;
     }
 
-    /* Topic grid */
     .browse {
       margin-top: 2rem;
     }
@@ -1201,16 +1186,12 @@ const legend = [
     .topic-card {
       text-decoration: none;
       border: 1px solid var(--color-border);
-      border-radius: 0.9rem;
       padding: 0.9rem 1rem;
-      background: var(--color-bg);
-      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+      background: var(--color-surface-2);
     }
 
     .topic-card:hover {
-      transform: translateY(-1px);
-      border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-border) 45%);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      background: var(--color-surface);
     }
 
     .topic-card-head {
@@ -1222,7 +1203,7 @@ const legend = [
     }
 
     .topic-title {
-      font-weight: 750;
+      font-weight: 700;
       margin-bottom: 0.25rem;
       color: var(--color-text);
     }
@@ -1258,50 +1239,36 @@ const legend = [
 
     /* Posts list */
     .research-section {
-      margin-top: 2.5rem;
-      scroll-margin-top: 5rem;
+      margin-top: 2rem;
+      scroll-margin-top: 1rem;
     }
 
-    /* Tags & pills */
     :global(.tag) {
-      display: inline-block;
-      padding: 0.12rem 0.5rem;
-      border: 1px solid var(--color-border);
-      border-radius: 999px;
-      font-size: 0.9rem;
-      line-height: 1.2;
-      background: color-mix(in oklab, var(--color-bg) 92%, var(--color-border) 8%);
+      background: var(--color-surface);
     }
 
     :global(.pill) {
-      display: inline-block;
-      padding: 0.12rem 0.5rem;
-      border: 1px solid var(--color-border);
-      border-radius: 999px;
-      font-size: 0.9rem;
-      line-height: 1.2;
-      transform: translateY(-1px);
-      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+      background: var(--color-surface);
     }
 
     :global(.pill--focus) {
-      background: color-mix(in oklab, var(--color-bg) 84%, var(--color-accent) 16%);
-      border-color: color-mix(in oklab, var(--color-border) 60%, var(--color-accent) 40%);
+      font-weight: 700;
+      border-color: var(--color-border-strong);
     }
 
     :global(.pill--open) {
-      background: color-mix(in oklab, var(--color-bg) 90%, var(--color-accent) 10%);
-      border-color: color-mix(in oklab, var(--color-border) 70%, var(--color-accent) 30%);
+      font-weight: 700;
+      border-color: var(--color-border-strong);
     }
 
     :global(.pill--incubating) {
-      background: color-mix(in oklab, var(--color-bg) 92%, orange 8%);
-      border-color: color-mix(in oklab, var(--color-border) 78%, orange 22%);
+      font-weight: 700;
+      border-color: var(--color-border-strong);
     }
 
     :global(.pill--parked) {
-      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
-      opacity: 0.95;
+      font-weight: 700;
+      border-color: var(--color-border-strong);
     }
 
     .offer-modal__title {
@@ -1317,26 +1284,15 @@ const legend = [
       margin-top: 1rem;
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .spotlight-card,
-      .topic-card {
-        transition: none;
-      }
-    }
-
-    /* CTA */
     .cta {
       margin-top: 2.75rem;
-      padding: 1.25rem;
+      padding: 1rem 1.1rem;
       border: 1px solid var(--color-border);
-      border-radius: 1rem;
-      background: color-mix(in oklab, var(--color-bg) 94%, var(--color-border) 6%);
+      background: var(--color-surface);
     }
 
     .cta-link {
-      font-weight: 750;
-      text-decoration: none;
-      border-bottom: 1px solid currentColor;
+      font-weight: 700;
     }
   </style>
 </BaseLayout>

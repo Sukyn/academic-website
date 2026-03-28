@@ -34,8 +34,7 @@ const { offer } = Astro.props as { offer: OfferSummary };
     margin-bottom: 1rem;
     padding: 0.9rem 1rem;
     border: 1px solid var(--color-border);
-    border-radius: 0.9rem;
-    background: color-mix(in oklab, var(--color-bg) 95%, var(--color-accent) 5%);
+    background: var(--color-surface);
   }
 
   .offer-snapshot-item p {
@@ -44,10 +43,9 @@ const { offer } = Astro.props as { offer: OfferSummary };
 
   .offer-snapshot-label {
     margin-bottom: 0.2rem !important;
-    font-size: 0.82rem;
+    font-size: 0.9rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-family: var(--font-ui);
     color: var(--color-muted);
   }
 

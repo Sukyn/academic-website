@@ -31,43 +31,6 @@ const enabled = Boolean(repo && repoId && category && categoryId);
   crossorigin="anonymous"
   async
 ></script>
-
-
-    <script is:inline>
-  const getGiscusTheme = () =>
-    document.documentElement.dataset.theme === "dark"
-      ? "dark"
-      : "light";
-
-  function updateGiscusTheme() {
-    const iframe = document.querySelector("iframe.giscus-frame");
-    if (!iframe) return;
-
-    iframe.contentWindow.postMessage(
-      {
-        giscus: {
-          setConfig: {
-            theme: getGiscusTheme(),
-          },
-        },
-      },
-      "https://giscus.app"
-    );
-  }
-
-  // Update on initial load
-  window.addEventListener("load", () => {
-    setTimeout(updateGiscusTheme, 200);
-  });
-
-  // Update when theme toggles
-  const observer = new MutationObserver(updateGiscusTheme);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
-  });
-</script>
-
   </section>
 ) : null}
 

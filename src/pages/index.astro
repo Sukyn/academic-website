@@ -9,168 +9,170 @@ const profileFacts = [
     value: siteProfile.affiliation,
   },
   {
+    label: "Research area",
+    value: siteProfile.researchArea,
+  },
+  {
     label: "Availability",
     value: "Open to research discussion and collaboration, but not currently available for formal student supervision.",
   },
 ];
+
+const currentTopics = [
+  "equational theories for quantum circuits",
+  "qudit fragments and dimension-uniform presentations",
+  "normal forms and rewriting methods for compilation",
+];
+
+const recentTalk = {
+  title: "Reasoning for Qudit Circuits",
+  event: "MOCQUA doctoral day",
+  href: "/notes/slides_phd_presentation_2026.pdf",
+};
 ---
 
 <BaseLayout
   title="Home"
   description="Quantum computing research, expository notes, and collaboration ideas by Colin Blake."
-  showWallpaper={true}
 >
-  <section class="hero">
-    <div class="hero-main">
-      <p class="eyebrow">Qudit circuit theory, rewriting, and compilation</p>
-      <h1>Colin Blake</h1>
-      <p class="hero-role">
-        PhD student in quantum computing at Inria's MOCQUA team.
-      </p>
+  <section class="prose home-page">
+    <div class="intro">
+      <div class="intro-copy">
+        <h1>Colin Blake</h1>
 
-      <p class="hero-copy">
-        I work on <strong>equational theories for quantum circuits</strong>:
-        which identities are enough, how to make them uniform in the
-        dimension, and how those identities turn into normal forms or rewrite
-        systems.
-      </p>
+        <p class="lead">PhD student in quantum computing at Inria's MOCQUA team.</p>
 
-      <p class="hero-copy hero-copy--muted">
-        Most of my current work sits around qudits, phase-affine fragments,
-        controlled structure, and the algebra underneath compilation.
-      </p>
+        <p>
+          I work on <strong>equational theories for quantum circuits</strong>:
+          which identities are enough, how to make them uniform in the dimension,
+          and how those identities turn into normal forms or rewrite systems.
+        </p>
 
-      <p class="hero-copy hero-copy--muted">
-        I am currently a PhD student, so I am not in a position to supervise students on my own. The ideas on this
-        site are mostly pointers for other researchers, or for students who already have formal supervision on their
-        side.
-      </p>
+        <p>
+          Most of my current work sits around qudits, phase-affine fragments,
+          controlled structure, and the algebra underneath compilation.
+        </p>
 
-      <div class="button-row">
-        <a class="button primary" href="/publications">See papers</a>
-        <a class="button ghost" href="/offers">Research ideas</a>
-        <a class="button ghost" href="/contact">Email me</a>
+        <p>
+          I am currently a PhD student, so I am not in a position to supervise
+          students on my own. The ideas on this site are mostly pointers for other
+          researchers, or for students who already have formal supervision on their
+          side.
+        </p>
       </div>
+
+      <aside class="intro-photo" aria-label="Profile picture">
+        <ScratchProfileCard />
+      </aside>
     </div>
 
-    <aside class="hero-side" aria-label="Research profile">
-      <ScratchProfileCard />
+    <p class="home-links">
+      <a href="/publications">Publications</a>
+      <span aria-hidden="true"> | </span>
+      <a href="/blog">Blog</a>
+      <span aria-hidden="true"> | </span>
+      <a href="/offers">Research ideas</a>
+      <span aria-hidden="true"> | </span>
+      <a href="/contact">Contact</a>
+    </p>
 
-      <article class="profile-card">
-        <p class="eyebrow">Research profile</p>
-        <dl class="profile-list">
-          {profileFacts.map((fact) => (
-            <div class="profile-row">
-              <dt>{fact.label}</dt>
-              <dd>{fact.value}</dd>
-            </div>
-          ))}
-        </dl>
+    <h2>Current topics</h2>
+    <ul>
+      {currentTopics.map((topic) => (
+        <li>{topic}</li>
+      ))}
+    </ul>
 
-        <div class="button-row profile-links">
-          {profileLinks.slice(0, 2).map((link) => (
-            <a
-              class="button ghost"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {link.label}
-            </a>
-          ))}
-          <a class="button ghost" href="/about">About</a>
+    <h2>Research profile</h2>
+    <dl class="profile-list">
+      {profileFacts.map((fact) => (
+        <div>
+          <dt>{fact.label}</dt>
+          <dd>{fact.value}</dd>
         </div>
-      </article>
-    </aside>
+      ))}
+    </dl>
+
+    <h2>Recent talk</h2>
+    <p>
+      <a href={recentTalk.href} target="_blank" rel="noopener noreferrer">
+        {recentTalk.title}
+      </a>{" "}
+      ({recentTalk.event}).
+    </p>
+
+    <h2>External profiles</h2>
+    <ul>
+      {profileLinks.map((link) => (
+        <li>
+          <a href={link.href} target="_blank" rel="noopener noreferrer">
+            {link.label}
+          </a>
+        </li>
+      ))}
+    </ul>
   </section>
 
   <style>
-    .hero {
-      display: grid;
-      gap: 1.25rem;
-      align-items: start;
-      padding: clamp(1rem, 3vw, 2rem);
-      border: 1px solid var(--color-border);
-      border-radius: 1.5rem;
-      background: linear-gradient(
-        145deg,
-        var(--color-surface-2),
-        color-mix(in srgb, var(--color-surface) 82%, transparent)
-      );
-      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+    .home-page {
+      max-width: 48rem;
     }
 
-    .hero-main {
-      min-width: 0;
-    }
-
-    .hero-side {
+    .intro {
       display: grid;
       gap: 1rem;
       align-items: start;
     }
 
-    .eyebrow {
-      margin-bottom: 0.6rem;
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--color-muted);
+    .intro-copy {
+      min-width: 0;
     }
 
-    .hero-role {
-      margin-bottom: 0.75rem;
-      font-size: 1.15rem;
-      font-weight: 600;
+    .intro-photo {
+      display: flex;
+      justify-content: center;
+      margin: 0 0 0.5rem;
     }
 
-    .hero-copy {
-      max-width: 62ch;
-      font-size: 1.05rem;
-    }
-
-    .hero-copy--muted {
-      color: var(--color-muted);
-    }
-
-    .profile-card {
-      padding: 1.1rem;
-      border: 1px solid var(--color-border);
-      border-radius: 1.15rem;
-      background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+    .home-links {
+      margin: 1.25rem 0 1.5rem;
+      font-family: var(--font-ui);
     }
 
     .profile-list {
-      display: grid;
-      gap: 0.85rem;
-      margin: 0;
+      margin: 1rem 0 0;
     }
 
-    .profile-row {
-      display: grid;
-      gap: 0.2rem;
+    .profile-list div {
+      padding: 0.6rem 0;
+      border-top: 1px solid var(--color-border);
     }
 
-    .profile-row dt {
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+    .profile-list div:last-child {
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .profile-list dt {
+      margin-bottom: 0.2rem;
+      font-family: var(--font-ui);
+      font-size: 0.9rem;
       color: var(--color-muted);
     }
 
-    .profile-row dd {
+    .profile-list dd {
       margin: 0;
     }
 
-    .profile-links {
-      margin-top: 1rem;
-    }
+    @media (min-width: 760px) {
+      .intro {
+        grid-template-columns: minmax(0, 1fr) 11rem;
+        gap: 1.5rem;
+      }
 
-    @media (min-width: 980px) {
-      .hero {
-        grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.95fr);
+      .intro-photo {
+        justify-content: end;
+        margin: 0;
+        padding-top: 0.25rem;
       }
     }
   </style>
