@@ -71,12 +71,6 @@ const hasMermaid =
       // TS-safe access to Mermaid on the global object
       const getMermaid = () => (globalThis as any).mermaid as any | undefined;
 
-      function mermaidTheme() {
-        return document.documentElement.dataset.theme === "dark"
-          ? "dark"
-          : "default";
-      }
-
       // Convert fenced blocks into <div class="mermaid"> containers (idempotent)
       function ensureMermaidContainers() {
         const blocks = Array.from(
@@ -109,7 +103,7 @@ const hasMermaid =
 
         mermaidAPI.initialize({
           startOnLoad: false,
-          theme: mermaidTheme(),
+          theme: "default",
           securityLevel: "strict",
         });
 
@@ -128,13 +122,6 @@ const hasMermaid =
       document.addEventListener("DOMContentLoaded", renderMermaid);
       // Astro client-side navigation
       document.addEventListener("astro:page-load", renderMermaid);
-
-      // Re-render on theme change
-      const obs = new MutationObserver(renderMermaid);
-      obs.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["data-theme"],
-      });
     })();
   </script>
 ) : null}
@@ -249,12 +236,8 @@ const hasMermaid =
     }
 
     @media (min-width: 980px) {
-      :global(main.container) {
-        width: min(100%, 1400px);
-      }
-
       .article-grid--with-toc {
-        grid-template-columns: 240px minmax(0, 1fr);
+        grid-template-columns: 14rem minmax(0, 1fr);
         gap: 1.5rem;
         align-items: start;
       }
@@ -270,25 +253,9 @@ const hasMermaid =
       }
 
       .article-grid--with-toc .content-col.prose {
-        max-width: 110ch;
+        max-width: 46rem;
         margin-inline: 0;
         width: 100%;
-      }
-
-      .article-grid--with-toc:has(.toc:not([open])) {
-        grid-template-columns: 1fr;
-        gap: 0rem;
-      }
-
-      .article-grid--with-toc:has(.toc:not([open])) .content-col.prose {
-        margin-inline: auto;
-      }
-
-      .article-grid--with-toc:has(.toc:not([open])) .toc-col {
-        justify-content: center;
-        position: static;
-        max-height: none;
-        overflow: visible;
       }
     }
 

@@ -1,7 +1,6 @@
 ---
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
-import ZXWallpaper from "../components/ZXWallpaper.astro";
 import "../styles/global.css";
 
 export interface Props {
@@ -21,7 +20,6 @@ const {
   title,
   description = "Quantum computing research, expository notes, and collaboration ideas by Colin Blake.",
   includeKatex = false,
-  showWallpaper = false,
   ogImage,
   canonicalUrl,
 } = Astro.props;
@@ -61,45 +59,6 @@ const isProd = import.meta.env.PROD;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <!--
-      Prevent white flash (FOUC) by applying theme before first paint.
-      Also re-apply during Astro client-side navigations (view transitions / client router).
-    -->
-    <script is:inline>
-      const KEY = "theme";
-
-      const getTheme = () => {
-        try {
-          const stored = localStorage.getItem(KEY);
-          if (stored === "dark" || stored === "light") return stored;
-        } catch {}
-        return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
-      };
-
-      const applyTheme = (t) => {
-        if (t === "dark") document.documentElement.dataset.theme = "dark";
-        else delete document.documentElement.dataset.theme;
-      };
-
-      const setTheme = (t) => {
-        try {
-          localStorage.setItem(KEY, t);
-        } catch {}
-
-        applyTheme(t);
-        document.dispatchEvent(new CustomEvent("theme:change", { detail: { theme: t } }));
-      };
-
-      window.__theme = { getTheme, setTheme };
-
-      applyTheme(getTheme());
-
-      // When Astro swaps pages on client-side navigation, ensure theme is set before the swap paints.
-      document.addEventListener("astro:before-swap", () => {
-        applyTheme(getTheme());
-      });
-    </script>
 
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
@@ -143,7 +102,6 @@ const isProd = import.meta.env.PROD;
 
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-    {showWallpaper ? <ZXWallpaper /> : null}
     <div class="page">
       <Header />
       <main id="main-content" class="container">

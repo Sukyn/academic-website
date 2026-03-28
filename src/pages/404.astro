@@ -2,8 +2,8 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title="404" showWallpaper={true}>
-  <main class="not-found">
+<BaseLayout title="404">
+  <section class="prose not-found">
     <h1>404 - Page not found (in this model)</h1>
    <!-- <p>
       Assume the page exists, derive <code>⊥</code>, conclude <code>I'm a teapot</code>.
@@ -34,7 +34,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     </p>
 --> 
     <p class="actions">
-      <a class="primary" href="/">Return to home</a>
+      <a class="button primary" href="/">Return to home</a>
       <!-- <a href="/sitemap.xml">Consult the oracle (sitemap)</a> -->
     </p>
 
@@ -42,42 +42,31 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       Tip: if you believe the page exists, please provide either (a) a URL,
       (b) a constructive proof, or (c) a pull request.
     </p>
-  </main>
+  </section>
 
   <style>
     .not-found {
-      max-width: 60ch;
-      margin: 0 auto;
-      padding: 3rem 1.25rem;
-      line-height: 1.6;
+      max-width: 44rem;
     }
+
     .actions {
       margin-top: 1.75rem;
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-      align-items: center;
     }
-    .primary {
-      display: inline-block;
-      padding: 0.6rem 1rem;
-      border-radius: 0.75rem;
-      text-decoration: none;
-      border: 1px solid currentColor;
-    }
+
     details {
       margin: 1rem 0 1.25rem;
       padding: 0.75rem 1rem;
-      border: 1px solid rgba(127, 127, 127, 0.35);
-      border-radius: 0.75rem;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
     }
+
     pre {
       margin: 0.75rem 0 0;
       overflow-x: auto;
       padding: 0.75rem;
-      border-radius: 0.5rem;
-      background: rgba(127, 127, 127, 0.08);
+      background: #f7f4ee;
     }
+
     .fineprint {
       margin-top: 2rem;
       opacity: 0.8;

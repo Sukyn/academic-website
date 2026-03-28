@@ -22,61 +22,32 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       side.
     </p>
 
-    <div class="contact-card">
-      <p class="eyebrow">Best way to reach me</p>
-      <p class="contact-line">
-        <a class="contact-mail" href={`mailto:${siteProfile.email}`}>
-          {siteProfile.email}
-        </a>
-      </p>
-      <p class="muted">{siteProfile.affiliation}</p>
-      <p class="muted">
-        A short note about your background, interests, or the page, paper, or
-        project you are writing about is always helpful.
-      </p>
-    </div>
+    <h2>Email</h2>
+    <p class="contact-mail">
+      <a href={`mailto:${siteProfile.email}`}>{siteProfile.email}</a>
+    </p>
+    <p class="muted">{siteProfile.affiliation}</p>
+    <p>
+      A short note about your background, interests, or the page, paper, or
+      project you are writing about is always helpful.
+    </p>
 
     <h2>Useful links</h2>
-    <div class="button-row">
+    <ul>
       {profileLinks.map((link) => (
-        <a
-          class="button ghost"
-          href={link.href}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {link.label}
-        </a>
+        <li>
+          <a href={link.href} target="_blank" rel="noreferrer">
+            {link.label}
+          </a>
+        </li>
       ))}
-    </div>
+    </ul>
   </section>
 
   <style>
-    .contact-card {
-      margin: 1.5rem 0;
-      padding: 1.25rem;
-      border: 1px solid var(--color-border);
-      border-radius: 1rem;
-      background: var(--color-surface);
-    }
-
-    .eyebrow {
-      margin-bottom: 0.4rem;
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--color-muted);
-    }
-
-    .contact-line {
-      margin-bottom: 0.5rem;
-    }
-
     .contact-mail {
-      font-size: 1.15rem;
+      font-size: 1.1rem;
       font-weight: 700;
-      text-decoration-thickness: 3px;
     }
   </style>
 </BaseLayout>

@@ -27,12 +27,12 @@ const pageCount = getPageCount(allPosts.length, POSTS_PER_PAGE);
 ---
 
 <BaseLayout
-  title={`Writing - Page ${currentPage}`}
-  description={`Older writing from Colin Blake's archive, page ${currentPage}.`}
+  title={`Blog - Page ${currentPage}`}
+  description={`Older blog posts from Colin Blake's archive, page ${currentPage}.`}
 >
   <section class="prose">
-    <p class="muted"><a href="/blog">&larr; Back to the main writing page</a></p>
-    <h1>Writing archive</h1>
+    <p class="muted"><a href="/blog">&larr; Back to the main blog page</a></p>
+    <h1>Blog archive</h1>
     <BlogArchiveList posts={posts} />
     <BlogPagination currentPage={currentPage} pageCount={pageCount} />
   </section>
