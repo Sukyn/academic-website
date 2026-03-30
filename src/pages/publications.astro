@@ -1,5 +1,7 @@
 ---
 import { publicationNotesById } from "../data/publicationNotes";
+import OfferDetailModal from "../components/OfferDetailModal.astro";
+import { talks } from "../data/talks";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { parseBibtexToPubs } from "../lib/bibtex";
 
@@ -38,6 +40,28 @@ const pubsWithLinks = pubs.map((pub) => ({
   links: publicationLinks(pub.url),
   note: publicationNotesById[pub.id],
 }));
+
+const talkDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function formatTalkDate(date: string) {
+  return talkDateFormatter.format(new Date(`${date}T00:00:00Z`));
+}
+
+function talkMeta(talk: (typeof talks)[number]) {
+  return [talk.date ? formatTalkDate(talk.date) : undefined, talk.event].filter(Boolean).join(" | ");
+}
+
+const talksByDate = [...talks].sort((left, right) => {
+  const leftTime = left.date ? Date.parse(`${left.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
+  const rightTime = right.date ? Date.parse(`${right.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
+
+  return rightTime - leftTime;
+});
 ---
 
 <BaseLayout
@@ -88,7 +112,101 @@ const pubsWithLinks = pubs.map((pub) => ({
       If you want slides or other supplementary material around these papers,
       feel free to <a href="/contact">email me</a>.
     </p>
+
+    <h2>Talks</h2>
+
+    {talksByDate.length === 0 ? (
+      <p class="muted">No talks listed yet.</p>
+    ) : (
+      <ul class="talk-list">
+        {talksByDate.map((talk) => (
+          <li id={talk.id} class="talk-item">
+            {talk.date || talk.event ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
+            <h3 class="talk-title">
+              <button
+                type="button"
+                class="talk-trigger"
+                data-talk-modal-trigger={talk.id}
+                aria-haspopup="dialog"
+                aria-controls={`${talk.id}-dialog`}
+              >
+                {talk.title}
+              </button>
+            </h3>
+            {talk.slidesHref ? (
+              <p class="pub-links">
+                <a href={talk.slidesHref} target="_blank" rel="noopener noreferrer">
+                  Slides
+                </a>
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    )}
+
+    {talksByDate.map((talk) => (
+      <OfferDetailModal id={talk.id} labelledBy={`${talk.id}-title`}>
+        <h3 id={`${talk.id}-title`} class="offer-modal__title">
+          {talk.title}
+        </h3>
+        {talk.date || talk.event ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
+        {talk.slidesHref ? (
+          <p class="pub-links">
+            <a href={talk.slidesHref} target="_blank" rel="noopener noreferrer">
+              Slides
+            </a>
+          </p>
+        ) : null}
+        <p>{talk.abstract}</p>
+      </OfferDetailModal>
+    ))}
   </section>
+
+  <script>
+    (() => {
+      const marker = "__talkModalBindings";
+      if ((window as typeof window & { [key: string]: boolean })[marker]) return;
+      (window as typeof window & { [key: string]: boolean })[marker] = true;
+
+      function openTalkModal(id: string | undefined) {
+        if (!id) return;
+        const dialog = document.getElementById(`${id}-dialog`);
+        if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
+        dialog.showModal();
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const trigger = target.closest("[data-talk-modal-trigger]");
+        if (trigger instanceof HTMLElement) {
+          event.preventDefault();
+          openTalkModal(trigger.dataset.talkModalTrigger);
+          return;
+        }
+
+        const closeButton = target.closest("[data-offer-modal-close]");
+        if (closeButton instanceof HTMLElement) {
+          const dialog = closeButton.closest("dialog");
+          if (dialog instanceof HTMLDialogElement) dialog.close();
+          return;
+        }
+
+        if (target instanceof HTMLDialogElement) {
+          const rect = target.getBoundingClientRect();
+          const clickedBackdrop =
+            event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom;
+
+          if (clickedBackdrop) target.close();
+        }
+      });
+    })();
+  </script>
 
   <style>
     .publications-page {
@@ -104,8 +222,46 @@ const pubsWithLinks = pubs.map((pub) => ({
       margin-bottom: 1.5rem;
     }
 
+    .talk-list {
+      list-style: none;
+      padding: 0;
+      margin: 1.5rem 0 0;
+    }
+
+    .talk-item {
+      margin-bottom: 1.5rem;
+    }
+
     .pub-title {
       margin-bottom: 0.4rem;
+    }
+
+    .talk-title {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .talk-trigger {
+      appearance: none;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--color-accent);
+      font: inherit;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .talk-trigger:hover {
+      color: var(--color-accent-hover);
+    }
+
+    .talk-trigger:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 3px;
     }
 
     .pub-summary {
