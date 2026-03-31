@@ -1,6 +1,7 @@
 ---
 import { publicationNotesById } from "../data/publicationNotes";
 import OfferDetailModal from "../components/OfferDetailModal.astro";
+import { stemOutreach } from "../data/stemOutreach";
 import { talks } from "../data/talks";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { parseBibtexToPubs } from "../lib/bibtex";
@@ -59,6 +60,13 @@ function talkMeta(talk: (typeof talks)[number]) {
 const talksByDate = [...talks].sort((left, right) => {
   const leftTime = left.date ? Date.parse(`${left.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
   const rightTime = right.date ? Date.parse(`${right.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
+
+  return rightTime - leftTime;
+});
+
+const outreachByDate = [...stemOutreach].sort((left, right) => {
+  const leftTime = Date.parse(`${left.date}T00:00:00Z`);
+  const rightTime = Date.parse(`${right.date}T00:00:00Z`);
 
   return rightTime - leftTime;
 });
@@ -161,6 +169,34 @@ const talksByDate = [...talks].sort((left, right) => {
         <p>{talk.abstract}</p>
       </OfferDetailModal>
     ))}
+
+    <h2>STEM Outreach</h2>
+
+    {outreachByDate.length === 0 ? (
+      <p class="muted">No outreach items listed yet.</p>
+    ) : (
+      <ul class="outreach-list">
+        {outreachByDate.map((item) => (
+          <li id={item.id} class="outreach-item">
+            <p class="pub-title">
+              <strong>{item.title}</strong>
+            </p>
+            {item.meta ? <p class="pub-meta">{item.meta}</p> : null}
+            <p class="pub-summary">{item.summary}</p>
+            <p class="pub-links">
+              {item.links.map((link, index) => (
+                <>
+                  {index > 0 ? <span aria-hidden="true"> | </span> : null}
+                  <a href={link.href} target="_blank" rel="noopener noreferrer">
+                    {link.label}
+                  </a>
+                </>
+              ))}
+            </p>
+          </li>
+        ))}
+      </ul>
+    )}
   </section>
 
   <script>
@@ -222,13 +258,15 @@ const talksByDate = [...talks].sort((left, right) => {
       margin-bottom: 1.5rem;
     }
 
-    .talk-list {
+    .talk-list,
+    .outreach-list {
       list-style: none;
       padding: 0;
       margin: 1.5rem 0 0;
     }
 
-    .talk-item {
+    .talk-item,
+    .outreach-item {
       margin-bottom: 1.5rem;
     }
 
