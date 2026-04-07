@@ -1,23 +1,34 @@
 /* Base tokens */
 :root {
-  --font-body: Georgia, "Times New Roman", Times, serif;
-  --font-ui: "Trebuchet MS", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Courier New", Courier, monospace;
+  --font-body: "STIX Two Text", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+    Georgia, serif;
+  --font-ui: "IBM Plex Sans", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Code", "SFMono-Regular", Consolas,
+    "Liberation Mono", monospace;
 
   --content-width: 72rem;
   --reading-width: 44rem;
 
-  --color-bg: #fbfaf7;
-  --color-text: #202020;
-  --color-muted: #5a5750;
-  --color-border: #cbc3b6;
-  --color-border-strong: #8e8578;
-  --color-accent: #1d4f8a;
-  --color-accent-hover: #12345d;
-  --color-surface: #f1ece4;
-  --color-surface-2: #ffffff;
+  --color-bg: #18231e;
+  --color-text: #dde3d7;
+  --color-heading: #f5f1e7;
+  --color-muted: #9ca89d;
+  --color-border: #425046;
+  --color-border-strong: #6d7b71;
+  --color-accent: #9ad9d1;
+  --color-accent-hover: #c8f4ef;
+  --color-accent-soft: rgba(154, 217, 209, 0.12);
+  --color-surface: #213029;
+  --color-surface-2: #1b2822;
+  --color-code-bg: #24352d;
+  --color-code-block: #16211c;
+  --color-selection: rgba(154, 217, 209, 0.24);
+  --color-chalk-dust: rgba(245, 241, 231, 0.018);
+  --color-chalk-dust-strong: rgba(245, 241, 231, 0.03);
+  --shadow-soft: 0 16px 34px rgba(0, 0, 0, 0.24);
 
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 /* Base reset */
@@ -36,9 +47,28 @@ body {
 body {
   min-height: 100vh;
   font-family: var(--font-body);
-  background: var(--color-bg);
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(circle at 18% 14%, rgba(245, 241, 231, 0.045), transparent 22rem),
+    radial-gradient(circle at 82% 10%, rgba(154, 217, 209, 0.045), transparent 18rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0.12)),
+    radial-gradient(
+      circle at 24px 28px,
+      var(--color-chalk-dust-strong) 0 1.1px,
+      transparent 1.2px
+    ),
+    radial-gradient(
+      circle at 82px 94px,
+      var(--color-chalk-dust) 0 0.9px,
+      transparent 1px
+    );
+  background-size: auto, auto, auto, 170px 170px, 230px 230px;
   color: var(--color-text);
-  line-height: 1.65;
+  line-height: 1.72;
+  font-size: 1.04rem;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 img {
@@ -57,6 +87,11 @@ select {
   scroll-margin-top: 1rem;
 }
 
+::selection {
+  background: var(--color-selection);
+  color: var(--color-heading);
+}
+
 /* Layout */
 .container {
   width: min(100%, var(--content-width));
@@ -65,13 +100,15 @@ select {
 }
 
 main.container {
-  padding-block: 2rem 3rem;
+  padding-block: 2.3rem 3.25rem;
 }
 
 .page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 .page > main {
@@ -95,23 +132,26 @@ h1,
 h2,
 h3 {
   font-family: var(--font-body);
-  font-weight: 700;
-  line-height: 1.2;
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.018em;
+  color: var(--color-heading);
+  text-wrap: balance;
   margin: 0 0 0.75rem;
 }
 
 h1 {
-  font-size: 2.15rem;
+  font-size: clamp(2.35rem, 4vw, 2.95rem);
   margin-bottom: 1rem;
 }
 
 h2 {
-  font-size: 1.55rem;
+  font-size: clamp(1.6rem, 3vw, 1.9rem);
   margin-top: 2rem;
 }
 
 h3 {
-  font-size: 1.15rem;
+  font-size: clamp(1.18rem, 2.2vw, 1.32rem);
   margin-top: 1.5rem;
 }
 
@@ -126,7 +166,8 @@ p {
 }
 
 .lead {
-  font-size: 1.05rem;
+  font-size: 1.14rem;
+  color: var(--color-heading);
 }
 
 p.muted,
@@ -156,11 +197,16 @@ dd {
 a {
   color: var(--color-accent);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(154, 217, 209, 0.34);
+  transition: color 140ms ease, text-decoration-color 140ms ease,
+    border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
 }
 
 a:hover {
   color: var(--color-accent-hover);
+  text-decoration-color: currentColor;
 }
 
 a:focus-visible {
@@ -175,6 +221,7 @@ a:focus-visible {
   padding: 0.5rem 0.75rem;
   background: var(--color-surface-2);
   border: 1px solid var(--color-border);
+  border-radius: 999px;
   transform: translateY(-200%);
 }
 
@@ -192,22 +239,36 @@ a:focus-visible {
 
 .button {
   display: inline-block;
-  padding: 0.35rem 0.65rem;
+  padding: 0.45rem 0.95rem;
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface-2);
-  color: var(--color-text);
+  color: var(--color-heading);
   text-decoration: none;
   font-family: var(--font-ui);
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
 .button:hover {
   color: var(--color-accent-hover);
-  text-decoration: underline;
+  background: var(--color-accent-soft);
+  text-decoration: none;
+  transform: translateY(-1px);
 }
 
 .button.primary {
-  background: var(--color-surface);
-  font-weight: 700;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #10211c;
+  font-weight: 600;
+}
+
+.button.primary:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: #10211c;
 }
 
 .button.ghost {
@@ -245,16 +306,21 @@ a:focus-visible {
 .prose blockquote {
   margin: 1.25rem 0;
   padding: 0.75rem 1rem;
-  border-left: 3px solid var(--color-border-strong);
-  background: var(--color-surface);
+  border-left: 3px solid var(--color-accent);
+  background:
+    linear-gradient(135deg, rgba(15, 102, 124, 0.08), transparent 68%),
+    var(--color-surface);
+  border-radius: 0.55rem;
 }
 
 .prose code {
   font-family: var(--font-mono);
   font-size: 0.92em;
-  padding: 0.05rem 0.2rem;
+  padding: 0.08rem 0.3rem;
   border: 1px solid var(--color-border);
-  background: #f4f0e8;
+  background: var(--color-code-bg);
+  border-radius: 0.3rem;
+  color: var(--color-heading);
 }
 
 .prose pre {
@@ -262,7 +328,9 @@ a:focus-visible {
   padding: 1rem;
   overflow-x: auto;
   border: 1px solid var(--color-border);
-  background: #f7f4ee;
+  background: var(--color-code-block);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-soft);
 }
 
 .prose pre code {
@@ -286,18 +354,23 @@ a:focus-visible {
   align-items: center;
   margin: 0.35rem 0 0.85rem;
   color: var(--color-muted);
-  font-size: 0.95rem;
+  font-size: 0.84rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
 }
 
 .pill,
 .tag {
   display: inline-block;
-  padding: 0.1rem 0.4rem;
+  padding: 0.14rem 0.45rem;
   border: 1px solid var(--color-border);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   line-height: 1.4;
   color: var(--color-muted);
-  background: var(--color-surface);
+  background: rgba(27, 40, 34, 0.9);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
 }
 
 .pill.draft {
@@ -307,6 +380,8 @@ a:focus-visible {
 .reading-time {
   color: var(--color-muted);
   font-size: 0.85em;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
 }
 
 .tag {
@@ -326,6 +401,7 @@ a:focus-visible {
   height: auto;
   display: block;
   border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
 }
 
 .cover-caption {
@@ -340,7 +416,10 @@ a:focus-visible {
   padding: 0.9rem 1rem;
   border: 1px solid var(--color-border);
   border-left-width: 3px;
-  background: var(--color-surface);
+  background:
+    linear-gradient(135deg, rgba(15, 102, 124, 0.06), transparent 72%),
+    var(--color-surface);
+  border-radius: 0.7rem;
 }
 
 .callout__header {
@@ -371,7 +450,7 @@ a:focus-visible {
 }
 
 .callout--warning {
-  border-left-color: #946300;
+  border-left-color: #936100;
 }
 
 /* Figures and embeds */
@@ -381,6 +460,7 @@ a:focus-visible {
   border: 1px solid var(--color-border);
   overflow-x: auto;
   background: var(--color-surface-2);
+  border-radius: 0.75rem;
 }
 
 .prose .mermaid svg {
@@ -401,6 +481,7 @@ a:focus-visible {
   height: auto;
   margin-inline: auto;
   border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
 }
 
 .prose figcaption {
@@ -440,6 +521,7 @@ a:focus-visible {
 @media print {
   body {
     background: #ffffff !important;
+    background-image: none !important;
     color: #000000 !important;
   }
 

@@ -8,247 +8,546 @@
     height: 100%;
     z-index: 0;
     pointer-events: none;
-    opacity: 0.12; /* ~10% transparency */
+    opacity: 0.9;
   }
 </style>
 
 <script is:inline>
   (() => {
-    const el = document.getElementById("zx-wallpaper");
-    if (!(el instanceof HTMLCanvasElement)) return;
-    const canvas = el;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const rand = (a, b) => a + Math.random() * (b - a);
-    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-    const TYPES = ["G", "R", "Y"];
-
-    /** @type {Array<{x:number,y:number,vx:number,vy:number,type:"G"|"R"|"Y",r:number}>} */
-    const nodes = [];
-    /** @type {Array<{a:number,b:number,curve:number}>} */
-    const edges = [];
-
-    const FPS = 30;
+    const WALLPAPER_SELECTOR = "#zx-wallpaper";
+    const TAU = Math.PI * 2;
+    const FPS = 24;
     const FRAME_MS = 1000 / FPS;
-
-    // Respect accessibility preference
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    let cssW = window.innerWidth;
-    let cssH = window.innerHeight;
+    /**
+     * @typedef {{
+     *   type: "ring";
+     *   x: number;
+     *   line: number;
+     *   radiusX: number;
+     *   radiusY: number;
+     *   tilt: number;
+     * }} RingFeature
+     */
 
-    function getEdgeColor() {
-      const isDark = document.documentElement.dataset.theme === "dark";
-      return isDark ? "rgba(255, 255, 255, 0.35)" : "rgba(15, 23, 42, 0.35)";
-    }
+    /**
+     * @typedef {{
+     *   type: "slashes";
+     *   x: number;
+     *   line: number;
+     *   count: number;
+     *   span: number;
+     *   tilt: number;
+     * }} SlashesFeature
+     */
 
-    function resize() {
-      const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-      cssW = window.innerWidth;
-      cssH = window.innerHeight;
+    /**
+     * @typedef {{
+     *   type: "bridge";
+     *   x: number;
+     *   lineA: number;
+     *   lineB: number;
+     *   lift: number;
+     * }} BridgeFeature
+     */
 
-      canvas.width = Math.floor(cssW * dpr);
-      canvas.height = Math.floor(cssH * dpr);
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
+    /**
+     * @typedef {{
+     *   type: "fork";
+     *   x: number;
+     *   line: number;
+     *   side: -1 | 1;
+     *   reach: number;
+     *   radius: number;
+     * }} ForkFeature
+     */
 
-      // draw in CSS pixels
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
+    /**
+     * @typedef {{
+     *   type: "node";
+     *   x: number;
+     *   line: number;
+     *   radius: number;
+     * }} NodeFeature
+     */
 
-    function init() {
-      nodes.length = 0;
-      edges.length = 0;
+    /**
+     * @typedef {RingFeature | SlashesFeature | BridgeFeature | ForkFeature | NodeFeature} Feature
+     */
 
-      const isSmall = Math.min(cssW, cssH) < 700;
-      const NODE_COUNT = isSmall ? 18 : 26;
-      const EDGE_COUNT = isSmall ? 24 : 34;
+    /**
+     * @typedef {{
+     *   y: number;
+     *   lineCount: number;
+     *   gap: number;
+     *   slope: number;
+     *   archA: number;
+     *   archB: number;
+     *   phase: number;
+     *   speed: number;
+     *   drift: number;
+     *   features: Feature[];
+     * }} System
+     */
 
-      for (let i = 0; i < NODE_COUNT; i++) {
-        const type = /** @type {"G"|"R"|"Y"} */ (pick(TYPES));
-        nodes.push({
-          x: rand(0, cssW),
-          y: rand(0, cssH),
-          // VERY slow drift
-          vx: rand(-4, 4) / 60,
-          vy: rand(-4, 4) / 60,
-          type,
-          r: type === "Y" ? rand(8, 12) : rand(7, 11),
-        });
-      }
+    function bindChalkWallpaper() {
+      const el = document.querySelector(WALLPAPER_SELECTOR);
+      if (!(el instanceof HTMLCanvasElement)) return;
 
-      for (let i = 0; i < EDGE_COUNT; i++) {
-        const a = Math.floor(rand(0, NODE_COUNT));
-        let b = Math.floor(rand(0, NODE_COUNT));
-        if (b === a) b = (b + 1) % NODE_COUNT;
-
-        edges.push({
-          a,
-          b,
-          // curve controls how “bendy” the edge is
-          curve: rand(-120, 120),
-        });
-      }
-    }
-
-    function wrap(n) {
-      // wrap-around
-      if (n.x < -40) n.x = cssW + 40;
-      if (n.x > cssW + 40) n.x = -40;
-      if (n.y < -40) n.y = cssH + 40;
-      if (n.y > cssH + 40) n.y = -40;
-    }
-
-    function drawEdge(e) {
-      const A = nodes[e.a];
-      const B = nodes[e.b];
-      if (!A || !B) return;
-
-      const mx = (A.x + B.x) / 2;
-      const my = (A.y + B.y) / 2;
-
-      // normal vector for curved control point
-      const dx = B.x - A.x;
-      const dy = B.y - A.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const nx = -dy / len;
-      const ny = dx / len;
-
-      const cx = mx + nx * e.curve;
-      const cy = my + ny * e.curve;
-
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = getEdgeColor();
-
-      ctx.beginPath();
-      ctx.moveTo(A.x, A.y);
-      ctx.quadraticCurveTo(cx, cy, B.x, B.y);
-      ctx.stroke();
-    }
-
-    function drawNode(n) {
-      if (n.type === "Y") {
-        // Yellow square node
-        ctx.fillStyle = "rgba(234, 179, 8, 0.95)";
-        const s = n.r * 2;
-        ctx.beginPath();
-        ctx.rect(n.x - s / 2, n.y - s / 2, s, s);
-        ctx.fill();
+      const existingState = window.__chalkWallpaperState;
+      if (existingState?.canvas === el) {
+        existingState.resize();
+        existingState.init();
+        existingState.draw(performance.now());
+        existingState.startLoop();
         return;
       }
 
-      // Green / Red circle nodes
-      ctx.fillStyle =
-        n.type === "G" ? "rgba(34, 197, 94, 0.95)" : "rgba(239, 68, 68, 0.95)";
-      ctx.strokeStyle = "rgba(15, 23, 42, 0.18)";
-      ctx.lineWidth = 1;
+      existingState?.destroy?.();
 
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
+      const canvas = el;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    function step(dt) {
-      for (const n of nodes) {
-        n.x += n.vx * (dt * 60);
-        n.y += n.vy * (dt * 60);
+      /** @type {System[]} */
+      const systems = [];
 
-        // tiny random wander to avoid “too linear”
-        n.vx += rand(-0.02, 0.02) * dt;
-        n.vy += rand(-0.02, 0.02) * dt;
+      let cssW = 0;
+      let cssH = 0;
+      let raf = 0;
+      let last = 0;
+      let accMs = 0;
 
-        // clamp speed
-        n.vx = Math.max(-0.12, Math.min(0.12, n.vx));
-        n.vy = Math.max(-0.12, Math.min(0.12, n.vy));
+      const rand = (min, max) => min + Math.random() * (max - min);
+      const randInt = (min, max) => Math.floor(rand(min, max + 1));
+      const pick = (items) => items[Math.floor(Math.random() * items.length)];
 
-        wrap(n);
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        cssW = window.innerWidth;
+        cssH = window.innerHeight;
+
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
-    }
 
-    function draw() {
-      ctx.clearRect(0, 0, cssW, cssH);
+      function lineOffset(system, line) {
+        return (line - (system.lineCount - 1) / 2) * system.gap;
+      }
 
-      // Draw edges first, then nodes
-      for (const e of edges) drawEdge(e);
-      for (const n of nodes) drawNode(n);
-    }
+      function lineYAt(system, line, x, time) {
+        const nx = x / Math.max(cssW, 1);
+        const offset = lineOffset(system, line);
+        const animated = Math.sin(time * system.speed + system.phase + nx * 1.45) * system.drift;
+        const slope = system.slope * (x - cssW * 0.5);
+        const waveA = Math.sin(nx * TAU * 0.48 + system.phase) * system.archA;
+        const waveB = Math.sin(nx * TAU * 1.05 + system.phase * 1.22) * system.archB;
+        const waveC = Math.sin(nx * TAU * 2.2 + system.phase * 0.45 + time * system.speed * 0.35) *
+          system.drift * 1.6;
 
-    function shouldRun() {
-      return !reduceMotion.matches && !document.hidden;
-    }
+        return system.y + offset + slope + waveA + waveB + waveC + animated;
+      }
 
-    let raf = 0;
-    let last = 0;
-    let accMs = 0;
+      function marginBandX(side) {
+        const leftMax = Math.max(180, cssW * 0.22);
+        const rightMin = Math.min(cssW * 0.78, cssW - 180);
+        if (side === "left") return rand(34, leftMax);
+        return rand(rightMin, cssW - 34);
+      }
 
-    function loop(now) {
-      if (!shouldRun()) {
+      function createFeature(system, side) {
+        const line = randInt(0, system.lineCount - 1);
+        const x = marginBandX(side);
+        const type = pick(
+          system.lineCount > 1
+            ? ["ring", "slashes", "bridge", "fork", "node"]
+            : ["ring", "slashes", "fork", "node"],
+        );
+
+        if (type === "ring") {
+          return /** @type {RingFeature} */ ({
+            type,
+            x,
+            line,
+            radiusX: rand(10, 18),
+            radiusY: rand(6, 10),
+            tilt: rand(-0.5, 0.5),
+          });
+        }
+
+        if (type === "slashes") {
+          return /** @type {SlashesFeature} */ ({
+            type,
+            x,
+            line,
+            count: randInt(2, 3),
+            span: rand(10, 16),
+            tilt: rand(0.45, 0.85) * (Math.random() > 0.5 ? 1 : -1),
+          });
+        }
+
+        if (type === "bridge") {
+          return /** @type {BridgeFeature} */ ({
+            type,
+            x,
+            lineA: 0,
+            lineB: system.lineCount - 1,
+            lift: rand(10, 22) * (Math.random() > 0.5 ? 1 : -1),
+          });
+        }
+
+        if (type === "fork") {
+          return /** @type {ForkFeature} */ ({
+            type,
+            x,
+            line,
+            side: Math.random() > 0.5 ? 1 : -1,
+            reach: rand(18, 34),
+            radius: rand(4, 6.5),
+          });
+        }
+
+        return /** @type {NodeFeature} */ ({
+          type: "node",
+          x,
+          line,
+          radius: rand(3.5, 5.5),
+        });
+      }
+
+      function makeSystem(y) {
+        /** @type {System} */
+        const system = {
+          y,
+          lineCount: Math.random() > 0.42 ? 1 : 2,
+          gap: rand(15, 22),
+          slope: rand(-0.0015, 0.0015),
+          archA: rand(14, 28) * (Math.random() > 0.5 ? 1 : -1),
+          archB: rand(6, 14) * (Math.random() > 0.5 ? 1 : -1),
+          phase: rand(0, TAU),
+          speed: rand(0.00003, 0.00006),
+          drift: rand(1.8, 3.6),
+          features: [],
+        };
+
+        const featureCount = randInt(3, 5);
+        const sides = ["left", "right"];
+
+        for (let index = 0; index < featureCount; index += 1) {
+          const side = sides[index % 2] ?? (Math.random() > 0.5 ? "left" : "right");
+          system.features.push(createFeature(system, side));
+        }
+
+        return system;
+      }
+
+      function init() {
+        systems.length = 0;
+
+        let y = 98;
+        while (y < cssH + 110) {
+          systems.push(makeSystem(y));
+          y += rand(118, 175);
+        }
+      }
+
+      function makeGradient(alpha) {
+        const gradient = ctx.createLinearGradient(0, 0, cssW, 0);
+        gradient.addColorStop(0, `rgba(245, 241, 231, ${alpha})`);
+        gradient.addColorStop(0.18, `rgba(245, 241, 231, ${alpha * 0.8})`);
+        gradient.addColorStop(0.38, `rgba(245, 241, 231, ${alpha * 0.16})`);
+        gradient.addColorStop(0.5, `rgba(245, 241, 231, ${alpha * 0.08})`);
+        gradient.addColorStop(0.62, `rgba(245, 241, 231, ${alpha * 0.16})`);
+        gradient.addColorStop(0.82, `rgba(245, 241, 231, ${alpha * 0.8})`);
+        gradient.addColorStop(1, `rgba(245, 241, 231, ${alpha})`);
+        return gradient;
+      }
+
+      function strokeChalk(drawPath, alpha, width, useGradient = true) {
+        const layers = [
+          { dx: 0, dy: 0, alpha, width },
+          { dx: 0.42, dy: -0.22, alpha: alpha * 0.46, width: width + 0.45 },
+          { dx: -0.28, dy: 0.3, alpha: alpha * 0.22, width: width + 0.9 },
+        ];
+
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        for (const layer of layers) {
+          ctx.save();
+          ctx.translate(layer.dx, layer.dy);
+          ctx.beginPath();
+          drawPath();
+          ctx.strokeStyle = useGradient
+            ? makeGradient(layer.alpha)
+            : `rgba(245, 241, 231, ${layer.alpha})`;
+          ctx.lineWidth = layer.width;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      function fillChalkCircle(x, y, radius, alpha) {
+        const layers = [
+          { dx: 0, dy: 0, alpha, radius },
+          { dx: 0.25, dy: -0.18, alpha: alpha * 0.42, radius: radius + 0.5 },
+        ];
+
+        for (const layer of layers) {
+          ctx.beginPath();
+          ctx.arc(x + layer.dx, y + layer.dy, layer.radius, 0, TAU);
+          ctx.fillStyle = `rgba(245, 241, 231, ${layer.alpha})`;
+          ctx.fill();
+        }
+      }
+
+      function strokeEllipse(x, y, radiusX, radiusY, tilt, alpha) {
+        strokeChalk(() => {
+          ctx.ellipse(x, y, radiusX, radiusY, tilt, 0, TAU);
+        }, alpha, 0.9, false);
+      }
+
+      function drawLine(system, line, time, opacity) {
+        const startX = -48;
+        const endX = cssW + 48;
+        const step = 24;
+
+        strokeChalk(() => {
+          ctx.moveTo(startX, lineYAt(system, line, startX, time));
+
+          for (let x = startX + step; x <= endX; x += step) {
+            ctx.lineTo(x, lineYAt(system, line, x, time));
+          }
+        }, opacity, 1.04, true);
+      }
+
+      function drawRing(system, feature, time, opacity) {
+        const y = lineYAt(system, feature.line, feature.x, time);
+        strokeEllipse(feature.x, y, feature.radiusX, feature.radiusY, feature.tilt, opacity * 1.2);
+        strokeChalk(() => {
+          ctx.moveTo(feature.x - feature.radiusX * 0.55, y);
+          ctx.lineTo(feature.x + feature.radiusX * 0.55, y);
+        }, opacity * 0.7, 0.72, false);
+      }
+
+      function drawSlashes(system, feature, time, opacity) {
+        const baseY = lineYAt(system, feature.line, feature.x, time);
+
+        for (let index = 0; index < feature.count; index += 1) {
+          const offset = (index - (feature.count - 1) / 2) * 6.5;
+          strokeChalk(() => {
+            ctx.moveTo(
+              feature.x + offset - feature.span * 0.45,
+              baseY - feature.span * feature.tilt * 0.5,
+            );
+            ctx.lineTo(
+              feature.x + offset + feature.span * 0.45,
+              baseY + feature.span * feature.tilt * 0.5,
+            );
+          }, opacity * 0.95, 0.82, false);
+        }
+      }
+
+      function drawBridge(system, feature, time, opacity) {
+        const yA = lineYAt(system, feature.lineA, feature.x, time);
+        const yB = lineYAt(system, feature.lineB, feature.x, time);
+
+        strokeChalk(() => {
+          ctx.moveTo(feature.x - 11, yA);
+          ctx.quadraticCurveTo(
+            feature.x + 3,
+            (yA + yB) / 2 + feature.lift,
+            feature.x - 11,
+            yB,
+          );
+        }, opacity * 0.95, 0.92, false);
+
+        fillChalkCircle(feature.x - 11, yA, 3.2, opacity * 1.05);
+      }
+
+      function drawFork(system, feature, time, opacity) {
+        const baseY = lineYAt(system, feature.line, feature.x, time);
+        const endY = baseY + feature.side * feature.reach;
+        const endX = feature.x + 15;
+
+        strokeChalk(() => {
+          ctx.moveTo(feature.x - 4, baseY);
+          ctx.quadraticCurveTo(feature.x + 5, (baseY + endY) / 2, endX, endY);
+        }, opacity * 0.88, 0.82, false);
+
+        strokeEllipse(endX, endY, feature.radius, feature.radius * 0.8, rand(-0.45, 0.45), opacity);
+      }
+
+      function drawNode(system, feature, time, opacity) {
+        const y = lineYAt(system, feature.line, feature.x, time);
+        fillChalkCircle(feature.x, y, feature.radius, opacity * 1.15);
+        strokeChalk(() => {
+          ctx.moveTo(feature.x, y - 7);
+          ctx.lineTo(feature.x, y + 7);
+        }, opacity * 0.72, 0.72, false);
+      }
+
+      function drawDust(time) {
+        const count = Math.max(16, Math.round((cssW * cssH) / 90000));
+        const drift = Math.sin(time * 0.00002) * 8;
+
+        for (let index = 0; index < count; index += 1) {
+          const onLeft = index % 2 === 0;
+          const x = onLeft ? rand(10, cssW * 0.2) : rand(cssW * 0.8, cssW - 10);
+          const y = rand(12, cssH - 12);
+          const radius = rand(0.5, 1.6);
+
+          ctx.beginPath();
+          ctx.arc(x + drift * 0.15, y, radius, 0, TAU);
+          ctx.fillStyle = `rgba(245, 241, 231, ${rand(0.018, 0.04)})`;
+          ctx.fill();
+        }
+      }
+
+      function drawCenterVeil() {
+        const veilWidth = Math.min(cssW - 24, Math.max(560, cssW * 0.54));
+        const x0 = (cssW - veilWidth) / 2;
+        const gradient = ctx.createLinearGradient(x0, 0, x0 + veilWidth, 0);
+
+        gradient.addColorStop(0, "rgba(24, 35, 30, 0)");
+        gradient.addColorStop(0.08, "rgba(24, 35, 30, 0.72)");
+        gradient.addColorStop(0.18, "rgba(24, 35, 30, 0.94)");
+        gradient.addColorStop(0.3, "rgba(24, 35, 30, 0.985)");
+        gradient.addColorStop(0.7, "rgba(24, 35, 30, 0.985)");
+        gradient.addColorStop(0.82, "rgba(24, 35, 30, 0.94)");
+        gradient.addColorStop(0.92, "rgba(24, 35, 30, 0.72)");
+        gradient.addColorStop(1, "rgba(24, 35, 30, 0)");
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x0, 0, veilWidth, cssH);
+      }
+
+      function drawSystem(system, time) {
+        const opacity = 0.11;
+
+        for (let line = 0; line < system.lineCount; line += 1) {
+          drawLine(system, line, time, opacity);
+        }
+
+        for (const feature of system.features) {
+          if (feature.type === "ring") {
+            drawRing(system, feature, time, opacity);
+            continue;
+          }
+
+          if (feature.type === "slashes") {
+            drawSlashes(system, feature, time, opacity);
+            continue;
+          }
+
+          if (feature.type === "bridge") {
+            drawBridge(system, feature, time, opacity);
+            continue;
+          }
+
+          if (feature.type === "fork") {
+            drawFork(system, feature, time, opacity);
+            continue;
+          }
+
+          drawNode(system, feature, time, opacity);
+        }
+      }
+
+      function draw(time = 0) {
+        ctx.clearRect(0, 0, cssW, cssH);
+
+        drawDust(time);
+        for (const system of systems) {
+          drawSystem(system, time);
+        }
+        drawCenterVeil();
+      }
+
+      function shouldRun() {
+        return !reduceMotion.matches && !document.hidden;
+      }
+
+      function loop(now) {
+        if (!shouldRun()) {
+          raf = 0;
+          return;
+        }
+
+        if (!last) last = now;
+        accMs += now - last;
+        last = now;
+
+        while (accMs >= FRAME_MS) {
+          accMs -= FRAME_MS;
+        }
+
+        draw(now);
+        raf = requestAnimationFrame(loop);
+      }
+
+      function startLoop() {
+        if (raf || !shouldRun()) return;
+        last = 0;
+        accMs = 0;
+        raf = requestAnimationFrame(loop);
+      }
+
+      function stopLoop() {
+        if (!raf) return;
+        cancelAnimationFrame(raf);
         raf = 0;
-        return;
       }
 
-      if (!last) last = now;
-      const delta = now - last;
-      last = now;
-      accMs += delta;
-
-      // throttle to ~FPS
-      while (accMs >= FRAME_MS) {
-        step(Math.min(0.05, FRAME_MS / 1000));
-        accMs -= FRAME_MS;
+      function updateRunning() {
+        stopLoop();
+        draw(performance.now());
+        startLoop();
       }
 
-      draw();
-      raf = requestAnimationFrame(loop);
-    }
-
-    function startLoop() {
-      if (raf || !shouldRun()) return;
-      last = 0;
-      accMs = 0;
-      raf = requestAnimationFrame(loop);
-    }
-
-    function stopLoop() {
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-    }
-
-    function startWhenIdle() {
-      if ("requestIdleCallback" in window) {
-        window.requestIdleCallback(() => startLoop(), { timeout: 250 });
-        return;
+      function handleResize() {
+        resize();
+        init();
+        draw(performance.now());
       }
 
-      window.setTimeout(startLoop, 120);
-    }
-
-    // Init once
-    resize();
-    init();
-    draw();
-    startWhenIdle();
-
-    window.addEventListener("resize", () => {
       resize();
       init();
       draw();
-    });
-
-    const updateRunning = () => {
-      stopLoop();
-      // Keep a static frame visible even when stopped
-      draw();
       startLoop();
-    };
 
-    if (reduceMotion.addEventListener) reduceMotion.addEventListener("change", updateRunning);
-    else reduceMotion.addListener(updateRunning);
+      window.addEventListener("resize", handleResize);
+      if (reduceMotion.addEventListener) reduceMotion.addEventListener("change", updateRunning);
+      else reduceMotion.addListener(updateRunning);
+      document.addEventListener("visibilitychange", updateRunning);
 
-    document.addEventListener("visibilitychange", updateRunning);
+      window.__chalkWallpaperState = {
+        canvas,
+        resize,
+        init,
+        draw,
+        startLoop,
+        destroy() {
+          stopLoop();
+          window.removeEventListener("resize", handleResize);
+          if (reduceMotion.removeEventListener) reduceMotion.removeEventListener("change", updateRunning);
+          else reduceMotion.removeListener(updateRunning);
+          document.removeEventListener("visibilitychange", updateRunning);
+        },
+      };
+    }
+
+    bindChalkWallpaper();
+
+    if (!window.__chalkWallpaperListenerBound) {
+      window.__chalkWallpaperListenerBound = true;
+      document.addEventListener("astro:page-load", bindChalkWallpaper);
+      window.addEventListener("pageshow", bindChalkWallpaper);
+    }
   })();
 </script>
