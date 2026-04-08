@@ -36,6 +36,53 @@ const quickFacts = [
       ))}
     </dl>
 
+    <aside class="disambiguation" aria-labelledby="disambiguation-title">
+      <h2 id="disambiguation-title">Disambiguation</h2>
+
+      <p>
+        Because &quot;Colin Blake&quot; turns out not to be a unique identifier, a brief
+        clarification may help. I am not
+        <a
+          href="https://www.eliteprospects.com/player/240742/colin-blake"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          the hockey player Colin Blake
+        </a>
+        , nor
+        <a
+          href="https://www.imdb.com/name/nm2072003/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          the production designer Colin Blake
+        </a>
+        .
+      </p>
+
+      <p>
+        Genealogically, I cannot currently prove that I am related to
+        <a
+          href="https://en.wikipedia.org/wiki/Blake_(surname)"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          William Blake
+        </a>
+        , but the surname is at least suggestive enough to keep the joke alive.
+        For further information on the wider Blake line, I can only recommend
+        the impeccably reliable
+        <a
+          href="https://seanceofblakemanor.wiki.gg/wiki/Blake_Family"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Blake Family records from <em>The Seance at Blake Manor</em>
+        </a>
+        .
+      </p>
+    </aside>
+
     <p>
       I am a PhD student in quantum computing at <strong>Inria</strong>, in
       the <strong>MOCQUA</strong> team. My research is about <strong>when two
@@ -120,6 +167,26 @@ const quickFacts = [
 
     .quick-facts dd {
       margin: 0;
+    }
+
+    .disambiguation {
+      margin: 1.5rem 0;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--color-border);
+      border-left: 3px solid var(--color-accent);
+      border-radius: 0.7rem;
+      background:
+        linear-gradient(135deg, rgba(15, 102, 124, 0.06), transparent 72%),
+        var(--color-surface);
+    }
+
+    .disambiguation h2 {
+      margin-top: 0;
+      font-size: clamp(1.25rem, 2.4vw, 1.45rem);
+    }
+
+    .disambiguation p:last-child {
+      margin-bottom: 0;
     }
   </style>
 </BaseLayout>
