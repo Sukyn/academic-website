@@ -1024,7 +1024,7 @@ const legend = [
         <ul>
           {postsWithUnknownKeys.map((p) => (
             <li>
-              <a href={`/blog/${p.id}/`}>{p.title}</a> - missing topics for: {p.extra.join(", ")}
+              {p.title} - missing topics for: {p.extra.join(", ")}
             </li>
           ))}
         </ul>

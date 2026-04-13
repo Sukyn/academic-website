@@ -1,7 +1,7 @@
 {
   "extends": "astro/tsconfigs/base",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"],
+  "exclude": ["dist", "src/archived"],
   "compilerOptions": {
     "strict": false,
     "noImplicitAny": false,
@@ -9,4 +9,3 @@
     "checkJs": false
   }
 }
-
