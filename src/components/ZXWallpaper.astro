@@ -22,58 +22,17 @@
 
     /**
      * @typedef {{
-     *   type: "ring";
+     *   type: "marker";
      *   x: number;
      *   line: number;
-     *   radiusX: number;
-     *   radiusY: number;
-     *   tilt: number;
-     * }} RingFeature
+     *   shape: "dot" | "square";
+     *   tone: "light" | "dark";
+     *   size: number;
+     * }} MarkerFeature
      */
 
     /**
-     * @typedef {{
-     *   type: "slashes";
-     *   x: number;
-     *   line: number;
-     *   count: number;
-     *   span: number;
-     *   tilt: number;
-     * }} SlashesFeature
-     */
-
-    /**
-     * @typedef {{
-     *   type: "bridge";
-     *   x: number;
-     *   lineA: number;
-     *   lineB: number;
-     *   lift: number;
-     * }} BridgeFeature
-     */
-
-    /**
-     * @typedef {{
-     *   type: "fork";
-     *   x: number;
-     *   line: number;
-     *   side: -1 | 1;
-     *   reach: number;
-     *   radius: number;
-     * }} ForkFeature
-     */
-
-    /**
-     * @typedef {{
-     *   type: "node";
-     *   x: number;
-     *   line: number;
-     *   radius: number;
-     * }} NodeFeature
-     */
-
-    /**
-     * @typedef {RingFeature | SlashesFeature | BridgeFeature | ForkFeature | NodeFeature} Feature
+     * @typedef {MarkerFeature} Feature
      */
 
     /**
@@ -161,62 +120,13 @@
       }
 
       function createFeature(system, side) {
-        const line = randInt(0, system.lineCount - 1);
-        const x = marginBandX(side);
-        const type = pick(
-          system.lineCount > 1
-            ? ["ring", "slashes", "bridge", "fork", "node"]
-            : ["ring", "slashes", "fork", "node"],
-        );
-
-        if (type === "ring") {
-          return /** @type {RingFeature} */ ({
-            type,
-            x,
-            line,
-            radiusX: rand(10, 18),
-            radiusY: rand(6, 10),
-            tilt: rand(-0.5, 0.5),
-          });
-        }
-
-        if (type === "slashes") {
-          return /** @type {SlashesFeature} */ ({
-            type,
-            x,
-            line,
-            count: randInt(2, 3),
-            span: rand(10, 16),
-            tilt: rand(0.45, 0.85) * (Math.random() > 0.5 ? 1 : -1),
-          });
-        }
-
-        if (type === "bridge") {
-          return /** @type {BridgeFeature} */ ({
-            type,
-            x,
-            lineA: 0,
-            lineB: system.lineCount - 1,
-            lift: rand(10, 22) * (Math.random() > 0.5 ? 1 : -1),
-          });
-        }
-
-        if (type === "fork") {
-          return /** @type {ForkFeature} */ ({
-            type,
-            x,
-            line,
-            side: Math.random() > 0.5 ? 1 : -1,
-            reach: rand(18, 34),
-            radius: rand(4, 6.5),
-          });
-        }
-
-        return /** @type {NodeFeature} */ ({
-          type: "node",
-          x,
-          line,
-          radius: rand(3.5, 5.5),
+        return /** @type {MarkerFeature} */ ({
+          type: "marker",
+          x: marginBandX(side),
+          line: randInt(0, system.lineCount - 1),
+          shape: pick(["dot", "square"]),
+          tone: pick(["light", "dark"]),
+          size: rand(6.5, 11),
         });
       }
 
@@ -292,26 +202,6 @@
         }
       }
 
-      function fillChalkCircle(x, y, radius, alpha) {
-        const layers = [
-          { dx: 0, dy: 0, alpha, radius },
-          { dx: 0.25, dy: -0.18, alpha: alpha * 0.42, radius: radius + 0.5 },
-        ];
-
-        for (const layer of layers) {
-          ctx.beginPath();
-          ctx.arc(x + layer.dx, y + layer.dy, layer.radius, 0, TAU);
-          ctx.fillStyle = `rgba(245, 241, 231, ${layer.alpha})`;
-          ctx.fill();
-        }
-      }
-
-      function strokeEllipse(x, y, radiusX, radiusY, tilt, alpha) {
-        strokeChalk(() => {
-          ctx.ellipse(x, y, radiusX, radiusY, tilt, 0, TAU);
-        }, alpha, 0.9, false);
-      }
-
       function drawLine(system, line, time, opacity) {
         const startX = -48;
         const endX = cssW + 48;
@@ -326,70 +216,83 @@
         }, opacity, 1.04, true);
       }
 
-      function drawRing(system, feature, time, opacity) {
-        const y = lineYAt(system, feature.line, feature.x, time);
-        strokeEllipse(feature.x, y, feature.radiusX, feature.radiusY, feature.tilt, opacity * 1.2);
-        strokeChalk(() => {
-          ctx.moveTo(feature.x - feature.radiusX * 0.55, y);
-          ctx.lineTo(feature.x + feature.radiusX * 0.55, y);
-        }, opacity * 0.7, 0.72, false);
+      function markerFill(tone, alpha) {
+        return tone === "dark"
+          ? `rgba(0, 0, 0, ${alpha})`
+          : `rgba(255, 255, 255, ${alpha})`;
       }
 
-      function drawSlashes(system, feature, time, opacity) {
-        const baseY = lineYAt(system, feature.line, feature.x, time);
+      function eraseMarkerCircle(x, y, radius) {
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, TAU);
+        ctx.fillStyle = "rgba(0, 0, 0, 1)";
+        ctx.fill();
+        ctx.restore();
+      }
 
-        for (let index = 0; index < feature.count; index += 1) {
-          const offset = (index - (feature.count - 1) / 2) * 6.5;
-          strokeChalk(() => {
-            ctx.moveTo(
-              feature.x + offset - feature.span * 0.45,
-              baseY - feature.span * feature.tilt * 0.5,
-            );
-            ctx.lineTo(
-              feature.x + offset + feature.span * 0.45,
-              baseY + feature.span * feature.tilt * 0.5,
-            );
-          }, opacity * 0.95, 0.82, false);
+      function eraseMarkerSquare(x, y, size) {
+        const half = size / 2;
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = "rgba(0, 0, 0, 1)";
+        ctx.fillRect(x - half, y - half, size, size);
+        ctx.restore();
+      }
+
+      function eraseMarkerUnderlay(x, y, shape, size) {
+        const padding = 1.6;
+
+        if (shape === "square") {
+          eraseMarkerSquare(x, y, size + padding * 2);
+          return;
+        }
+
+        eraseMarkerCircle(x, y, size / 2 + padding);
+      }
+
+      function fillMarkerCircle(x, y, radius, tone, alpha) {
+        const layers = [
+          { dx: 0, dy: 0, alpha, radius },
+          { dx: 0.24, dy: -0.16, alpha: alpha * 0.22, radius: radius + 0.28 },
+        ];
+
+        for (const layer of layers) {
+          ctx.beginPath();
+          ctx.arc(x + layer.dx, y + layer.dy, layer.radius, 0, TAU);
+          ctx.fillStyle = markerFill(tone, layer.alpha);
+          ctx.fill();
         }
       }
 
-      function drawBridge(system, feature, time, opacity) {
-        const yA = lineYAt(system, feature.lineA, feature.x, time);
-        const yB = lineYAt(system, feature.lineB, feature.x, time);
+      function fillMarkerSquare(x, y, size, tone, alpha) {
+        const layers = [
+          { dx: 0, dy: 0, alpha, size },
+          { dx: 0.22, dy: -0.16, alpha: alpha * 0.2, size: size + 0.32 },
+        ];
 
-        strokeChalk(() => {
-          ctx.moveTo(feature.x - 11, yA);
-          ctx.quadraticCurveTo(
-            feature.x + 3,
-            (yA + yB) / 2 + feature.lift,
-            feature.x - 11,
-            yB,
-          );
-        }, opacity * 0.95, 0.92, false);
-
-        fillChalkCircle(feature.x - 11, yA, 3.2, opacity * 1.05);
+        for (const layer of layers) {
+          const half = layer.size / 2;
+          ctx.fillStyle = markerFill(tone, layer.alpha);
+          ctx.fillRect(x - half + layer.dx, y - half + layer.dy, layer.size, layer.size);
+        }
       }
 
-      function drawFork(system, feature, time, opacity) {
-        const baseY = lineYAt(system, feature.line, feature.x, time);
-        const endY = baseY + feature.side * feature.reach;
-        const endX = feature.x + 15;
+      function drawMarker(x, y, shape, tone, size, alpha) {
+        if (shape === "square") {
+          fillMarkerSquare(x, y, size, tone, alpha);
+          return;
+        }
 
-        strokeChalk(() => {
-          ctx.moveTo(feature.x - 4, baseY);
-          ctx.quadraticCurveTo(feature.x + 5, (baseY + endY) / 2, endX, endY);
-        }, opacity * 0.88, 0.82, false);
-
-        strokeEllipse(endX, endY, feature.radius, feature.radius * 0.8, rand(-0.45, 0.45), opacity);
+        fillMarkerCircle(x, y, size / 2, tone, alpha);
       }
 
-      function drawNode(system, feature, time, opacity) {
+      function drawMarkerFeature(system, feature, time, opacity) {
         const y = lineYAt(system, feature.line, feature.x, time);
-        fillChalkCircle(feature.x, y, feature.radius, opacity * 1.15);
-        strokeChalk(() => {
-          ctx.moveTo(feature.x, y - 7);
-          ctx.lineTo(feature.x, y + 7);
-        }, opacity * 0.72, 0.72, false);
+        eraseMarkerUnderlay(feature.x, y, feature.shape, feature.size);
+        const markerOpacity = feature.tone === "dark" ? 0.98 : 0.96;
+        drawMarker(feature.x, y, feature.shape, feature.tone, feature.size, markerOpacity);
       }
 
       function drawDust(time) {
@@ -400,12 +303,11 @@
           const onLeft = index % 2 === 0;
           const x = onLeft ? rand(10, cssW * 0.2) : rand(cssW * 0.8, cssW - 10);
           const y = rand(12, cssH - 12);
-          const radius = rand(0.5, 1.6);
+          const shape = Math.random() > 0.5 ? "dot" : "square";
+          const tone = Math.random() > 0.5 ? "light" : "dark";
+          const size = rand(1.8, 3.4);
 
-          ctx.beginPath();
-          ctx.arc(x + drift * 0.15, y, radius, 0, TAU);
-          ctx.fillStyle = `rgba(245, 241, 231, ${rand(0.018, 0.04)})`;
-          ctx.fill();
+          drawMarker(x + drift * 0.15, y, shape, tone, size, rand(0.028, 0.07));
         }
       }
 
@@ -435,27 +337,7 @@
         }
 
         for (const feature of system.features) {
-          if (feature.type === "ring") {
-            drawRing(system, feature, time, opacity);
-            continue;
-          }
-
-          if (feature.type === "slashes") {
-            drawSlashes(system, feature, time, opacity);
-            continue;
-          }
-
-          if (feature.type === "bridge") {
-            drawBridge(system, feature, time, opacity);
-            continue;
-          }
-
-          if (feature.type === "fork") {
-            drawFork(system, feature, time, opacity);
-            continue;
-          }
-
-          drawNode(system, feature, time, opacity);
+          drawMarkerFeature(system, feature, time, opacity);
         }
       }
 
