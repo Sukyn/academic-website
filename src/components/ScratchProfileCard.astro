@@ -71,7 +71,6 @@ const imageSources = Array.from(
     let currentIndex = 0;
     let roundTimer = 0;
     let transitioning = false;
-    let coverMode = "gray";
     let coverSource = "";
     let coverAsset = null;
     let coverSnapshot = null;
@@ -136,12 +135,6 @@ const imageSources = Array.from(
 
       context.clearRect(0, 0, rect.width, rect.height);
 
-      if (coverMode === "gray") {
-        context.fillStyle = "#a7adb7";
-        context.fillRect(0, 0, rect.width, rect.height);
-        return;
-      }
-
       if (coverAsset) {
         drawDrawable(coverAsset, rect);
         return;
@@ -175,16 +168,7 @@ const imageSources = Array.from(
       return assetPromise;
     };
 
-    const setGrayCover = () => {
-      coverMode = "gray";
-      coverSource = "";
-      coverAsset = null;
-      coverSnapshot = null;
-      drawCover();
-    };
-
     const showImageCover = () => {
-      coverMode = "image";
       coverSource = getCurrentSource();
       coverAsset = null;
 
@@ -329,12 +313,29 @@ const imageSources = Array.from(
     };
 
     const prepare = () => {
-      ready = true;
-      transitioning = false;
-      root.dataset.ready = "true";
-      setGrayCover();
+      if (sources.length <= 1) {
+        ready = false;
+        transitioning = false;
+        delete root.dataset.ready;
+        setRevealed(true);
+        return;
+      }
+
+      ready = false;
+      transitioning = true;
+      currentIndex = 1;
+
+      showImageCover();
       setRevealed(false);
+      root.dataset.ready = "true";
       updatePointerState();
+
+      void waitForImage(sources[currentIndex]).then(() => {
+        ready = true;
+        transitioning = false;
+        root.dataset.ready = "true";
+        updatePointerState();
+      });
     };
 
     canvas.addEventListener("pointerdown", onPointerDown);
