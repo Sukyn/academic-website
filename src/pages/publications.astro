@@ -53,15 +53,38 @@ function formatTalkDate(date: string) {
   return talkDateFormatter.format(new Date(`${date}T00:00:00Z`));
 }
 
+function talkAppearances(talk: (typeof talks)[number]) {
+  return (talk.appearances ?? [{ date: talk.date, event: talk.event }]).filter(
+    (appearance) => appearance.date || appearance.event,
+  );
+}
+
+function joinTalkMetaParts(parts: string[]) {
+  if (parts.length <= 2) return parts.join(" & ");
+
+  return `${parts.slice(0, -1).join(", ")} & ${parts[parts.length - 1]}`;
+}
+
 function talkMeta(talk: (typeof talks)[number]) {
-  return [talk.date ? formatTalkDate(talk.date) : undefined, talk.event].filter(Boolean).join(" | ");
+  const appearances = talkAppearances(talk);
+  const dates = appearances
+    .map((appearance) => (appearance.date ? formatTalkDate(appearance.date) : undefined))
+    .filter(Boolean);
+  const events = appearances.map((appearance) => appearance.event).filter(Boolean);
+
+  return [joinTalkMetaParts(dates), joinTalkMetaParts(events)].filter(Boolean).join(" | ");
+}
+
+function talkSortTime(talk: (typeof talks)[number]) {
+  const times = talkAppearances(talk).map((appearance) =>
+    appearance.date ? Date.parse(`${appearance.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY,
+  );
+
+  return Math.max(...times, Number.NEGATIVE_INFINITY);
 }
 
 const talksByDate = [...talks].sort((left, right) => {
-  const leftTime = left.date ? Date.parse(`${left.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
-  const rightTime = right.date ? Date.parse(`${right.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
-
-  return rightTime - leftTime;
+  return talkSortTime(right) - talkSortTime(left);
 });
 
 const outreachByDate = [...stemOutreach].sort((left, right) => {
@@ -129,7 +152,7 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
       <ul class="talk-list">
         {talksByDate.map((talk) => (
           <li id={talk.id} class="talk-item">
-            {talk.date || talk.event ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
+            {talkMeta(talk) ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
             <h3 class="talk-title">
               <button
                 type="button"
@@ -158,7 +181,7 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
         <h3 id={`${talk.id}-title`} class="offer-modal__title">
           {talk.title}
         </h3>
-        {talk.date || talk.event ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
+        {talkMeta(talk) ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
         {talk.slidesHref ? (
           <p class="pub-links">
             <a href={talk.slidesHref} target="_blank" rel="noopener noreferrer">
