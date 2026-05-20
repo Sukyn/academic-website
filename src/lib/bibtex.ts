@@ -7,6 +7,7 @@ export type Pub = {
   year?: number;
   venue?: string;
   url?: string;
+  pdf?: string;
   type?: string;
 };
 
@@ -54,6 +55,7 @@ export function parseBibtexToPubs(bibtex: string): Pub[] {
       year: Number.isFinite(year) ? year : undefined,
       venue: pickVenue(t),
       url,
+      pdf: getTag(t, "pdf"),
       type: e.entryType,
     };
   });

@@ -10,8 +10,12 @@ import bibtex from "../content/publications.bibtex?raw";
 
 const pubs = parseBibtexToPubs(bibtex);
 
-function publicationLinks(url?: string) {
-  if (!url) return [];
+function publicationLinks(url?: string, pdf?: string) {
+  if (!url && !pdf) return [];
+
+  const pdfLink = pdf ? [{ label: "PDF", href: pdf }] : [];
+
+  if (!url) return pdfLink;
 
   try {
     const parsed = new URL(url);
@@ -22,23 +26,23 @@ function publicationLinks(url?: string) {
 
       return [
         { label: "arXiv", href: url },
-        ...(pdfPath ? [{ label: "PDF", href: pdfPath }] : []),
+        ...(pdf ? pdfLink : pdfPath ? [{ label: "PDF", href: pdfPath }] : []),
       ];
     }
 
     if (parsed.hostname.includes("doi.org")) {
-      return [{ label: "DOI", href: url }];
+      return [{ label: "DOI", href: url }, ...pdfLink];
     }
   } catch {
-    return [{ label: "Open", href: url }];
+    return [{ label: "Open", href: url }, ...pdfLink];
   }
 
-  return [{ label: "Open", href: url }];
+  return [{ label: "Open", href: url }, ...pdfLink];
 }
 
 const pubsWithLinks = pubs.map((pub) => ({
   ...pub,
-  links: publicationLinks(pub.url),
+  links: publicationLinks(pub.url, pub.pdf),
   note: publicationNotesById[pub.id],
 }));
 
