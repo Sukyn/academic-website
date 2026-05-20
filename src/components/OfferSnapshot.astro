@@ -1,5 +1,6 @@
 ---
 import type { OfferSummary } from "../data/offerSummaries";
+import { renderInlineMath } from "../lib/inlineMath";
 
 const { offer } = Astro.props as { offer: OfferSummary };
 ---
@@ -7,22 +8,22 @@ const { offer } = Astro.props as { offer: OfferSummary };
 <section class="offer-snapshot" aria-label="At a glance">
   <div class="offer-snapshot-item">
     <p class="offer-snapshot-label">Who this fits</p>
-    <p>{offer.fit}</p>
+    <p set:html={renderInlineMath(offer.fit)} />
   </div>
 
   <div class="offer-snapshot-item">
     <p class="offer-snapshot-label">Background</p>
-    <p>{offer.background}</p>
+    <p set:html={renderInlineMath(offer.background)} />
   </div>
 
   <div class="offer-snapshot-item">
     <p class="offer-snapshot-label">Likely output</p>
-    <p>{offer.output}</p>
+    <p set:html={renderInlineMath(offer.output)} />
   </div>
 
   <div class="offer-snapshot-item">
     <p class="offer-snapshot-label">First milestone</p>
-    <p>{offer.firstMilestone}</p>
+    <p set:html={renderInlineMath(offer.firstMilestone)} />
   </div>
 </section>
 

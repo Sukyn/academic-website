@@ -7,16 +7,16 @@ export const publicationNotesById: Record<string, PublicationNote> = {
   blake2026completenessprimedimensionalphaseaffinecircuits: {
     status: "Preprint",
     summary:
-      "Gives a complete equational theory for prime-dimensional phase-affine circuits in a form meant to be uniform and rewrite-friendly.",
+      "Presents complete PROP presentations and normal forms for affine circuits with bounded-degree phase-polynomial extensions over prime fields.",
   },
   blake2026polycontrolledpropsquditcircuits: {
     status: "Preprint",
     summary:
-      "Builds a uniform PROP-level account of controlled structure for qudit circuits across arbitrary finite dimension.",
+      "Gives a finite dimension-uniform equational presentation for exact qudit circuits using primitive value-control in a polycontrolled PROP.",
   },
   blake2026simplerpresentationsfragmentsquantum: {
-    status: "Preprint",
+    status: "FSCD 2026 proceedings",
     summary:
-      "Looks for leaner presentations of familiar circuit fragments so the algebra is easier to read, compare, and automate.",
+      "Transfers six circuit-fragment completeness theorems to PROP presentations with structural permutations and proves minimality results for the resulting axiom systems.",
   },
 };
