@@ -79,6 +79,17 @@ function talkMeta(talk: (typeof talks)[number]) {
   return [joinTalkMetaParts(dates), joinTalkMetaParts(events)].filter(Boolean).join(" | ");
 }
 
+function talkLinks(talk: (typeof talks)[number]) {
+  const links: { label: string; href: string }[] = [];
+
+  if (talk.slidesHref) links.push({ label: "Slides", href: talk.slidesHref });
+  if (talk.extendedAbstractHref) {
+    links.push({ label: "Extended abstract", href: talk.extendedAbstractHref });
+  }
+
+  return links;
+}
+
 function talkSortTime(talk: (typeof talks)[number]) {
   const times = talkAppearances(talk).map((appearance) =>
     appearance.date ? Date.parse(`${appearance.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY,
@@ -168,11 +179,16 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
                 {talk.title}
               </button>
             </h3>
-            {talk.slidesHref ? (
+            {talkLinks(talk).length > 0 ? (
               <p class="pub-links">
-                <a href={talk.slidesHref} target="_blank" rel="noopener noreferrer">
-                  Slides
-                </a>
+                {talkLinks(talk).map((link, index) => (
+                  <>
+                    {index > 0 ? <span aria-hidden="true"> | </span> : null}
+                    <a href={link.href} target="_blank" rel="noopener noreferrer">
+                      {link.label}
+                    </a>
+                  </>
+                ))}
               </p>
             ) : null}
           </li>
@@ -186,11 +202,16 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
           {talk.title}
         </h3>
         {talkMeta(talk) ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
-        {talk.slidesHref ? (
+        {talkLinks(talk).length > 0 ? (
           <p class="pub-links">
-            <a href={talk.slidesHref} target="_blank" rel="noopener noreferrer">
-              Slides
-            </a>
+            {talkLinks(talk).map((link, index) => (
+              <>
+                {index > 0 ? <span aria-hidden="true"> | </span> : null}
+                <a href={link.href} target="_blank" rel="noopener noreferrer">
+                  {link.label}
+                </a>
+              </>
+            ))}
           </p>
         ) : null}
         <p>{talk.abstract}</p>
