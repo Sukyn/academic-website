@@ -10,10 +10,22 @@ export type Talk = {
   event?: string;
   appearances?: TalkAppearance[];
   slidesHref?: string;
+  extendedAbstractHref?: string;
   abstract: string;
 };
 
 export const talks: Talk[] = [
+  {
+    id: "completeness-not-enough-liqcs-2026",
+    title: "Completeness Is Not Enough: Simpler Presentations and Minimality for Near-Clifford Circuit Fragments",
+    date: "2026-06-17",
+    event: "LIQCS 2026 - Logic in Quantum Computer Science, Inria de Paris",
+    slidesHref: "/notes/liqcs-2026-completeness-not-enough.pdf",
+    extendedAbstractHref:
+      "https://liqcs2026.github.io/assets/pdfs/LIQCS_2026_extended_abstract_24.pdf",
+    abstract:
+      "Completeness for a circuit fragment says that every valid identity is derivable, but it does not say which axioms are genuinely doing algebraic work. This talk revisits six near-Clifford fragments in a PROP setting, where wire permutations are treated as ambient structure, yielding smaller complete presentations for qubit Clifford, real Clifford, CNOT-dihedral, bounded-wire Clifford+T, bounded-wire Clifford+CS, and qutrit Clifford. The reduced presentations expose a smaller algebraic core and make minimality questions sharper: some fragments become fully minimal, while the remaining cases reduce to concrete low-arity independence problems.",
+  },
   {
     id: "escape-the-matrix",
     title: "Escape the Matrix: Graphical Reasoning and Minimal Axioms for Quantum Circuits",

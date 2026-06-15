@@ -19,11 +19,15 @@ export const stemOutreach: StemOutreachItem[] = [
     date: "2025-04-04",
     meta: "Scientific Game Jam Nancy 2025 | First prize",
     summary:
-      "Playable outreach game built from my research on quantum-circuit simplification, designed to introduce circuit rewriting through an accessible puzzle format for middle-school students and above.",
+      "Video-game adaptation of a printable circuit-simplification tutorial game built from my research, turning quantum-circuit rewriting into an accessible puzzle format for middle-school students and above.",
     links: [
       {
         label: "Play online",
         href: "https://sukyn.itch.io/les-chevaliers-du-quantique",
+      },
+      {
+        label: "Original printable game (PDF)",
+        href: "/outreach/jeu-circuits-quantiques.pdf",
       },
       {
         label: "NanSciNum article",
@@ -36,6 +40,20 @@ export const stemOutreach: StemOutreachItem[] = [
       {
         label: "Press clipping (PDF)",
         href: "/outreach/les-chevaliers-du-quantique-press-clipping-2025-03-05.pdf",
+      },
+    ],
+  },
+  {
+    id: "quantum-circuit-simplification-game",
+    title: "Quantum circuit simplification game",
+    date: "2025-02-17",
+    meta: "Printable classroom game | Original tabletop version",
+    summary:
+      "French-language tutorial game for learning quantum-circuit simplification as a rewrite puzzle. Players solve missions representing quantum circuits by removing all tiles column by column with rules for H, X, Z, basis changes, entanglement, controls, phases, stabilisers, and transfer-style identities.",
+    links: [
+      {
+        label: "Printable rules and missions (PDF)",
+        href: "/outreach/jeu-circuits-quantiques.pdf",
       },
     ],
   },
