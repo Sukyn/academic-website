@@ -10,7 +10,7 @@ export const publicationNotesById: Record<string, PublicationNote> = {
       "Presents complete PROP presentations and normal forms for affine circuits with bounded-degree phase-polynomial extensions over prime fields.",
   },
   blake2026polycontrolledpropsquditcircuits: {
-    status: "Preprint",
+    status: "MFCS 2026 proceedings; Best Student Paper award",
     summary:
       "Gives a finite dimension-uniform equational presentation for exact qudit circuits using primitive value-control in a polycontrolled PROP.",
   },

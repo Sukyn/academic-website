@@ -7,7 +7,7 @@ const { offer } = Astro.props as { offer: OfferSummary };
 
 <section class="offer-snapshot" aria-label="At a glance">
   <div class="offer-snapshot-item">
-    <p class="offer-snapshot-label">Who this fits</p>
+    <p class="offer-snapshot-label">For</p>
     <p set:html={renderInlineMath(offer.fit)} />
   </div>
 
@@ -17,12 +17,12 @@ const { offer } = Astro.props as { offer: OfferSummary };
   </div>
 
   <div class="offer-snapshot-item">
-    <p class="offer-snapshot-label">Likely output</p>
+    <p class="offer-snapshot-label">Output</p>
     <p set:html={renderInlineMath(offer.output)} />
   </div>
 
   <div class="offer-snapshot-item">
-    <p class="offer-snapshot-label">First milestone</p>
+    <p class="offer-snapshot-label">Start</p>
     <p set:html={renderInlineMath(offer.firstMilestone)} />
   </div>
 </section>
