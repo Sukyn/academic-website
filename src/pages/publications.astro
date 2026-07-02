@@ -21,13 +21,7 @@ function publicationLinks(url?: string, pdf?: string) {
     const parsed = new URL(url);
 
     if (parsed.hostname.includes("arxiv.org")) {
-      const match = parsed.pathname.match(/\/abs\/(.+)$/);
-      const pdfPath = match ? `https://arxiv.org/pdf/${match[1]}.pdf` : undefined;
-
-      return [
-        { label: "arXiv", href: url },
-        ...(pdf ? pdfLink : pdfPath ? [{ label: "PDF", href: pdfPath }] : []),
-      ];
+      return [{ label: "arXiv", href: url }];
     }
 
     if (parsed.hostname.includes("doi.org")) {
@@ -45,6 +39,19 @@ const pubsWithLinks = pubs.map((pub) => ({
   links: publicationLinks(pub.url, pub.pdf),
   note: publicationNotesById[pub.id],
 }));
+
+function publicationMeta(publication: (typeof pubsWithLinks)[number]) {
+  const seen = new Set<string>();
+  return [publication.note?.status, publication.venue, publication.year?.toString()]
+    .filter(Boolean)
+    .map(String)
+    .filter((part) => {
+      if (seen.has(part)) return false;
+      seen.add(part);
+      return true;
+    })
+    .join(" | ");
+}
 
 const talkDateFormatter = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
@@ -127,12 +134,8 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
               <strong>{publication.title}</strong>
             </p>
             {publication.authors ? <p class="muted">{publication.authors}</p> : null}
-            {publication.note?.status || publication.venue || publication.year ? (
-              <p class="pub-meta">
-                {[publication.note?.status, publication.venue, publication.year]
-                  .filter(Boolean)
-                  .join(" | ")}
-              </p>
+            {publicationMeta(publication) ? (
+              <p class="pub-meta">{publicationMeta(publication)}</p>
             ) : null}
             {publication.note?.summary ? (
               <p class="pub-summary">{publication.note.summary}</p>

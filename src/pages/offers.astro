@@ -85,46 +85,46 @@ const topics: Topic[] = [
     key: "qudit-clifford",
     title: "Qudit Clifford structure",
     description:
-      "Clifford circuits in prime, even, and composite dimension. The practical targets are conventions, normal forms, and rewrite rules that can actually be used.",
+      "Clifford circuits in prime, even, and composite dimension. Main targets: conventions, normal forms, rewrite rules.",
     status: "Current focus",
     statusClass: "pill--focus",
-    bestFor: "advanced students or researchers who like both algebra and tooling",
+    bestFor: "algebra plus tooling",
   },
   {
     key: "linear-optics",
     title: "Linear optics",
     description:
-      "Small constructive questions in LOv/LOfi, with Fourier gates as the main test case.",
+      "LOv/LOfi around the Fourier gate; matrices decide the answer.",
     status: "Open / exploratory",
     statusClass: "pill--open",
-    bestFor: "people who like explicit matrices and benchmarks",
+    bestFor: "explicit matrices and benchmarks",
   },
   {
     key: "outreach",
     title: "Outreach",
     description:
-      "Playable or printable material that teaches a real circuit idea without pretending to be a full course.",
+      "Playable or printable material for one circuit idea at a time.",
     status: "Actively looking for help",
     statusClass: "pill--open",
-    bestFor: "collaborators who enjoy pedagogy, games, or web work",
+    bestFor: "pedagogy, games, or web work",
   },
   {
     key: "algebraic-viewpoints",
     title: "Other algebraic viewpoints",
     description:
-      "Exact synthesis, Clifford/geometric algebra, controlled structure, and group presentations. A viewpoint stays on the list only if it makes a circuit problem clearer.",
+      "Exact synthesis, Clifford/geometric algebra, controlled structure, and group presentations. Test each viewpoint on a circuit problem.",
     status: "Tomorrow-problem",
     statusClass: "pill--incubating",
-    bestFor: "self-directed people with strong algebra taste",
+    bestFor: "self-directed algebra work",
   },
   {
     key: "equational-theory",
     title: "Equational theories",
     description:
-      "Generators, equations, normal forms, and the places where a calculus becomes small enough to reason with.",
+      "Generators, equations, normal forms, and calculi checked by hand or script.",
     status: "Current focus",
     statusClass: "pill--focus",
-    bestFor: "people who want theorem work with compiler consequences",
+    bestFor: "theorems with compiler consequences",
   },
   {
     key: "zx-zh",
@@ -133,7 +133,7 @@ const topics: Topic[] = [
       "Extraction and rewrite tooling for qudit diagrammatic calculi. Lower priority for now.",
     status: "Backlog / parked",
     statusClass: "pill--parked",
-    bestFor: "implementation-heavy collaborators",
+    bestFor: "implementation-heavy work",
   },
   {
     key: "circuit-fragments",
@@ -142,20 +142,20 @@ const topics: Topic[] = [
       "Small gate sets, expressivity, fault-tolerance constraints, and quantitative tradeoffs.",
     status: "Current focus",
     statusClass: "pill--focus",
-    bestFor: "people who like concrete fragments and measurements",
+    bestFor: "fragments and measurements",
   },
 ];
 
 const offerDetails: Record<string, OfferDetail> = {
   "offer-arbitrary-d-clifford": {
     question:
-      "Can we write Clifford circuit equations for all $d$ without hiding composite dimensions under casework?",
+      "Clifford equations in arbitrary dimension, including composite $d$.",
     why:
-      "Abstract descriptions of stabilizers and Clifford groups already cover arbitrary dimension. The missing piece is a circuit-level account: conventions, generators, normal forms, and small tests that a compiler could use.",
+      "Stabilizer descriptions cover arbitrary dimension. A circuit presentation has to choose phases, generators, normal forms, and tests a program can run.",
     firstSteps: [
-      "Choose one composite test case, probably $d = 4$, and fix the phase and gate conventions.",
-      "Compare the resulting gates with the arbitrary-dimensional stabilizer descriptions.",
-      "Build a tiny verifier for equalities before trying to prove a general theorem.",
+      "Write the $d = 4$ gate conventions on one page.",
+      "Check them against the standard stabilizer description.",
+      "Build a script for equality tests on two wires.",
     ],
     links: [
       { label: "arbitrary-d stabilizers", href: refs.quditCliffordArbitraryD },
@@ -165,13 +165,13 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-even-d-clifford": {
     question:
-      "Which odd-prime Clifford arguments fail in even dimension, and which failures are only convention problems?",
+      "Even dimension: which Clifford equations fail, and why?",
     why:
-      "Even-dimensional qudits show up naturally in hardware and encodings. Many odd-prime tricks stop being automatic there. A useful output would name the obstruction precisely.",
+      "Odd-prime proofs often divide by 2. In $d = 4$, that step fails. Separate phase convention from obstruction.",
     firstSteps: [
-      "Work in $d = 4$ and list the first identities that fail.",
-      "Separate phase-convention issues from genuine algebraic obstructions.",
-      "Look for one even-dimensional subfragment that still has a clean rewrite story.",
+      "Run the odd-prime identities in $d = 4$.",
+      "Mark failures caused only by phase convention.",
+      "Keep one surviving fragment and normalize examples inside it.",
     ],
     links: [
       { label: "Clifford review", href: refs.cliffordReview },
@@ -181,25 +181,25 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-lov-hadamard": {
     question:
-      "Can the Fourier gate $H_d$ be generated and certified inside LOv for both prime and composite $d$?",
+      "Fourier gates inside LOv, checked by matrices.",
     why:
-      "Fourier gates are a good stress test. They force the conventions to be explicit, and they give quick resource counts once the construction works.",
+      "$H_d$ fixes the mode conventions. After that, compare resource counts.",
     firstSteps: [
-      "Reproduce the $d = 2$ case inside the chosen LOv/LOfi conventions.",
-      "Generate candidate circuits for $d = 3$ and $d = 5$.",
-      "Check each circuit by matrix comparison and record the resource count.",
+      "Reproduce $d = 2$ in the chosen LOv/LOfi conventions.",
+      "Generate candidates for $d = 3$ and $d = 5$.",
+      "Compare matrices and record gate counts.",
     ],
     links: [{ label: "LOfi/linear-optical calculus", href: refs.lofiCalculus }],
   },
   "offer-chevaliers": {
     question:
-      "Which new levels would teach the printable circuit-game rules without turning the videogame into a textbook?",
+      "New levels for the circuit-simplification game.",
     why:
-      '"Les Chevaliers du Quantique" is the videogame version of a simplified circuit tutorial game. New levels should carry one visible learning goal and a guided solution.',
+      '"Les Chevaliers du Quantique" is the videogame version of the printable circuit tutorial. Each level pack can teach one rule and show the move used in the solution.',
     firstSteps: [
       "Pick one rule from the printable circuit game and make a three-to-five-level sequence around it.",
       "Write short guided solutions that explain the circuit move behind each answer.",
-      "Playtest with someone who has not seen the paper version.",
+      "Playtest with someone new to the paper version.",
     ],
     links: [
       { label: "playable game", href: refs.chevaliersGame },
@@ -208,13 +208,13 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-qutrit-few-roots": {
     question:
-      "Is there a qutrit analogue of the few-square-roots exact synthesis story, using cube roots instead?",
+      "A qutrit version of the few-square-roots synthesis result.",
     why:
-      "The qubit result suggests a qutrit test. Start with the arithmetic: small rings, small one-qutrit unitaries, and the first obstruction that shows up.",
+      "The qubit theorem points to a qutrit arithmetic problem: choose rings, sample gates, and look for obstructions.",
     firstSteps: [
       "Choose a small candidate ring for one-qutrit unitaries.",
       "Search for exact decompositions of a few sample gates.",
-      "Record the first obstruction instead of forcing the qubit proof to fit.",
+      "Record the first obstruction that appears.",
     ],
     links: [
       { label: "few square roots", href: refs.fewSquareRoots },
@@ -224,9 +224,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-geometric-algebra-qudits": {
     question:
-      "Does geometric algebra make any qudit circuit calculation shorter, or is it mostly a change of language?",
+      "Geometric algebra as notation for qudit gates.",
     why:
-      "A new formalism has to shorten something: a normal form, a synthesis step, or a proof. A translation exercise would make that visible quickly.",
+      "Translate a gate family. Keep the formalism only when it shortens a calculation.",
     firstSteps: [
       "Translate one familiar qudit gate family into the formalism.",
       "Compare the length of one standard calculation before and after translation.",
@@ -236,13 +236,13 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-promised-props": {
     question:
-      "Can promise-style assumptions and controlled operations be handled in one PROP-level language?",
+      "Promises and controlled operations in the same PROP.",
     why:
-      "Controlled structure appears everywhere in circuits. Promise assumptions usually sit outside the diagram. Bringing them into the same language may simplify some transformations.",
+      "Controlled structure sits inside the diagram. Promise assumptions usually sit outside. Combining them may change ancilla and control bookkeeping.",
     firstSteps: [
       "Pick one small promise fragment and write its controlled operations diagrammatically.",
       "Check whether ancilla-for-control conversions become structural.",
-      "Keep only the equations that survive a concrete circuit example.",
+      "Keep equations that survive the example.",
     ],
     links: [
       { label: "polycontrolled PROPs", href: refs.polycontrolledProps },
@@ -251,13 +251,13 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-controlled-lawvere-theories": {
     question:
-      "What is the smallest useful definition of a controlled Lawvere theory?",
+      "Controlled Lawvere theories, starting from finite fields.",
     why:
-      "A definition here needs a small example quickly. Finite-field functions and controlled classical gates are the first test case.",
+      "Start from examples: finite-field functions and controlled classical gates.",
     firstSteps: [
-      "Write the minimal definition, without trying to solve every variant at once.",
+      "Write the definition for the finite-field case first.",
       "Test it on $q$-reduced polynomial functions over a finite field.",
-      "Look for one theorem that is cleaner because control is part of the structure.",
+      "Try one theorem where control appears in the statement.",
     ],
     links: [
       { label: "controlled PROPs", href: refs.controlledProps },
@@ -266,9 +266,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-coxeter-fragment-classification": {
     question:
-      "When a circuit fragment has a good normal form, is there a Coxeter, Artin, triangle, or reflection-group presentation hiding behind it?",
+      "Coxeter and Artin presentations as a way to sort circuit fragments.",
     why:
-      "Small qubit fragments sometimes have finite-group shadows. Qudit fragments add arithmetic that may break the Coxeter picture. A useful project would compare a few fragments side by side and ask which presentations explain their normal forms.",
+      "Some qubit fragments have finite-group shadows. Qudit fragments add arithmetic. Put one-qubit Clifford, real Clifford, CNOT-dihedral, and one qutrit fragment in the same table. Record the presentations that explain their normal forms and the ones that fail.",
     firstSteps: [
       "Start with one-qubit Clifford and real subfragments, recording which generators are involutions and which relations are braid-like.",
       "Add CNOT-dihedral or phase-polynomial fragments and separate true group relations from rewrite conveniences.",
@@ -282,9 +282,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-scaling-generators": {
     question:
-      "Do prime-dimensional affine/phase calculi really need a full family of scaling generators?",
+      "Scaling generators in prime-dimensional affine/phase calculi.",
     why:
-      "The scaling family is a compact place to test redundancy. Derivable scalings would simplify the presentation; a counterexample would say what the fragment is remembering.",
+      "Remove scaling generators and ask for derivations or countermodels.",
     firstSteps: [
       "Pick one toy fragment and remove most of the scaling family.",
       "Check which local rewrites still work.",
@@ -294,9 +294,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-beyond-prime-dimensions": {
     question:
-      "What should affine-plus-diagonal calculi look like over prime powers or finite rings?",
+      "Affine-plus-diagonal calculi over prime powers or rings.",
     why:
-      "Prime fields make many proofs clean. Composite settings are messier and cannot stay as an afterthought.",
+      "Prime fields hide choices. Prime powers and rings expose them.",
     firstSteps: [
       "Choose prime powers or rings as the first target.",
       "Write the smallest possible generator list.",
@@ -309,9 +309,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-higher-degree-phase-hierarchies": {
     question:
-      "Which new generators appear when qudit phase functions move beyond low degree?",
+      "Higher-degree phase fragments for qudits.",
     why:
-      "Low-degree phase fragments are already useful. Higher-degree behavior should say more about the hierarchy of qudit resources.",
+      "Compute degree 4 by hand in one prime dimension. Missing phase functions become candidate generators.",
     firstSteps: [
       "Work out degree 4 in one prime dimension.",
       "Find the first phase function that cannot be built from the smaller fragment.",
@@ -325,13 +325,13 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-two-level-x-phase-affine": {
     question:
-      "How much of the prime-dimensional phase-affine world is already generated by $X^{a,b}$, $\\mathrm{CX}$, and a few phases?",
+      "$X^{a,b}$, $\\mathrm{CX}$, and sparse phase resources.",
     why:
-      "These are my current notes: a sparse fragment with explicit decompositions, zero-sum diagonal examples, and controlled phases that should become synthesis statements.",
+      "Start from the prime-dimensional phase-affine paper. In $p = 5$, decompose controlled phases using two-level swaps and $\\mathrm{CX}$.",
     firstSteps: [
-      "Clean the current decomposition notes for $p \\ge 5$.",
-      "Make the zero-sum diagonal examples readable.",
-      "Explain where $\\mathrm{CZ}$, $\\mathrm{CCZ}$, and controlled phases enter.",
+      "Work out $\\mathrm{CZ}$ and $\\mathrm{CCZ}$ explicitly for $p = 5$.",
+      "Write one zero-sum diagonal example as a gate decomposition.",
+      "Compare the decomposition with the phase-affine normal form.",
     ],
     links: [
       { label: "phase polynomials for qudits", href: refs.phasePolynomialsQudit },
@@ -340,9 +340,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-qudit-zx-extraction": {
     question:
-      "Can we extract circuits from qudit ZX diagrams without first solving every possible diagrammatic fragment?",
+      "Circuit extraction from a chosen qudit ZX fragment.",
     why:
-      "A full arbitrary-dimensional extraction theory is a lot. A useful prototype can be narrower: pick one normal form, one target gate set, and one benchmark family.",
+      "Choose a fragment, a normal form, and a gate set. Run extraction, then record failures.",
     firstSteps: [
       "Choose a small extractable class of diagrams.",
       "Define the target qudit gate set.",
@@ -356,9 +356,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-qutrit-zx-extraction": {
     question:
-      "Can a qutrit-only extractor be made simple enough to be a real tool?",
+      "A qutrit-only extractor before arbitrary $d$.",
     why:
-      "Qutrits are a good middle ground: richer than qubits, much less sprawling than arbitrary $d$.",
+      "Qutrits have enough structure to expose hard cases before arbitrary dimension.",
     firstSteps: [
       "Pick one qutrit simplification pass.",
       "Define a tiny extracted gate set.",
@@ -371,9 +371,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-two-level-zx": {
     question:
-      "What would a diagrammatic calculus look like if two-level qudit gates were primitive?",
+      "A diagrammatic calculus with two-level gates as primitives.",
     why:
-      "Two-level operations are natural in synthesis and hardware. A ZX-like syntax has to use them without collapsing into ordinary circuit notation.",
+      "Two-level operations appear in synthesis and hardware. Make them primitive in the syntax.",
     firstSteps: [
       "Choose the two-level generators and their semantics.",
       "Write the first local rewrite rules.",
@@ -387,9 +387,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-single-qupit-clifford-t": {
     question:
-      "What is the clean one-wire exact synthesis story for single-qupit Clifford+T-like fragments?",
+      "Single-qupit Clifford+T-like exact synthesis.",
     why:
-      "One wire is the right place to be strict about arithmetic before adding controls, entanglement, and layout.",
+      "One wire is enough arithmetic for a first exact-synthesis result. Controls and layout can wait.",
     firstSteps: [
       "Fix one prime dimension and one gate set.",
       "Implement exact synthesis for a small sample of unitaries.",
@@ -403,9 +403,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-controlled-x-algorithms": {
     question:
-      "Do generalized qudit controlled-X decompositions improve any real algorithm block?",
+      "Qudit controlled-X decompositions inside algorithm blocks.",
     why:
-      "Use benchmarks here. The point is to find where qudit encodings save depth, gates, or storage.",
+      "Benchmark depth, gate count, storage, and ancillas.",
     firstSteps: [
       "Choose one arithmetic, oracle, or lookup block.",
       "Implement the qubit and qudit versions with the same metric conventions.",
@@ -418,9 +418,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-fault-tolerance-by-construction": {
     question:
-      "Can fault-tolerance-by-construction ideas be stated for qudit rewrite systems?",
+      "Fault-tolerance-preserving rewrites for qudit circuits.",
     why:
-      "Rewrite rules are only useful in a fault-tolerant setting if they respect the code or noise model being used. For qudits, those choices are less settled.",
+      "A rewrite rule must respect the code or noise model. For qudits, start with one toy model.",
     firstSteps: [
       "Choose one tiny qudit noise or code model.",
       "Define what it means for one rewrite to be safe.",
@@ -433,9 +433,9 @@ const offerDetails: Record<string, OfferDetail> = {
   },
   "offer-clifford-ancilla-minimisation": {
     question:
-      "How much depth or gate count can Clifford circuits save if we allow a fixed number of ancillas?",
+      "Ancillas versus depth for Clifford circuits.",
     why:
-      "The output should be a frontier: plots or bounds for ancillas versus depth or gate count.",
+      "Set an ancilla budget. Plot depth or gate count against extra workspace.",
     firstSteps: [
       "Pick one small Clifford family and one metric pair, such as ancillas versus depth.",
       "Model the search with SAT, dynamic programming, or brute force for very small sizes.",
@@ -480,17 +480,17 @@ const focusNow = [
   {
     title: "How much do two-level swaps, CX, and a few phases express?",
     offerId: "offer-two-level-x-phase-affine",
-    note: "The qudit fragment I most want to polish next: sparse gates, explicit decompositions, and a theorem-level story for prime dimension.",
+    note: "Sparse prime-dimensional gates: two-level swaps, controlled addition, and controlled phases in one fragment.",
     status: "Current focus",
     statusClass: "pill--focus",
   },
 ];
 
 const legend = [
-  { label: "Current focus", cls: "pill--focus", text: "I am already close to this." },
-  { label: "Open / exploratory", cls: "pill--open", text: "Good question; scope may move." },
-  { label: "Tomorrow-problem", cls: "pill--incubating", text: "Worth keeping warm; not my main work this week." },
-  { label: "Backlog / parked", cls: "pill--parked", text: "Needs a driven collaborator." },
+  { label: "Current focus", cls: "pill--focus", text: "Close to current papers." },
+  { label: "Open / exploratory", cls: "pill--open", text: "Scope may move." },
+  { label: "Tomorrow-problem", cls: "pill--incubating", text: "Background work first." },
+  { label: "Backlog / parked", cls: "pill--parked", text: "Waiting for the right collaborator." },
 ];
 
 const offerModals: Array<{ offer: OfferSummary; detail: OfferDetail }> = [];
@@ -511,20 +511,18 @@ for (const offer of offerSummaries) {
 
       <p class="lead">
         A PhD-student page: problems for discussion, collaboration, or a
-        concrete side project.
+        small side project.
       </p>
 
       <p class="muted">
-        Some ideas are close to my current work. Others are rougher and need a
-        first pass before they deserve a bigger claim.
+        Some entries sit near my papers. Others begin with one calculation.
       </p>
     </header>
 
     <section id="right-now" class="spotlight" aria-label="Current focus">
       <h2>Right Now</h2>
       <p class="muted">
-        My near-term energy is mostly going into talks and current qudit-fragment
-        work. If I had to pick one research thread to sharpen next, it would be this one.
+        Near-term work: talks, qudit fragments, and a few explicit decompositions.
       </p>
 
       <div class="spotlight-grid">
@@ -549,8 +547,8 @@ for (const offer of offerSummaries) {
     <section id="topic-index" class="browse">
       <h2>Browse</h2>
       <p class="muted">
-        Each topic links to cards below. The cards are intentionally short; click one
-        for the actual question and first checks.
+        Each topic links to cards below. Click one for the calculation, test case,
+        or references attached.
       </p>
 
       <div class="topic-grid">
@@ -565,7 +563,7 @@ for (const offer of offerSummaries) {
               <span class="pill">
                 {section.ideaCount} {section.ideaCount === 1 ? "idea" : "ideas"}
               </span>
-              <span class="muted">Best for {section.bestFor}</span>
+              <span class="muted">Fits {section.bestFor}</span>
             </div>
           </a>
         ))}
@@ -592,7 +590,7 @@ for (const offer of offerSummaries) {
           <span class="pill">
             {section.ideaCount} {section.ideaCount === 1 ? "idea" : "ideas"}
           </span>
-          <span class="muted">Best for {section.bestFor}</span>
+          <span class="muted">Fits {section.bestFor}</span>
         </div>
         <p class="muted">{section.description}</p>
 
@@ -609,18 +607,11 @@ for (const offer of offerSummaries) {
         <div class="offer-modal__body">
           <OfferSummaryBlock offer={offer} />
 
-          <p>
-            <strong>Question:</strong>{" "}
-            <span set:html={renderInlineMath(detail.question)} />
-          </p>
+          <p class="offer-line" set:html={renderInlineMath(detail.question)} />
 
-          <p>
-            <strong>Why this is here:</strong>{" "}
-            <span set:html={renderInlineMath(detail.why)} />
-          </p>
+          <p set:html={renderInlineMath(detail.why)} />
 
           <div class="first-steps">
-            <p><strong>First checks:</strong></p>
             <ul>
               {detail.firstSteps.map((step) => (
                 <li set:html={renderInlineMath(step)}></li>
@@ -630,13 +621,10 @@ for (const offer of offerSummaries) {
 
           {detail.links ? (
             <p class="refs">
-              <strong>Starting points:</strong>{" "}
-              {detail.links.map((link, index) => (
-                <>
-                  {index > 0 ? ", " : ""}
-                  <a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}</a>
-                </>
-              ))}
+              <strong>Reading:</strong>{" "}
+              <span class="refs-links">{detail.links.map((link, index) => (
+                <span>{index > 0 ? ", " : ""}<a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}</a></span>
+              ))}</span>
             </p>
           ) : null}
         </div>
@@ -864,6 +852,11 @@ for (const offer of offerSummaries) {
 
     .offer-modal__body > :last-child {
       margin-bottom: 0;
+    }
+
+    .offer-line {
+      font-weight: 700;
+      color: var(--color-heading);
     }
 
     .first-steps p {

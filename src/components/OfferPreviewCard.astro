@@ -19,13 +19,9 @@ const { offer } = Astro.props as { offer: OfferSummary };
 
   <h4 set:html={renderInlineMath(offer.title)} />
 
-  <p>
-    <strong>Background:</strong> <span set:html={renderInlineMath(offer.background)} />
-  </p>
+  <p set:html={renderInlineMath(offer.background)} />
 
-  <p class="offer-preview-foot">
-    <strong>First milestone:</strong> <span set:html={renderInlineMath(offer.firstMilestone)} />
-  </p>
+  <p class="offer-preview-foot" set:html={renderInlineMath(offer.firstMilestone)} />
 </button>
 
 <style>
