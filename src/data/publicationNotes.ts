@@ -1,6 +1,13 @@
+export type PublicationLink = {
+  label: string;
+  href: string;
+};
+
 export type PublicationNote = {
   status: string;
   summary: string;
+  fullVersionUrl?: string;
+  links?: PublicationLink[];
 };
 
 export const publicationNotesById: Record<string, PublicationNote> = {
@@ -14,9 +21,16 @@ export const publicationNotesById: Record<string, PublicationNote> = {
     summary:
       "Gives a finite dimension-uniform equational presentation for exact qudit circuits using primitive value-control in a polycontrolled PROP.",
   },
-  blake2026simplerpresentationsfragmentsquantum: {
+  "blake:LIPIcs.FSCD.2026.6": {
     status: "FSCD 2026 proceedings",
     summary:
       "Transfers six circuit-fragment completeness theorems to PROP presentations with structural permutations and proves minimality results for the resulting axiom systems.",
+    fullVersionUrl: "https://arxiv.org/abs/2602.09874",
+    links: [
+      {
+        label: "Heuristic tool",
+        href: "https://github.com/Sukyn/minimality-auto/",
+      },
+    ],
   },
 };

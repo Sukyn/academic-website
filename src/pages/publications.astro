@@ -1,48 +1,19 @@
 ---
-import { publicationNotesById } from "../data/publicationNotes";
+import { publicationNotesById, type PublicationNote } from "../data/publicationNotes";
 import OfferDetailModal from "../components/OfferDetailModal.astro";
 import { stemOutreach } from "../data/stemOutreach";
 import { talks } from "../data/talks";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { parseBibtexToPubs } from "../lib/bibtex";
+import { parseBibtexToPubs, type Pub } from "../lib/bibtex";
 
 import bibtex from "../content/publications.bibtex?raw";
 
 const pubs = parseBibtexToPubs(bibtex);
 
-function publicationLinks(url?: string, pdf?: string) {
-  if (!url && !pdf) return [];
-
-  const pdfLink = pdf ? [{ label: "PDF", href: pdf }] : [];
-
-  if (!url) return pdfLink;
-
-  try {
-    const parsed = new URL(url);
-
-    if (parsed.hostname.includes("arxiv.org")) {
-      return [{ label: "arXiv", href: url }];
-    }
-
-    if (parsed.hostname.includes("doi.org")) {
-      return [{ label: "DOI", href: url }, ...pdfLink];
-    }
-  } catch {
-    return [{ label: "Open", href: url }, ...pdfLink];
-  }
-
-  return [{ label: "Open", href: url }, ...pdfLink];
-}
-
-const pubsWithLinks = pubs.map((pub) => ({
-  ...pub,
-  links: publicationLinks(pub.url, pub.pdf),
-  note: publicationNotesById[pub.id],
-}));
-
-function publicationMeta(publication: (typeof pubsWithLinks)[number]) {
+function uniqueMeta(parts: Array<string | number | undefined>) {
   const seen = new Set<string>();
-  return [publication.note?.status, publication.venue, publication.year?.toString()]
+
+  return parts
     .filter(Boolean)
     .map(String)
     .filter((part) => {
@@ -52,6 +23,68 @@ function publicationMeta(publication: (typeof pubsWithLinks)[number]) {
     })
     .join(" | ");
 }
+
+function publicationLinks(publication: Pub, note?: PublicationNote) {
+  const { url, pdf, doi } = publication;
+  const links: Array<{ label: string; href: string }> = [];
+
+  function pushLink(label: string, href: string) {
+    if (links.some((link) => link.href === href)) return;
+    links.push({ label, href });
+  }
+
+  const primaryUrl = note?.fullVersionUrl ?? url;
+
+  if (primaryUrl) {
+    try {
+      const parsed = new URL(primaryUrl);
+
+      if (parsed.hostname.includes("arxiv.org")) {
+        pushLink("arXiv", primaryUrl);
+      } else if (parsed.hostname.includes("doi.org")) {
+        pushLink("DOI", primaryUrl);
+      } else if (parsed.hostname.includes("dagstuhl.de")) {
+        pushLink("Dagstuhl", primaryUrl);
+      } else {
+        pushLink("Open", primaryUrl);
+      }
+    } catch {
+      pushLink("Open", primaryUrl);
+    }
+  }
+
+  if (doi) pushLink("DOI", `https://doi.org/${doi}`);
+  if (pdf) pushLink("PDF", pdf);
+  note?.links?.forEach((link) => pushLink(link.label, link.href));
+
+  return links;
+}
+
+function hasPublishedCitation(publication: Pub) {
+  const type = publication.type?.toLowerCase();
+  const note = publication.note?.toLowerCase() ?? "";
+
+  return Boolean(
+    publication.citation &&
+      type !== "misc" &&
+      !note.includes("to appear") &&
+      (publication.doi || publication.pages),
+  );
+}
+
+const pubsWithLinks = pubs.map((pub) => {
+  const note = publicationNotesById[pub.id];
+
+  return {
+    ...pub,
+    links: publicationLinks(pub, note),
+    note,
+    hasPublishedCitation: hasPublishedCitation(pub),
+    meta: uniqueMeta([note?.status, pub.venue, pub.year]),
+  };
+});
+
+const pubsWithCitations = pubsWithLinks.filter((publication) => publication.hasPublishedCitation);
 
 const talkDateFormatter = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
@@ -70,44 +103,48 @@ function talkAppearances(talk: (typeof talks)[number]) {
   );
 }
 
-function joinTalkMetaParts(parts: string[]) {
-  if (parts.length <= 2) return parts.join(" & ");
+function itemLinks(item: {
+  slidesHref?: string;
+  links?: { label: string; href: string }[];
+}) {
+  const links = [...(item.links ?? [])];
 
-  return `${parts.slice(0, -1).join(", ")} & ${parts[parts.length - 1]}`;
-}
-
-function talkMeta(talk: (typeof talks)[number]) {
-  const appearances = talkAppearances(talk);
-  const dates = appearances
-    .map((appearance) => (appearance.date ? formatTalkDate(appearance.date) : undefined))
-    .filter(Boolean);
-  const events = appearances.map((appearance) => appearance.event).filter(Boolean);
-
-  return [joinTalkMetaParts(dates), joinTalkMetaParts(events)].filter(Boolean).join(" | ");
-}
-
-function talkLinks(talk: (typeof talks)[number]) {
-  const links: { label: string; href: string }[] = [];
-
-  if (talk.slidesHref) links.push({ label: "Slides", href: talk.slidesHref });
-  if (talk.extendedAbstractHref) {
-    links.push({ label: "Extended abstract", href: talk.extendedAbstractHref });
-  }
+  if (item.slidesHref) links.push({ label: "Slides", href: item.slidesHref });
 
   return links;
 }
 
-function talkSortTime(talk: (typeof talks)[number]) {
-  const times = talkAppearances(talk).map((appearance) =>
-    appearance.date ? Date.parse(`${appearance.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY,
-  );
-
-  return Math.max(...times, Number.NEGATIVE_INFINITY);
+function appearanceDateLabel(appearance: ReturnType<typeof talkAppearances>[number]) {
+  return appearance.dateLabel ?? (appearance.date ? formatTalkDate(appearance.date) : "Date TBA");
 }
 
-const talksByDate = [...talks].sort((left, right) => {
-  return talkSortTime(right) - talkSortTime(left);
-});
+function appearanceSortTime(appearance: ReturnType<typeof talkAppearances>[number]) {
+  return appearance.date ? Date.parse(`${appearance.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
+}
+
+const now = new Date();
+const todayTime = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+
+const talkTimeline = talks
+  .flatMap((talk) => {
+    const talkLinks = itemLinks(talk);
+
+    return talkAppearances(talk).map((appearance, index) => {
+      const appearanceLinks = itemLinks(appearance);
+      const sortTime = appearanceSortTime(appearance);
+
+      return {
+        ...appearance,
+        id: appearance.id ?? (index === 0 ? talk.id : `${talk.id}-${index + 1}`),
+        title: talk.title,
+        dateLabel: appearanceDateLabel(appearance),
+        links: appearanceLinks.length > 0 ? appearanceLinks : talkLinks,
+        sortTime,
+        isUpcoming: sortTime > todayTime,
+      };
+    });
+  })
+  .sort((left, right) => right.sortTime - left.sortTime);
 
 const outreachByDate = [...stemOutreach].sort((left, right) => {
   const leftTime = Date.parse(`${left.date}T00:00:00Z`);
@@ -134,13 +171,13 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
               <strong>{publication.title}</strong>
             </p>
             {publication.authors ? <p class="muted">{publication.authors}</p> : null}
-            {publicationMeta(publication) ? (
-              <p class="pub-meta">{publicationMeta(publication)}</p>
+            {publication.meta ? (
+              <p class="pub-meta">{publication.meta}</p>
             ) : null}
             {publication.note?.summary ? (
               <p class="pub-summary">{publication.note.summary}</p>
             ) : null}
-            {publication.links.length > 0 ? (
+            {publication.links.length > 0 || publication.hasPublishedCitation ? (
               <p class="pub-links">
                 {publication.links.map((link, index) => (
                   <>
@@ -150,12 +187,49 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
                     </a>
                   </>
                 ))}
+                {publication.hasPublishedCitation ? (
+                  <>
+                    {publication.links.length > 0 ? <span aria-hidden="true"> | </span> : null}
+                    <button
+                      type="button"
+                      class="cite-trigger"
+                      data-cite-modal-trigger={`${publication.id}-cite`}
+                      aria-haspopup="dialog"
+                      aria-controls={`${publication.id}-cite-dialog`}
+                    >
+                      Cite
+                    </button>
+                  </>
+                ) : null}
               </p>
             ) : null}
           </li>
         ))}
       </ol>
     )}
+
+    {pubsWithCitations.map((publication) => (
+      <OfferDetailModal id={`${publication.id}-cite`} labelledBy={`${publication.id}-cite-title`}>
+        <h3 id={`${publication.id}-cite-title`} class="offer-modal__title">
+          Cite
+        </h3>
+        <p class="pub-title">
+          <strong>{publication.title}</strong>
+        </p>
+        <div class="citation-actions">
+          <button
+            type="button"
+            class="button ghost citation-copy"
+            data-citation-copy
+            data-citation-target={`${publication.id}-bibtex`}
+          >
+            Copy BibTeX
+          </button>
+          <span class="citation-copy-status" data-citation-copy-status aria-live="polite"></span>
+        </div>
+        <pre class="citation-block"><code id={`${publication.id}-bibtex`}>{publication.citation}</code></pre>
+      </OfferDetailModal>
+    ))}
 
     <p class="muted">
       If you want slides or other supplementary material around these papers,
@@ -164,62 +238,44 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
     <h2>Talks</h2>
 
-    {talksByDate.length === 0 ? (
+    {talkTimeline.length === 0 ? (
       <p class="muted">No talks listed yet.</p>
     ) : (
-      <ul class="talk-list">
-        {talksByDate.map((talk) => (
-          <li id={talk.id} class="talk-item">
-            {talkMeta(talk) ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
-            <h3 class="talk-title">
-              <button
-                type="button"
-                class="talk-trigger"
-                data-talk-modal-trigger={talk.id}
-                aria-haspopup="dialog"
-                aria-controls={`${talk.id}-dialog`}
-              >
-                {talk.title}
-              </button>
-            </h3>
-            {talkLinks(talk).length > 0 ? (
-              <p class="pub-links">
-                {talkLinks(talk).map((link, index) => (
-                  <>
-                    {index > 0 ? <span aria-hidden="true"> | </span> : null}
-                    <a href={link.href} target="_blank" rel="noopener noreferrer">
-                      {link.label}
-                    </a>
-                  </>
-                ))}
-              </p>
-            ) : null}
+      <ul class="talk-timeline">
+        {talkTimeline.map((event) => (
+          <li
+            id={event.id}
+            class={`talk-timeline-item${event.isUpcoming ? " talk-timeline-item--upcoming" : ""}`}
+          >
+            <div class="talk-timeline-date">
+              {event.date ? (
+                <time datetime={event.date}>{event.dateLabel}</time>
+              ) : (
+                <span>{event.dateLabel}</span>
+              )}
+              {event.isUpcoming ? <span class="talk-status">Upcoming</span> : null}
+            </div>
+            <div class="talk-timeline-marker" aria-hidden="true"></div>
+            <div class="talk-timeline-body">
+              <h3 class="talk-title">{event.title}</h3>
+              {event.event ? <p class="pub-meta talk-event">{event.event}</p> : null}
+              {event.links.length > 0 ? (
+                <p class="pub-links">
+                  {event.links.map((link, index) => (
+                    <>
+                      {index > 0 ? <span aria-hidden="true"> | </span> : null}
+                      <a href={link.href} target="_blank" rel="noopener noreferrer">
+                        {link.label}
+                      </a>
+                    </>
+                  ))}
+                </p>
+              ) : null}
+            </div>
           </li>
         ))}
       </ul>
     )}
-
-    {talksByDate.map((talk) => (
-      <OfferDetailModal id={talk.id} labelledBy={`${talk.id}-title`}>
-        <h3 id={`${talk.id}-title`} class="offer-modal__title">
-          {talk.title}
-        </h3>
-        {talkMeta(talk) ? <p class="pub-meta">{talkMeta(talk)}</p> : null}
-        {talkLinks(talk).length > 0 ? (
-          <p class="pub-links">
-            {talkLinks(talk).map((link, index) => (
-              <>
-                {index > 0 ? <span aria-hidden="true"> | </span> : null}
-                <a href={link.href} target="_blank" rel="noopener noreferrer">
-                  {link.label}
-                </a>
-              </>
-            ))}
-          </p>
-        ) : null}
-        <p>{talk.abstract}</p>
-      </OfferDetailModal>
-    ))}
 
     <h2>STEM Outreach</h2>
 
@@ -252,25 +308,50 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
   <script>
     (() => {
-      const marker = "__talkModalBindings";
+      const marker = "__publicationPageBindings";
       if ((window as typeof window & { [key: string]: boolean })[marker]) return;
       (window as typeof window & { [key: string]: boolean })[marker] = true;
 
-      function openTalkModal(id: string | undefined) {
+      function openModal(id: string | undefined) {
         if (!id) return;
         const dialog = document.getElementById(`${id}-dialog`);
         if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
         dialog.showModal();
       }
 
-      document.addEventListener("click", (event) => {
+      document.addEventListener("click", async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
 
-        const trigger = target.closest("[data-talk-modal-trigger]");
-        if (trigger instanceof HTMLElement) {
+        const citeTrigger = target.closest("[data-cite-modal-trigger]");
+        if (citeTrigger instanceof HTMLElement) {
           event.preventDefault();
-          openTalkModal(trigger.dataset.talkModalTrigger);
+          openModal(citeTrigger.dataset.citeModalTrigger);
+          return;
+        }
+
+        const copyButton = target.closest("[data-citation-copy]");
+        if (copyButton instanceof HTMLButtonElement) {
+          event.preventDefault();
+
+          const targetId = copyButton.dataset.citationTarget;
+          const citation = targetId ? document.getElementById(targetId)?.textContent : undefined;
+          const status = copyButton.parentElement?.querySelector("[data-citation-copy-status]");
+
+          if (!citation) return;
+
+          try {
+            await navigator.clipboard.writeText(citation);
+            if (status instanceof HTMLElement) status.textContent = "Copied";
+          } catch {
+            if (status instanceof HTMLElement) status.textContent = "Copy failed";
+          }
+
+          if (status instanceof HTMLElement) {
+            window.setTimeout(() => {
+              status.textContent = "";
+            }, 1800);
+          }
           return;
         }
 
@@ -309,32 +390,113 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
       margin-bottom: 1.15rem;
     }
 
-    .talk-list,
+    .talk-timeline,
     .outreach-list {
       list-style: none;
       padding: 0;
       margin: 1.25rem 0 0;
     }
 
-    .talk-item,
     .outreach-item {
       margin-bottom: 1.15rem;
     }
 
+    .talk-timeline {
+      display: grid;
+      gap: 0;
+    }
+
+    .talk-timeline-item {
+      display: grid;
+      grid-template-columns: minmax(5.8rem, 7.8rem) 1.15rem minmax(0, 1fr);
+      gap: 0.65rem;
+      margin: 0;
+    }
+
+    .talk-timeline-date {
+      padding-top: 0.05rem;
+      color: var(--color-accent);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      text-align: right;
+    }
+
+    .talk-status {
+      display: block;
+      margin-top: 0.18rem;
+      color: var(--color-muted);
+      font-family: var(--font-ui);
+      font-size: 0.72rem;
+      line-height: 1.25;
+    }
+
+    .talk-timeline-marker {
+      position: relative;
+      min-height: 100%;
+    }
+
+    .talk-timeline-marker::before {
+      content: "";
+      position: absolute;
+      top: -0.15rem;
+      bottom: -0.15rem;
+      left: 50%;
+      width: 1px;
+      background: var(--color-border);
+      transform: translateX(-50%);
+    }
+
+    .talk-timeline-item--upcoming .talk-timeline-marker::before {
+      width: 0;
+      border-left: 2px dashed var(--color-border-strong);
+      background: transparent;
+    }
+
+    .talk-timeline-marker::after {
+      content: "";
+      position: absolute;
+      top: 0.32rem;
+      left: 50%;
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 999px;
+      background: #ffffff;
+      transform: translateX(-50%);
+      box-shadow: 0 0 0 3px var(--color-bg);
+    }
+
+    .talk-timeline-item:first-child .talk-timeline-marker::before {
+      top: 0.32rem;
+    }
+
+    .talk-timeline-item:last-child .talk-timeline-marker::before {
+      bottom: calc(100% - 0.62rem);
+    }
+
+    .talk-timeline-body {
+      min-width: 0;
+      padding-bottom: 1.1rem;
+    }
+
+    .talk-timeline-item:last-child .talk-timeline-body {
+      padding-bottom: 0;
+    }
+
     .pub-item > :where(p, h3),
-    .talk-item > :where(p, h3),
+    .talk-timeline-body > :where(p, h3),
     .outreach-item > :where(p, h3) {
       margin: 0.25rem 0 0;
     }
 
     .pub-item > :first-child,
-    .talk-item > :first-child,
+    .talk-timeline-body > :first-child,
     .outreach-item > :first-child {
       margin-top: 0;
     }
 
     .pub-item > :last-child,
-    .talk-item > :last-child,
+    .talk-timeline-body > :last-child,
     .outreach-item > :last-child {
       margin-bottom: 0;
     }
@@ -348,29 +510,6 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
       font-size: 1.1rem;
     }
 
-    .talk-trigger {
-      appearance: none;
-      padding: 0;
-      border: none;
-      background: transparent;
-      color: var(--color-accent);
-      font: inherit;
-      font-weight: 700;
-      text-align: left;
-      cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-
-    .talk-trigger:hover {
-      color: var(--color-accent-hover);
-    }
-
-    .talk-trigger:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 3px;
-    }
-
     .pub-summary {
       margin-bottom: 0.35rem;
     }
@@ -379,6 +518,71 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
     .pub-links {
       font-size: 0.95rem;
       color: var(--color-muted);
+    }
+
+    .talk-event {
+      line-height: 1.5;
+    }
+
+    @media (max-width: 520px) {
+      .talk-timeline-item {
+        grid-template-columns: minmax(4.7rem, 5.6rem) 1rem minmax(0, 1fr);
+        gap: 0.5rem;
+      }
+
+      .talk-timeline-date {
+        font-size: 0.72rem;
+      }
+    }
+
+    .cite-trigger {
+      appearance: none;
+      padding: 0.1rem 0.48rem;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface-2);
+      color: var(--color-accent);
+      font-family: var(--font-ui);
+      font-size: 0.86rem;
+      line-height: 1.4;
+      cursor: pointer;
+      border-radius: 999px;
+    }
+
+    .cite-trigger:hover {
+      color: var(--color-accent-hover);
+      border-color: var(--color-border-strong);
+      background: var(--color-accent-soft);
+    }
+
+    .cite-trigger:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    .citation-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem;
+      margin: 0.5rem 0 0;
+    }
+
+    .citation-copy {
+      cursor: pointer;
+    }
+
+    .citation-copy-status {
+      color: var(--color-muted);
+      font-size: 0.9rem;
+      font-family: var(--font-ui);
+    }
+
+    .citation-block {
+      max-height: 24rem;
+    }
+
+    .citation-block code {
+      white-space: pre;
     }
   </style>
 </BaseLayout>

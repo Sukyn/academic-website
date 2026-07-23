@@ -284,10 +284,6 @@ export const offerSummaries: OfferSummary[] = [
   },
 ];
 
-export const offerSummaryById = Object.fromEntries(
-  offerSummaries.map((offer) => [offer.id, offer])
-) as Record<string, OfferSummary>;
-
 export const offerSummariesByTopic = offerSummaries.reduce(
   (acc, offer) => {
     acc[offer.topicKey].push(offer);
