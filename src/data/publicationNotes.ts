@@ -1,7 +1,13 @@
+export type PublicationLink = {
+  label: string;
+  href: string;
+};
+
 export type PublicationNote = {
   status: string;
   summary: string;
   fullVersionUrl?: string;
+  links?: PublicationLink[];
 };
 
 export const publicationNotesById: Record<string, PublicationNote> = {
@@ -20,5 +26,11 @@ export const publicationNotesById: Record<string, PublicationNote> = {
     summary:
       "Transfers six circuit-fragment completeness theorems to PROP presentations with structural permutations and proves minimality results for the resulting axiom systems.",
     fullVersionUrl: "https://arxiv.org/abs/2602.09874",
+    links: [
+      {
+        label: "Heuristic tool",
+        href: "https://github.com/Sukyn/minimality-auto/",
+      },
+    ],
   },
 };

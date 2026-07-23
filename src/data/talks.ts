@@ -1,6 +1,15 @@
+export type TalkLink = {
+  label: string;
+  href: string;
+};
+
 export type TalkAppearance = {
+  id?: string;
   date?: string;
+  dateLabel?: string;
   event?: string;
+  slidesHref?: string;
+  links?: TalkLink[];
 };
 
 export type Talk = {
@@ -10,21 +19,55 @@ export type Talk = {
   event?: string;
   appearances?: TalkAppearance[];
   slidesHref?: string;
-  extendedAbstractHref?: string;
-  abstract: string;
+  links?: TalkLink[];
 };
 
 export const talks: Talk[] = [
   {
-    id: "completeness-not-enough-liqcs-2026",
-    title: "Completeness Is Not Enough: Simpler Presentations and Minimality for Near-Clifford Circuit Fragments",
-    date: "2026-06-17",
-    event: "LIQCS 2026 - Logic in Quantum Computer Science, Inria de Paris",
-    slidesHref: "/notes/liqcs-2026-completeness-not-enough.pdf",
-    extendedAbstractHref:
-      "https://liqcs2026.github.io/assets/pdfs/LIQCS_2026_extended_abstract_24.pdf",
-    abstract:
-      "Completeness for a circuit fragment says that every valid identity is derivable, but it does not say which axioms are genuinely doing algebraic work. This talk revisits six near-Clifford fragments in a PROP setting, where wire permutations are treated as ambient structure, yielding smaller complete presentations for qubit Clifford, real Clifford, CNOT-dihedral, bounded-wire Clifford+T, bounded-wire Clifford+CS, and qutrit Clifford. The reduced presentations expose a smaller algebraic core and make minimality questions sharper: some fragments become fully minimal, while the remaining cases reduce to concrete low-arity independence problems.",
+    id: "completeness-prime-dimensional-phase-affine-circuits",
+    title: "Completeness for Prime-Dimensional Phase-Affine Circuits",
+    appearances: [
+      {
+        id: "qpl-2026-phase-affine-circuits",
+        date: "2026-08-17",
+        event: "QPL 2026 - 23rd International Conference on Quantum Physics and Logic, Amsterdam",
+      },
+    ],
+  },
+  {
+    id: "polycontrolled-props-qudit-circuits",
+    title: "A Complete Equational Presentation of Qudit Circuits via Polycontrolled PROPs",
+    appearances: [
+      {
+        id: "mfcs-2026-polycontrolled-props-qudit-circuits",
+        date: "2026-08-27",
+        event:
+          "MFCS 2026 - 51st International Symposium on Mathematical Foundations of Computer Science, Paris",
+      },
+      {
+        id: "polycontrolled-props-qudit-circuits-fmqc-2026",
+        date: "2026-07-18",
+        event: "FMQC 2026 - Second Workshop on Formal Methods in Quantum Computing, Lisbon",
+        slidesHref: "/notes/fmqc-2026-polycontrolled-props-qudit-circuits.pdf",
+      },
+    ],
+  },
+  {
+    id: "simpler-presentations-fragments",
+    title: "Simpler Presentations for Many Fragments of Quantum Circuits",
+    appearances: [
+      {
+        date: "2026-07-23",
+        event:
+          "FSCD 2026 - 11th International Conference on Formal Structures for Computation and Deduction, Lisbon",
+        slidesHref: "/notes/fscd-2026-simpler-presentations.pdf",
+      },
+      {
+        date: "2026-06-17",
+        event: "LIQCS 2026 - Logic in Quantum Computer Science, Inria de Paris",
+        slidesHref: "/notes/liqcs-2026-completeness-not-enough.pdf",
+      },
+    ],
   },
   {
     id: "escape-the-matrix",
@@ -32,8 +75,6 @@ export const talks: Talk[] = [
     date: "2025-05-06",
     event: "Département des méthodes formelles PhD Day - Nancy",
     slidesHref: "/notes/presentation-minimality.pdf",
-    abstract:
-      "Quantum circuits are commonly represented using matrices, but this approach becomes unwieldy for complex systems. In this talk, I will present a graphical methodology that utilizes equational rules to rewrite circuits, offering a more intuitive and structured framework. We will discuss the criteria for such a system to be sound, complete, and minimal, and explore the significance of these properties. Subsequently, I will introduce new minimal equational theories for various classes of quantum circuits, each with distinct expressive capabilities. These minimality results are significant because they simplify the equational theory by eliminating redundant rules, making it more practical for applications like circuit optimization and verification. No prior background in quantum computing is required; the emphasis will be on the foundational formal concepts.",
   },
   {
     id: "quantum-computing-and-zx-calculus",
@@ -41,8 +82,6 @@ export const talks: Talk[] = [
     date: "2025-11-26",
     event: "Séminaires Jeunes chercheurs et chercheuses - Marne la Vallée",
     slidesHref: "/notes/zx-calculus-is-graphs.pdf",
-    abstract:
-      "What if we could picture quantum computations not as daunting complex matrices, but as simple graphs of nodes and wires? The ZX-calculus offers exactly that: a rigorous graphical language where any quantum circuit can be represented as a network of connected nodes. In this interactive talk, I will introduce the basics of ZX-calculus in an accessible way. We'll start with a quick refresher on quantum computing, with no prior quantum background required, then see how these concepts translate into colorful ZX-diagrams. Using a handful of intuitive graph transformation rules, we will visually simplify and reason about quantum circuits, almost like solving a puzzle. For example, we'll demonstrate how the famous quantum teleportation protocol, when depicted in ZX form, collapses into a trivially simple diagram, revealing its essence at a glance. Along the way, a few fun quiz questions via Kahoot! will test and engage your intuition. Beyond the fun, we will discuss why this graphical approach is powerful for research. The ZX-calculus provides a sound framework for optimizing quantum programs and verifying algorithm correctness, and it even reveals surprising connections to combinatorics and algebra: its rewrite rules mirror an underlying Hopf algebra structure. I will also highlight current challenges and my ongoing work, in particular extending these diagrammatic techniques to qudits, quantum systems with more than two levels, an open problem at the frontier of quantum computing theory. By the end of the talk, you'll see quantum computing from a new angle and understand why one might say that \"quantum computing is just graphs.\"",
   },
   {
     id: "reasoning-for-qudit-circuits",
@@ -58,7 +97,5 @@ export const talks: Talk[] = [
       },
     ],
     slidesHref: "/notes/slides_phd_presentation_2026.pdf",
-    abstract:
-      "Quantum programs are most often represented as quantum circuits: sequences of gates acting on registers of quantum systems. But in practice, writing a circuit is only the beginning. To optimise code, adapt it to hardware constraints such as connectivity and mapping, and verify correctness, we need reliable ways to transform circuits while preserving their meaning. A convenient approach is equational reasoning: we specify a set of rewrite rules, or axioms, and use them to derive when two circuits are equivalent. My PhD focuses on extending this story beyond qubits, towards higher dimensions, and on making equational theories usable by reducing redundancy and organising rewrite systems around normal forms. In this talk I will first introduce the basic ideas of quantum circuits and explain why gate sets and circuit fragments play an important role in quantum software. I will then discuss how equational reasoning is used to reason about and optimise circuits, and how these ideas extend to higher-dimensional quantum systems. Finally, I will present some of my recent work on equational theories for different kinds of qudit circuits and explain how it fits into the broader goal of building practical tools for reasoning about quantum programs.",
   },
 ];
