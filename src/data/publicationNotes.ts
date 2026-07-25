@@ -3,11 +3,17 @@ export type PublicationLink = {
   href: string;
 };
 
+export type PublicationUpdate = {
+  label: string;
+  html: string;
+};
+
 export type PublicationNote = {
   status: string;
   summary: string;
   fullVersionUrl?: string;
   links?: PublicationLink[];
+  updates?: PublicationUpdate[];
 };
 
 export const publicationNotesById: Record<string, PublicationNote> = {
@@ -28,8 +34,22 @@ export const publicationNotesById: Record<string, PublicationNote> = {
     fullVersionUrl: "https://arxiv.org/abs/2602.09874",
     links: [
       {
-        label: "Heuristic tool",
+        label: "Heuristics tool",
         href: "https://github.com/Sukyn/minimality-auto/",
+      },
+    ],
+    updates: [
+      {
+        label: "Update 1",
+        html: `For Clifford+T, rule (TX) can use <span class="math-inline">#{H, ω<sup>8</sup>}<sub>2</sub></span> instead of the <span class="math-inline">#{H, T, ω<sup>8</sup>}<sub>2</sub></span> used in the paper.`,
+      },
+      {
+        label: "Update 2",
+        html: `The Heuristics tool below implements more arguments than the paper uses, including the amalgam normal form, which seems especially useful for Euler-style equations, and a Spin-group interpretation that separates pattern (19) on <span class="math-inline"><var>n</var></span> wires in the recent real Clifford+CH presentation, where this was left open.`,
+      },
+      {
+        label: "Update 3",
+        html: `Thanks to Alexandre Clément, who gave a meta-argument for the remaining qutrit Clifford equation (I), validating the conjecture that the presentation in the paper is minimal for every <span class="math-inline"><var>n</var></span>.`,
       },
     ],
   },

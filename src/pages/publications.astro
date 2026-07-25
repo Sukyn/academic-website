@@ -177,6 +177,15 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
             {publication.note?.summary ? (
               <p class="pub-summary">{publication.note.summary}</p>
             ) : null}
+            {publication.note?.updates?.length ? (
+              <div class="pub-update-note">
+                {publication.note.updates.map((update) => (
+                  <p>
+                    <strong>{update.label}:</strong> <span set:html={update.html} />
+                  </p>
+                ))}
+              </div>
+            ) : null}
             {publication.links.length > 0 || publication.hasPublishedCitation ? (
               <p class="pub-links">
                 {publication.links.map((link, index) => (
@@ -512,6 +521,35 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
     .pub-summary {
       margin-bottom: 0.35rem;
+    }
+
+    .pub-update-note {
+      margin: 0.45rem 0 0.55rem;
+      padding-left: 0.8rem;
+      border-left: 2px solid var(--color-border-strong);
+      color: var(--color-muted);
+      font-size: 0.94rem;
+      line-height: 1.58;
+    }
+
+    .pub-update-note p {
+      margin: 0.25rem 0 0;
+      color: inherit;
+    }
+
+    .pub-update-note p:first-child {
+      margin-top: 0;
+    }
+
+    .pub-update-note strong {
+      color: var(--color-heading);
+      font-weight: 600;
+    }
+
+    .math-inline {
+      color: var(--color-heading);
+      font-family: var(--font-body);
+      white-space: nowrap;
     }
 
     .pub-meta,
