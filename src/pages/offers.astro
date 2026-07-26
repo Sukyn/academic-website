@@ -3,7 +3,6 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import OfferDetailModal from "../components/OfferDetailModal.astro";
 import OfferPreviewCard from "../components/OfferPreviewCard.astro";
 import OfferSummaryBlock from "../components/OfferSummaryBlock.astro";
-import { getCollection } from "astro:content";
 import {
   offerSummaries,
   offerSummariesByTopic,
@@ -450,14 +449,6 @@ const offerDetails: Record<string, OfferDetail> = {
   },
 };
 
-const allPosts = import.meta.env.DEV
-  ? (
-      await getCollection("posts", ({ data }) => {
-        return import.meta.env.PROD ? data.draft !== true : true;
-      })
-    ).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
-  : [];
-
 const topicSections = topics.map((topic) => {
   const offers = offerSummariesByTopic[topic.key];
   return {
@@ -466,15 +457,6 @@ const topicSections = topics.map((topic) => {
     ideaCount: offers.length,
   };
 });
-
-const knownKeys = new Set(topics.map((topic) => topic.key.toLowerCase()));
-const postsWithUnknownKeys = allPosts
-  .filter((post) => (post.data.research ?? []).some((key) => !knownKeys.has(key.toLowerCase())))
-  .map((post) => ({
-    id: post.id,
-    title: post.data.title,
-    extra: (post.data.research ?? []).filter((key) => !knownKeys.has(key.toLowerCase())),
-  }));
 
 const focusNow = [
   {
@@ -631,63 +613,15 @@ for (const offer of offerSummaries) {
       </OfferDetailModal>
     ))}
 
-    {postsWithUnknownKeys.length ? (
-      <details class="debug">
-        <summary>Research-tag housekeeping</summary>
-        <ul>
-          {postsWithUnknownKeys.map((post) => (
-            <li>
-              {post.title} - missing topics for: {post.extra.join(", ")}
-            </li>
-          ))}
-        </ul>
-      </details>
-    ) : null}
   </article>
 
   <script>
-    (() => {
-      const marker = "__offerModalBindings";
-      if ((window as typeof window & { [key: string]: boolean })[marker]) return;
-      (window as typeof window & { [key: string]: boolean })[marker] = true;
+    import { bindDialogControls } from "../scripts/dialogs";
 
-      function openOfferModal(id: string | undefined) {
-        if (!id) return;
-        const dialog = document.getElementById(`${id}-dialog`);
-        if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
-        dialog.showModal();
-      }
-
-      document.addEventListener("click", (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-
-        const trigger = target.closest("[data-offer-modal-trigger]");
-        if (trigger instanceof HTMLElement) {
-          event.preventDefault();
-          openOfferModal(trigger.dataset.offerModalTrigger);
-          return;
-        }
-
-        const closeButton = target.closest("[data-offer-modal-close]");
-        if (closeButton instanceof HTMLElement) {
-          const dialog = closeButton.closest("dialog");
-          if (dialog instanceof HTMLDialogElement) dialog.close();
-          return;
-        }
-
-        if (target instanceof HTMLDialogElement) {
-          const rect = target.getBoundingClientRect();
-          const clickedBackdrop =
-            event.clientX < rect.left ||
-            event.clientX > rect.right ||
-            event.clientY < rect.top ||
-            event.clientY > rect.bottom;
-
-          if (clickedBackdrop) target.close();
-        }
-      });
-    })();
+    bindDialogControls({
+      marker: "__offerDialogBindings",
+      triggerAttribute: "data-offer-modal-trigger",
+    });
   </script>
 
   <style>
@@ -869,14 +803,6 @@ for (const offer of offerSummaries) {
 
     .refs {
       margin-top: 1rem;
-    }
-
-    .debug {
-      margin-top: 2rem;
-    }
-
-    :global(.tag) {
-      background: var(--color-surface);
     }
 
     :global(.pill) {

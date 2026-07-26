@@ -316,28 +316,21 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
   </section>
 
   <script>
+    import { bindDialogControls } from "../scripts/dialogs";
+
+    bindDialogControls({
+      marker: "__publicationDialogBindings",
+      triggerAttribute: "data-cite-modal-trigger",
+    });
+
     (() => {
-      const marker = "__publicationPageBindings";
+      const marker = "__citationCopyBindings";
       if ((window as typeof window & { [key: string]: boolean })[marker]) return;
       (window as typeof window & { [key: string]: boolean })[marker] = true;
-
-      function openModal(id: string | undefined) {
-        if (!id) return;
-        const dialog = document.getElementById(`${id}-dialog`);
-        if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
-        dialog.showModal();
-      }
 
       document.addEventListener("click", async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
-
-        const citeTrigger = target.closest("[data-cite-modal-trigger]");
-        if (citeTrigger instanceof HTMLElement) {
-          event.preventDefault();
-          openModal(citeTrigger.dataset.citeModalTrigger);
-          return;
-        }
 
         const copyButton = target.closest("[data-citation-copy]");
         if (copyButton instanceof HTMLButtonElement) {
@@ -362,24 +355,6 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
             }, 1800);
           }
           return;
-        }
-
-        const closeButton = target.closest("[data-offer-modal-close]");
-        if (closeButton instanceof HTMLElement) {
-          const dialog = closeButton.closest("dialog");
-          if (dialog instanceof HTMLDialogElement) dialog.close();
-          return;
-        }
-
-        if (target instanceof HTMLDialogElement) {
-          const rect = target.getBoundingClientRect();
-          const clickedBackdrop =
-            event.clientX < rect.left ||
-            event.clientX > rect.right ||
-            event.clientY < rect.top ||
-            event.clientY > rect.bottom;
-
-          if (clickedBackdrop) target.close();
         }
       });
     })();
