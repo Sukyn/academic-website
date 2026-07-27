@@ -7,7 +7,7 @@ type DialogBindingOptions = {
 export function bindDialogControls({
   marker,
   triggerAttribute,
-  closeSelector = "[data-offer-modal-close]",
+  closeSelector = "[data-modal-close]",
 }: DialogBindingOptions) {
   const state = window as typeof window & { [key: string]: boolean };
   if (state[marker]) return;

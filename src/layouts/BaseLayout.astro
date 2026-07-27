@@ -2,28 +2,26 @@
 import ZXWallpaper from "../components/ZXWallpaper.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+import { siteProfile } from "../data/site";
 import "../styles/global.css";
 
 export interface Props {
   title: string;
   description?: string;
   includeKatex?: boolean;
+  noindex?: boolean;
 }
 
 const {
   title,
   description = "Quantum computing research, publications, and collaboration ideas by Colin Blake.",
   includeKatex = false,
+  noindex = false,
 } = Astro.props;
 
-const siteName = "Colin Blake";
-const pageTitle =
-  title === "Home" || title === siteName ? siteName : `${title} | ${siteName}`;
+const siteName = siteProfile.name;
+const pageTitle = title === "Home" ? siteName : `${title} | ${siteName}`;
 const canonical = Astro.url.toString();
-
-// Cloudflare Web Analytics (prod-only)
-const cfToken = import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN;
-const isProd = import.meta.env.PROD;
 ---
 
 <!doctype html>
@@ -42,16 +40,15 @@ const isProd = import.meta.env.PROD;
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <meta name="author" content={siteName} />
+    {noindex ? <meta name="robots" content="noindex, nofollow" /> : null}
     <link rel="canonical" href={canonical} />
 
-    <!-- OpenGraph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={siteName} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
 
-    <!-- Twitter card (works for many platforms too) -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
@@ -63,15 +60,6 @@ const isProd = import.meta.env.PROD;
       />
     ) : null}
 
-    <!-- Cloudflare Web Analytics (prod-only) -->
-    {isProd && cfToken ? (
-      <script
-        is:inline
-        defer
-        src="https://static.cloudflareinsights.com/beacon.min.js"
-        data-cf-beacon={JSON.stringify({ token: cfToken, spa: true })}
-      />
-    ) : null}
   </head>
 
   <body>

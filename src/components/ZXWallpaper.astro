@@ -288,7 +288,7 @@
         fillMarkerCircle(x, y, size / 2, tone, alpha);
       }
 
-      function drawMarkerFeature(system, feature, time, opacity) {
+      function drawMarkerFeature(system, feature, time) {
         const y = lineYAt(system, feature.line, feature.x, time);
         eraseMarkerUnderlay(feature.x, y, feature.shape, feature.size);
         const markerOpacity = feature.tone === "dark" ? 0.98 : 0.96;
@@ -337,7 +337,7 @@
         }
 
         for (const feature of system.features) {
-          drawMarkerFeature(system, feature, time, opacity);
+          drawMarkerFeature(system, feature, time);
         }
       }
 
@@ -404,8 +404,7 @@
       startLoop();
 
       window.addEventListener("resize", handleResize);
-      if (reduceMotion.addEventListener) reduceMotion.addEventListener("change", updateRunning);
-      else reduceMotion.addListener(updateRunning);
+      reduceMotion.addEventListener("change", updateRunning);
       document.addEventListener("visibilitychange", updateRunning);
 
       window.__chalkWallpaperState = {
@@ -417,8 +416,7 @@
         destroy() {
           stopLoop();
           window.removeEventListener("resize", handleResize);
-          if (reduceMotion.removeEventListener) reduceMotion.removeEventListener("change", updateRunning);
-          else reduceMotion.removeListener(updateRunning);
+          reduceMotion.removeEventListener("change", updateRunning);
           document.removeEventListener("visibilitychange", updateRunning);
         },
       };

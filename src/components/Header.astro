@@ -1,13 +1,11 @@
 ---
 import { siteProfile } from "../data/site";
 
-const rawPath = Astro.url.pathname || "/";
-const pathname = rawPath !== "/" ? rawPath.replace(/\/$/, "") : "/";
+const pathname = Astro.url.pathname.replace(/\/$/, "") || "/";
 
 const nav = [
   { href: "/about", label: "About" },
   { href: "/publications", label: "Publications" },
-  { href: "/offers", label: "Research ideas" },
   { href: "/contact", label: "Contact" },
 ];
 ---
@@ -15,7 +13,9 @@ const nav = [
 <header class="site-header">
   <div class="container header-inner">
     <div class="brand-block">
-      <a class="brand" href="/" aria-label="Colin Blake home page">Colin Blake</a>
+      <a class="brand" href="/" aria-label={`${siteProfile.name} home page`}>
+        {siteProfile.name}
+      </a>
       <p class="site-subtitle">{siteProfile.affiliation}</p>
     </div>
 

@@ -1,8 +1,8 @@
 ---
 import { publicationNotesById, type PublicationNote } from "../data/publicationNotes";
-import OfferDetailModal from "../components/OfferDetailModal.astro";
+import ContentDialog from "../components/ContentDialog.astro";
 import { stemOutreach } from "../data/stemOutreach";
-import { talks } from "../data/talks";
+import { talks, type TalkAppearance } from "../data/talks";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { parseBibtexToPubs, type Pub } from "../lib/bibtex";
 
@@ -25,7 +25,7 @@ function uniqueMeta(parts: Array<string | number | undefined>) {
 }
 
 function publicationLinks(publication: Pub, note?: PublicationNote) {
-  const { url, pdf, doi } = publication;
+  const { url, doi } = publication;
   const links: Array<{ label: string; href: string }> = [];
 
   function pushLink(label: string, href: string) {
@@ -43,8 +43,6 @@ function publicationLinks(publication: Pub, note?: PublicationNote) {
         pushLink("arXiv", primaryUrl);
       } else if (parsed.hostname.includes("doi.org")) {
         pushLink("DOI", primaryUrl);
-      } else if (parsed.hostname.includes("dagstuhl.de")) {
-        pushLink("Dagstuhl", primaryUrl);
       } else {
         pushLink("Open", primaryUrl);
       }
@@ -54,7 +52,6 @@ function publicationLinks(publication: Pub, note?: PublicationNote) {
   }
 
   if (doi) pushLink("DOI", `https://doi.org/${doi}`);
-  if (pdf) pushLink("PDF", pdf);
   note?.links?.forEach((link) => pushLink(link.label, link.href));
 
   return links;
@@ -97,12 +94,6 @@ function formatTalkDate(date: string) {
   return talkDateFormatter.format(new Date(`${date}T00:00:00Z`));
 }
 
-function talkAppearances(talk: (typeof talks)[number]) {
-  return (talk.appearances ?? [{ date: talk.date, event: talk.event }]).filter(
-    (appearance) => appearance.date || appearance.event,
-  );
-}
-
 function itemLinks(item: {
   slidesHref?: string;
   links?: { label: string; href: string }[];
@@ -114,11 +105,11 @@ function itemLinks(item: {
   return links;
 }
 
-function appearanceDateLabel(appearance: ReturnType<typeof talkAppearances>[number]) {
+function appearanceDateLabel(appearance: TalkAppearance) {
   return appearance.dateLabel ?? (appearance.date ? formatTalkDate(appearance.date) : "Date TBA");
 }
 
-function appearanceSortTime(appearance: ReturnType<typeof talkAppearances>[number]) {
+function appearanceSortTime(appearance: TalkAppearance) {
   return appearance.date ? Date.parse(`${appearance.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
 }
 
@@ -126,11 +117,8 @@ const now = new Date();
 const todayTime = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 
 const talkTimeline = talks
-  .flatMap((talk) => {
-    const talkLinks = itemLinks(talk);
-
-    return talkAppearances(talk).map((appearance, index) => {
-      const appearanceLinks = itemLinks(appearance);
+  .flatMap((talk) =>
+    talk.appearances.map((appearance, index) => {
       const sortTime = appearanceSortTime(appearance);
 
       return {
@@ -138,12 +126,12 @@ const talkTimeline = talks
         id: appearance.id ?? (index === 0 ? talk.id : `${talk.id}-${index + 1}`),
         title: talk.title,
         dateLabel: appearanceDateLabel(appearance),
-        links: appearanceLinks.length > 0 ? appearanceLinks : talkLinks,
+        links: itemLinks(appearance),
         sortTime,
         isUpcoming: sortTime > todayTime,
       };
-    });
-  })
+    }),
+  )
   .sort((left, right) => right.sortTime - left.sortTime);
 
 const outreachByDate = [...stemOutreach].sort((left, right) => {
@@ -218,8 +206,8 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
     )}
 
     {pubsWithCitations.map((publication) => (
-      <OfferDetailModal id={`${publication.id}-cite`} labelledBy={`${publication.id}-cite-title`}>
-        <h3 id={`${publication.id}-cite-title`} class="offer-modal__title">
+      <ContentDialog id={`${publication.id}-cite`} labelledBy={`${publication.id}-cite-title`}>
+        <h3 id={`${publication.id}-cite-title`} class="dialog-title">
           Cite
         </h3>
         <p class="pub-title">
@@ -237,7 +225,7 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
           <span class="citation-copy-status" data-citation-copy-status aria-live="polite"></span>
         </div>
         <pre class="citation-block"><code id={`${publication.id}-bibtex`}>{publication.citation}</code></pre>
-      </OfferDetailModal>
+      </ContentDialog>
     ))}
 
     <p class="muted">

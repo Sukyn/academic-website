@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import OfferDetailModal from "../components/OfferDetailModal.astro";
+import ContentDialog from "../components/ContentDialog.astro";
 import OfferPreviewCard from "../components/OfferPreviewCard.astro";
 import OfferSummaryBlock from "../components/OfferSummaryBlock.astro";
 import {
@@ -486,6 +486,7 @@ for (const offer of offerSummaries) {
   title="Ideas"
   description="Research and collaboration ideas around qudit circuits, rewriting, exact synthesis, and outreach."
   includeKatex
+  noindex
 >
   <article class="ideas">
     <header class="hero">
@@ -583,10 +584,10 @@ for (const offer of offerSummaries) {
     ))}
 
     {offerModals.map(({ offer, detail }) => (
-      <OfferDetailModal id={offer.id} labelledBy={`${offer.id}-title`}>
-        <h3 id={`${offer.id}-title`} class="offer-modal__title" set:html={renderInlineMath(offer.title)} />
+      <ContentDialog id={offer.id} labelledBy={`${offer.id}-title`}>
+        <h3 id={`${offer.id}-title`} class="dialog-title" set:html={renderInlineMath(offer.title)} />
 
-        <div class="offer-modal__body">
+        <div class="dialog-body">
           <OfferSummaryBlock offer={offer} />
 
           <p class="offer-line" set:html={renderInlineMath(detail.question)} />
@@ -610,7 +611,7 @@ for (const offer of offerSummaries) {
             </p>
           ) : null}
         </div>
-      </OfferDetailModal>
+      </ContentDialog>
     ))}
 
   </article>
@@ -779,12 +780,12 @@ for (const offer of offerSummaries) {
       margin-top: 0.9rem;
     }
 
-    .offer-modal__title {
+    .dialog-title {
       margin: 0 0 1rem;
       padding-right: 0;
     }
 
-    .offer-modal__body > :last-child {
+    .dialog-body > :last-child {
       margin-bottom: 0;
     }
 

@@ -1,11 +1,13 @@
 ---
 import {
-  internalQuickLinks,
   profileLinks,
   siteProfile,
 } from "../data/site";
 
 const year = new Date().getFullYear();
+const internalLinks = [
+  { label: "Publications", href: "/publications" },
+];
 ---
 
 <footer class="site-footer">
@@ -16,7 +18,7 @@ const year = new Date().getFullYear();
     </div>
 
     <ul class="footer-links">
-      {internalQuickLinks.map((link) => (
+      {internalLinks.map((link) => (
         <li>
           <a href={link.href}>{link.label}</a>
         </li>

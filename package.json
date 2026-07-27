@@ -6,16 +6,16 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro",
     "check": "astro check"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.6",
     "@astrojs/sitemap": "^3.7.0",
-    "@sentry/astro": "^10.38.0",
     "astro": "^5.16.6",
     "bibtex-parse-js": "^0.0.24",
-    "katex": "^0.16.27",
+    "katex": "^0.16.27"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.6",
     "typescript": "^5.9.3"
   }
 }
