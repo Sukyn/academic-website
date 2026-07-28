@@ -15,11 +15,7 @@ export type TalkAppearance = {
 export type Talk = {
   id: string;
   title: string;
-  date?: string;
-  event?: string;
-  appearances?: TalkAppearance[];
-  slidesHref?: string;
-  links?: TalkLink[];
+  appearances: TalkAppearance[];
 };
 
 export const talks: Talk[] = [
@@ -70,32 +66,41 @@ export const talks: Talk[] = [
     ],
   },
   {
-    id: "escape-the-matrix",
-    title: "Escape the Matrix: Graphical Reasoning and Minimal Axioms for Quantum Circuits",
-    date: "2025-05-06",
-    event: "Département des méthodes formelles PhD Day - Nancy",
-    slidesHref: "/notes/presentation-minimality.pdf",
-  },
-  {
-    id: "quantum-computing-and-zx-calculus",
-    title: "Quantum computing and ZX-calculus",
-    date: "2025-11-26",
-    event: "Séminaires Jeunes chercheurs et chercheuses - Marne la Vallée",
-    slidesHref: "/notes/zx-calculus-is-graphs.pdf",
-  },
-  {
     id: "reasoning-for-qudit-circuits",
     title: "Reasoning for Qudit Circuits",
     appearances: [
       {
-        date: "2026-03-26",
-        event: "MOCQUA PhD Day - Nancy",
-      },
-      {
         date: "2026-05-13",
         event: "Department of Formal Methods PhD Day - Nancy",
+        slidesHref: "/notes/slides_phd_presentation_2026.pdf",
+      },
+      {
+        date: "2026-03-26",
+        event: "MOCQUA PhD Day - Nancy",
+        slidesHref: "/notes/slides_phd_presentation_2026.pdf",
       },
     ],
-    slidesHref: "/notes/slides_phd_presentation_2026.pdf",
+  },
+  {
+    id: "quantum-computing-and-zx-calculus",
+    title: "Quantum computing and ZX-calculus",
+    appearances: [
+      {
+        date: "2025-11-26",
+        event: "Séminaires Jeunes chercheurs et chercheuses - Marne la Vallée",
+        slidesHref: "/notes/zx-calculus-is-graphs.pdf",
+      },
+    ],
+  },
+  {
+    id: "escape-the-matrix",
+    title: "Escape the Matrix: Graphical Reasoning and Minimal Axioms for Quantum Circuits",
+    appearances: [
+      {
+        date: "2025-05-06",
+        event: "Département des méthodes formelles PhD Day - Nancy",
+        slidesHref: "/notes/presentation-minimality.pdf",
+      },
+    ],
   },
 ];

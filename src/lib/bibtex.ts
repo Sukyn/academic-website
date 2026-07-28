@@ -7,7 +7,6 @@ export type Pub = {
   year?: number;
   venue?: string;
   url?: string;
-  pdf?: string;
   doi?: string;
   note?: string;
   pages?: string;
@@ -157,7 +156,7 @@ export function parseBibtexToPubs(bibtex: string): Pub[] {
   const entries = bibtexParse.toJSON(bibtex) ?? [];
   const rawEntries = extractRawEntries(bibtex);
 
-  const pubs: Pub[] = entries.map((e: any) => {
+  const pubs: Pub[] = entries.map((e: any, index: number) => {
     const t = (e.entryTags ?? {}) as Record<string, any>;
 
     const yearRaw = getTag(t, "year");
@@ -165,7 +164,7 @@ export function parseBibtexToPubs(bibtex: string): Pub[] {
 
     const doi = getTag(t, "doi");
     const url = getTag(t, "url") ?? (doi ? `https://doi.org/${doi}` : undefined);
-    const id = e.citationKey ?? cryptoRandomId();
+    const id = e.citationKey ?? `entry-${index + 1}`;
 
     return {
       id,
@@ -174,7 +173,6 @@ export function parseBibtexToPubs(bibtex: string): Pub[] {
       year: Number.isFinite(year) ? year : undefined,
       venue: pickVenue(t),
       url,
-      pdf: getTag(t, "pdf"),
       doi,
       note: getTag(t, "note"),
       pages: getTag(t, "pages"),
@@ -185,8 +183,4 @@ export function parseBibtexToPubs(bibtex: string): Pub[] {
 
   pubs.sort((a, b) => (b.year ?? -1) - (a.year ?? -1));
   return pubs;
-}
-
-function cryptoRandomId() {
-  return Math.random().toString(36).slice(2, 10);
 }

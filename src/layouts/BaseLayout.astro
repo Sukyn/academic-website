@@ -2,58 +2,26 @@
 import ZXWallpaper from "../components/ZXWallpaper.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+import { siteProfile } from "../data/site";
 import "../styles/global.css";
 
 export interface Props {
   title: string;
   description?: string;
   includeKatex?: boolean;
-  showWallpaper?: boolean;
-
-  /** Absolute or site-relative (recommended: "/og/default.png") */
-  ogImage?: string;
-
-  /** Override if needed; otherwise we use Astro.url */
-  canonicalUrl?: URL | string;
+  noindex?: boolean;
 }
 
 const {
   title,
   description = "Quantum computing research, publications, and collaboration ideas by Colin Blake.",
   includeKatex = false,
-  showWallpaper = true,
-  ogImage,
-  canonicalUrl,
+  noindex = false,
 } = Astro.props;
 
-const siteName = "Colin Blake";
-const pageTitle =
-  title === "Home" || title === siteName ? siteName : `${title} | ${siteName}`;
-
-// Canonical URL (good for SEO + sharing)
-const canonical =
-  typeof canonicalUrl === "string"
-    ? canonicalUrl
-    : canonicalUrl instanceof URL
-      ? canonicalUrl.toString()
-      : Astro.url.toString();
-
-// Resolve OG image to an absolute URL if Astro.site exists
-const resolvedOgImage = (() => {
-  if (!ogImage) return undefined;
-  try {
-    // If ogImage is already absolute, URL() will keep it.
-    // If it's "/something.png", it becomes absolute using Astro.site.
-    const base = Astro.site ?? new URL(canonical);
-    return new URL(ogImage, base).toString();
-  } catch {
-    return undefined;
-  }
-})();
-
-// Cloudflare Web Analytics (prod-only)
-const cfToken = import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN;
-const isProd = import.meta.env.PROD;
+const siteName = siteProfile.name;
+const pageTitle = title === "Home" ? siteName : `${title} | ${siteName}`;
+const canonical = Astro.url.toString();
 ---
 
 <!doctype html>
@@ -72,24 +40,18 @@ const isProd = import.meta.env.PROD;
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <meta name="author" content={siteName} />
+    {noindex ? <meta name="robots" content="noindex, nofollow" /> : null}
     <link rel="canonical" href={canonical} />
 
-    <!-- OpenGraph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={siteName} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    {resolvedOgImage ? <meta property="og:image" content={resolvedOgImage} /> : null}
 
-    <!-- Twitter card (works for many platforms too) -->
-    <meta
-      name="twitter:card"
-      content={resolvedOgImage ? "summary_large_image" : "summary"}
-    />
+    <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
-    {resolvedOgImage ? <meta name="twitter:image" content={resolvedOgImage} /> : null}
 
     {includeKatex ? (
       <link
@@ -98,20 +60,11 @@ const isProd = import.meta.env.PROD;
       />
     ) : null}
 
-    <!-- Cloudflare Web Analytics (prod-only) -->
-    {isProd && cfToken ? (
-      <script
-        is:inline
-        defer
-        src="https://static.cloudflareinsights.com/beacon.min.js"
-        data-cf-beacon={JSON.stringify({ token: cfToken, spa: true })}
-      />
-    ) : null}
   </head>
 
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-    {showWallpaper ? <ZXWallpaper /> : null}
+    <ZXWallpaper />
     <div class="page">
       <Header />
       <main id="main-content" class="container">

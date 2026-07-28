@@ -5,37 +5,14 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 <BaseLayout title="404">
   <section class="prose not-found">
     <h1>404 - Page not found (in this model)</h1>
-   <!-- <p>
-      Assume the page exists, derive <code>⊥</code>, conclude <code>I'm a teapot</code>.
-    </p>
--->
 
     <p>
       The good news: by non-constructive existence, the page may exist.
       The bad news: we failed to construct a witness.
     </p>
-<!--
-    <details>
-      <summary>Proof sketch (click to expand)</summary>
-      <pre><code>Goal: FindPage(url)
 
-1. Reduce FindPage(url) to HALT(program(url))
-2. Observe: HALT is undecidable
-3. Therefore: the existence of this page is… complicated
-4. Return 404 (sound, but probably incomplete)</code></pre>
-    </details>
--->
-
-<!--
-    <p>
-      If you’re a type theorist: this route’s type appears to be uninhabited.
-      If you’re a logician: it might be independent of our routing axioms.
-      If you’re a complexity theorist: we can approximate it within 404 ± ε.
-    </p>
---> 
     <p class="actions">
       <a class="button primary" href="/">Return to home</a>
-      <!-- <a href="/sitemap.xml">Consult the oracle (sitemap)</a> -->
     </p>
 
     <p class="fineprint">
@@ -51,20 +28,6 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
     .actions {
       margin-top: 1.75rem;
-    }
-
-    details {
-      margin: 1rem 0 1.25rem;
-      padding: 0.75rem 1rem;
-      border: 1px solid var(--color-border);
-      background: var(--color-surface);
-    }
-
-    pre {
-      margin: 0.75rem 0 0;
-      overflow-x: auto;
-      padding: 0.75rem;
-      background: var(--color-code-block);
     }
 
     .fineprint {
