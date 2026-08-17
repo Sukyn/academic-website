@@ -98,9 +98,10 @@ function itemLinks(item: {
   slidesHref?: string;
   links?: { label: string; href: string }[];
 }) {
-  const links = [...(item.links ?? [])];
+  const links: { label: string; href: string }[] = [];
 
   if (item.slidesHref) links.push({ label: "Slides", href: item.slidesHref });
+  links.push(...(item.links ?? []));
 
   return links;
 }
@@ -120,14 +121,18 @@ const talkTimeline = talks
   .flatMap((talk) =>
     talk.appearances.map((appearance, index) => {
       const sortTime = appearanceSortTime(appearance);
+      const links = itemLinks(appearance);
 
       return {
         ...appearance,
         id: appearance.id ?? (index === 0 ? talk.id : `${talk.id}-${index + 1}`),
         title: talk.title,
         dateLabel: appearanceDateLabel(appearance),
-        links: itemLinks(appearance),
+        links,
         sortTime,
+        hasExtendedAbstract: links.some((link) =>
+          link.label.toLowerCase().includes("extended abstract"),
+        ),
         isUpcoming: sortTime > todayTime,
       };
     }),
@@ -242,7 +247,7 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
         {talkTimeline.map((event) => (
           <li
             id={event.id}
-            class={`talk-timeline-item${event.isUpcoming ? " talk-timeline-item--upcoming" : ""}`}
+            class={`talk-timeline-item${event.isUpcoming ? " talk-timeline-item--upcoming" : ""}${event.hasExtendedAbstract ? " talk-timeline-item--extra-links" : ""}`}
           >
             <div class="talk-timeline-date">
               {event.date ? (
@@ -251,23 +256,25 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
                 <span>{event.dateLabel}</span>
               )}
               {event.isUpcoming ? <span class="talk-status">Upcoming</span> : null}
+              {event.links.length > 0 ? (
+                <span class="talk-timeline-links">
+                  {event.links.map((link) => (
+                    <a
+                      class="talk-link-button"
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                </span>
+              ) : null}
             </div>
             <div class="talk-timeline-marker" aria-hidden="true"></div>
             <div class="talk-timeline-body">
               <h3 class="talk-title">{event.title}</h3>
               {event.event ? <p class="pub-meta talk-event">{event.event}</p> : null}
-              {event.links.length > 0 ? (
-                <p class="pub-links">
-                  {event.links.map((link, index) => (
-                    <>
-                      {index > 0 ? <span aria-hidden="true"> | </span> : null}
-                      <a href={link.href} target="_blank" rel="noopener noreferrer">
-                        {link.label}
-                      </a>
-                    </>
-                  ))}
-                </p>
-              ) : null}
             </div>
           </li>
         ))}
@@ -386,6 +393,9 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
     }
 
     .talk-timeline-date {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
       padding-top: 0.05rem;
       color: var(--color-accent);
       font-family: var(--font-mono);
@@ -401,6 +411,32 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
       font-family: var(--font-ui);
       font-size: 0.72rem;
       line-height: 1.25;
+    }
+
+    .talk-timeline-links {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 0.24rem;
+      margin-top: 0.35rem;
+    }
+
+    .talk-link-button {
+      padding: 0.06rem 0.36rem;
+      border: 1px solid var(--color-border);
+      border-radius: 999px;
+      background: var(--color-surface-2);
+      color: var(--color-accent);
+      font-family: var(--font-ui);
+      font-size: 0.72rem;
+      line-height: 1.35;
+      text-decoration: none;
+    }
+
+    .talk-link-button:hover {
+      color: var(--color-accent-hover);
+      border-color: var(--color-border-strong);
+      background: var(--color-accent-soft);
     }
 
     .talk-timeline-marker {
@@ -453,6 +489,10 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
     .talk-timeline-item:last-child .talk-timeline-body {
       padding-bottom: 0;
+    }
+
+    .talk-timeline-item--extra-links .talk-timeline-body {
+      padding-bottom: 1.55rem;
     }
 
     .pub-item > :where(p, h3),

@@ -20,6 +20,23 @@ export type Talk = {
 
 export const talks: Talk[] = [
   {
+    id: "controlled-gates-in-qudits",
+    title: "Controlled Gates in Qudits",
+    appearances: [
+      {
+        id: "nanqi-2026-controlled-gates-in-qudits",
+        date: "2026-09-03",
+        event: "NANQI 2026 - Workshop calcul et communications quantiques, Nancy",
+        links: [
+          {
+            label: "Abstract",
+            href: "https://nanqi.sciencesconf.org/data/program/colin_blake.pdf",
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: "completeness-prime-dimensional-phase-affine-circuits",
     title: "Completeness for Prime-Dimensional Phase-Affine Circuits",
     appearances: [
@@ -27,6 +44,7 @@ export const talks: Talk[] = [
         id: "qpl-2026-phase-affine-circuits",
         date: "2026-08-17",
         event: "QPL 2026 - 23rd International Conference on Quantum Physics and Logic, Amsterdam",
+        slidesHref: "/notes/qpl-2026-phase-affine-circuits.pdf",
       },
     ],
   },
@@ -62,6 +80,12 @@ export const talks: Talk[] = [
         date: "2026-06-17",
         event: "LIQCS 2026 - Logic in Quantum Computer Science, Inria de Paris",
         slidesHref: "/notes/liqcs-2026-completeness-not-enough.pdf",
+        links: [
+          {
+            label: "Extended abstract",
+            href: "https://liqcs2026.github.io/assets/pdfs/LIQCS_2026_extended_abstract_24.pdf",
+          },
+        ],
       },
     ],
   },
