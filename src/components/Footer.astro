@@ -5,23 +5,52 @@ import {
 } from "../data/site";
 
 const year = new Date().getFullYear();
-const internalLinks = [
-  { label: "Publications", href: "/publications" },
+const fish = [
+  {
+    delay: "-1.8s",
+    depth: "0.8rem",
+    speed: "18s",
+    scale: "0.9",
+    color: "#f7d877",
+    shine: "#fff2ae",
+  },
+  {
+    delay: "-7.2s",
+    depth: "1.75rem",
+    speed: "24s",
+    scale: "0.72",
+    color: "#9ad9d1",
+    shine: "#c8f4ef",
+    reverse: true,
+  },
+  {
+    delay: "-11s",
+    depth: "1.15rem",
+    speed: "21s",
+    scale: "0.82",
+    color: "#f5a65b",
+    shine: "#ffd49b",
+  },
+  {
+    delay: "-14.5s",
+    depth: "2.25rem",
+    speed: "28s",
+    scale: "0.64",
+    color: "#b5d8ff",
+    shine: "#e5f4ff",
+    reverse: true,
+  },
 ];
 ---
 
 <footer class="site-footer">
   <div class="container footer-inner">
-    <div class="footer-copy">
-      <p>&copy; {year} {siteProfile.name}</p>
-    </div>
+    <p class="footer-copy">&copy; {year} {siteProfile.name}</p>
 
     <ul class="footer-links">
-      {internalLinks.map((link) => (
-        <li>
-          <a href={link.href}>{link.label}</a>
-        </li>
-      ))}
+      <li>
+        <a href="/publications">Publications</a>
+      </li>
 
       {profileLinks.map((link) => (
         <li>
@@ -33,14 +62,30 @@ const internalLinks = [
     </ul>
   </div>
 
+  <div class="footer-ocean" aria-hidden="true">
+    {fish.map((item) => (
+      <span
+        class={`ocean-fish${item.reverse ? " ocean-fish--reverse" : ""}`}
+        style={`--delay: ${item.delay}; --depth: ${item.depth}; --speed: ${item.speed}; --scale: ${item.scale}; --fish-color: ${item.color}; --fish-shine: ${item.shine};`}
+      ></span>
+    ))}
+  </div>
+
   <style>
     .site-footer {
+      position: relative;
+      overflow: hidden;
       border-top: 1px solid var(--color-border-strong);
-      padding-block: 1.75rem 2.15rem;
-      background: linear-gradient(180deg, transparent, rgba(27, 40, 34, 0.7));
+      padding-block: 1.75rem 3.45rem;
+      background:
+        linear-gradient(180deg, transparent, rgba(16, 42, 70, 0.16)) bottom / 100% 3.8rem no-repeat,
+        linear-gradient(180deg, transparent 36%, rgba(7, 16, 28, 0.76)),
+        linear-gradient(180deg, transparent 64%, rgba(10, 29, 48, 0.34));
     }
 
     .footer-inner {
+      position: relative;
+      z-index: 2;
       display: flex;
       align-items: start;
       justify-content: space-between;
@@ -48,16 +93,12 @@ const internalLinks = [
       flex-wrap: wrap;
     }
 
-    .footer-copy p:first-child {
-      margin-bottom: 0.25rem;
+    .footer-copy {
+      margin: 0;
       font-family: var(--font-mono);
       font-size: 0.82rem;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-    }
-
-    .footer-copy p:last-child {
-      margin-bottom: 0;
     }
 
     .footer-links {
@@ -81,6 +122,185 @@ const internalLinks = [
     .footer-links a:hover {
       color: var(--color-accent-hover);
       border-bottom-color: rgba(154, 217, 209, 0.32);
+    }
+
+    .footer-ocean {
+      position: absolute;
+      z-index: 1;
+      inset-inline: 0;
+      bottom: 0;
+      height: 3.3rem;
+      overflow: hidden;
+      pointer-events: none;
+      image-rendering: pixelated;
+      background:
+        linear-gradient(90deg, rgba(178, 224, 255, 0.07) 0 4px, transparent 4px 20px) bottom / 56px 0.55rem repeat-x,
+        linear-gradient(90deg, rgba(2, 9, 19, 0.48) 0 18px, rgba(7, 25, 43, 0.32) 18px 36px) bottom / 88px 0.55rem repeat-x,
+        linear-gradient(180deg, rgba(82, 149, 190, 0.11), transparent 34%),
+        linear-gradient(180deg, #0a2741 0%, #06192d 54%, #030d1c 100%);
+    }
+
+    .footer-ocean::before,
+    .footer-ocean::after {
+      content: "";
+      position: absolute;
+      inset-inline: -3rem;
+      display: block;
+      height: 0.95rem;
+      background-repeat: repeat-x;
+      animation: ocean-wave-shift var(--wave-speed) linear infinite;
+    }
+
+    .footer-ocean::before {
+      --wave-speed: 8200ms;
+      top: 0.35rem;
+      opacity: 0.22;
+      background-size: 80px 100%;
+      background-image: linear-gradient(
+        90deg,
+        transparent 0 12px,
+        rgba(161, 211, 242, 0.14) 12px 16px,
+        rgba(35, 100, 142, 0.24) 16px 32px,
+        transparent 32px 46px,
+        rgba(83, 154, 190, 0.16) 46px 58px,
+        transparent 58px 80px
+      );
+    }
+
+    .footer-ocean::after {
+      --wave-speed: 11600ms;
+      top: 1.05rem;
+      opacity: 0.34;
+      background-size: 96px 100%;
+      background-image: linear-gradient(
+        90deg,
+        rgba(3, 18, 34, 0.32) 0 12px,
+        rgba(181, 226, 255, 0.2) 12px 16px,
+        rgba(29, 83, 127, 0.28) 16px 40px,
+        transparent 40px 56px,
+        rgba(75, 135, 175, 0.18) 56px 72px,
+        transparent 72px 96px
+      );
+      animation-direction: reverse;
+    }
+
+    .ocean-fish {
+      --flip: scaleX(1);
+      --start-x: -4rem;
+      --middle-x: 50vw;
+      --middle-y: -0.14rem;
+      --end-x: calc(100vw + 5rem);
+      --end-y: 0.1rem;
+      position: absolute;
+      left: -4rem;
+      bottom: var(--depth);
+      width: 36px;
+      height: 20px;
+      opacity: 0.9;
+      transform: translateX(var(--start-x)) var(--flip) scale(var(--scale));
+      transform-origin: center;
+      animation: ocean-fish-swim var(--speed) linear infinite;
+      animation-delay: var(--delay);
+    }
+
+    .ocean-fish--reverse {
+      --flip: scaleX(-1);
+      --start-x: 4rem;
+      --middle-x: -50vw;
+      --middle-y: 0.12rem;
+      --end-x: calc(-100vw - 5rem);
+      --end-y: -0.08rem;
+      left: auto;
+      right: -4rem;
+    }
+
+    .ocean-fish::before,
+    .ocean-fish::after {
+      content: "";
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: var(--fish-color);
+    }
+
+    .ocean-fish::before {
+      left: 12px;
+      top: 4px;
+      box-shadow:
+        4px 0 var(--fish-color),
+        8px 0 var(--fish-shine),
+        12px 0 var(--fish-color),
+        16px 0 #03101d,
+        0 4px var(--fish-color),
+        4px 4px var(--fish-color),
+        8px 4px var(--fish-color),
+        12px 4px var(--fish-shine),
+        16px 4px var(--fish-color),
+        4px 8px var(--fish-color),
+        8px 8px var(--fish-color),
+        12px 8px var(--fish-color);
+    }
+
+    .ocean-fish::after {
+      left: 4px;
+      top: 8px;
+      box-shadow:
+        -4px -4px var(--fish-color),
+        -4px 4px var(--fish-color);
+      animation: ocean-tail-flick 520ms steps(2, end) infinite;
+    }
+
+    @keyframes ocean-wave-shift {
+      from {
+        transform: translateX(0);
+      }
+
+      to {
+        transform: translateX(96px);
+      }
+    }
+
+    @keyframes ocean-fish-swim {
+      0% {
+        opacity: 0;
+        transform: translateX(var(--start-x)) translateY(0) var(--flip) scale(var(--scale));
+      }
+
+      8%, 92% {
+        opacity: 0.9;
+      }
+
+      45% {
+        transform: translateX(var(--middle-x)) translateY(var(--middle-y)) var(--flip) scale(var(--scale));
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateX(var(--end-x)) translateY(var(--end-y)) var(--flip) scale(var(--scale));
+      }
+    }
+
+    @keyframes ocean-tail-flick {
+      0%, 100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-2px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .footer-ocean::before,
+      .footer-ocean::after,
+      .ocean-fish,
+      .ocean-fish::after {
+        animation: none;
+      }
+
+      .ocean-fish {
+        display: none;
+      }
     }
   </style>
 </footer>
