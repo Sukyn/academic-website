@@ -1,10 +1,10 @@
 /* Base tokens */
 :root {
-  --font-body: "STIX Two Text", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    Georgia, serif;
-  --font-ui: "IBM Plex Sans", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+  --font-display: "Grenze Gotisch", Georgia, serif;
+  --font-body: "Spectral", "Iowan Old Style", Georgia, serif;
+  --font-ui: "Alegreya Sans", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
     sans-serif;
-  --font-mono: "IBM Plex Mono", "Cascadia Code", "SFMono-Regular", Consolas,
+  --font-mono: "Space Mono", "Cascadia Code", "SFMono-Regular", Consolas,
     "Liberation Mono", monospace;
 
   --content-width: 72rem;
@@ -12,7 +12,7 @@
 
   --color-bg: #18231e;
   --color-text: #dde3d7;
-  --color-heading: #f5f1e7;
+  --color-heading: #fff3cf;
   --color-muted: #9ca89d;
   --color-border: #425046;
   --color-border-strong: #6d7b71;
@@ -64,8 +64,8 @@ body {
     );
   background-size: auto, auto, auto, 170px 170px, 230px 230px;
   color: var(--color-text);
-  line-height: 1.72;
-  font-size: 1.04rem;
+  line-height: 1.69;
+  font-size: 1.08rem;
   font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -118,29 +118,45 @@ main.container {
 /* Typography */
 h1,
 h2,
-h3 {
-  font-family: var(--font-body);
+h3,
+.pub-title strong {
+  font-family: var(--font-display);
   font-weight: 600;
-  line-height: 1.14;
-  letter-spacing: -0.018em;
+  line-height: 1.08;
+  letter-spacing: 0;
   color: var(--color-heading);
+  text-shadow: 0 0 18px rgba(154, 217, 209, 0.12);
   text-wrap: balance;
   margin: 0 0 0.75rem;
 }
 
 h1 {
-  font-size: clamp(2.35rem, 4vw, 2.95rem);
+  font-size: 3.15rem;
   margin-bottom: 1rem;
 }
 
 h2 {
-  font-size: clamp(1.6rem, 3vw, 1.9rem);
+  font-size: 2rem;
   margin-top: 2rem;
 }
 
 h3 {
-  font-size: clamp(1.18rem, 2.2vw, 1.32rem);
+  font-size: 1.38rem;
   margin-top: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  h1 {
+    font-size: 2.55rem;
+  }
+
+  h2 {
+    font-size: 1.75rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+  }
 }
 
 h4 {
@@ -227,7 +243,7 @@ a:focus-visible {
   font-family: var(--font-ui);
   font-size: 0.95rem;
   font-weight: 500;
-  border-radius: 999px;
+  border-radius: 3px;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
