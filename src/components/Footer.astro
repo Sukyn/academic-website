@@ -11,16 +11,20 @@ const fish = [
     depth: "0.8rem",
     speed: "18s",
     scale: "0.9",
-    color: "#f7d877",
-    shine: "#fff2ae",
+    color: "#f7f5eb",
+    shine: "#ffffff",
+    eye: "#050706",
+    shadow: "rgba(0, 0, 0, 0.42)",
   },
   {
     delay: "-7.2s",
     depth: "1.75rem",
     speed: "24s",
     scale: "0.72",
-    color: "#9ad9d1",
-    shine: "#c8f4ef",
+    color: "#050706",
+    shine: "#111611",
+    eye: "#f7f5eb",
+    shadow: "rgba(247, 245, 235, 0.5)",
     reverse: true,
   },
   {
@@ -28,16 +32,20 @@ const fish = [
     depth: "1.15rem",
     speed: "21s",
     scale: "0.82",
-    color: "#f5a65b",
-    shine: "#ffd49b",
+    color: "#050706",
+    shine: "#111611",
+    eye: "#f7f5eb",
+    shadow: "rgba(247, 245, 235, 0.5)",
   },
   {
     delay: "-14.5s",
     depth: "2.25rem",
     speed: "28s",
     scale: "0.64",
-    color: "#b5d8ff",
-    shine: "#e5f4ff",
+    color: "#f7f5eb",
+    shine: "#ffffff",
+    eye: "#050706",
+    shadow: "rgba(0, 0, 0, 0.42)",
     reverse: true,
   },
 ];
@@ -66,8 +74,11 @@ const fish = [
     {fish.map((item) => (
       <span
         class={`ocean-fish${item.reverse ? " ocean-fish--reverse" : ""}`}
-        style={`--delay: ${item.delay}; --depth: ${item.depth}; --speed: ${item.speed}; --scale: ${item.scale}; --fish-color: ${item.color}; --fish-shine: ${item.shine};`}
-      ></span>
+        style={`--delay: ${item.delay}; --depth: ${item.depth}; --speed: ${item.speed}; --scale: ${item.scale}; --fish-color: ${item.color}; --fish-shine: ${item.shine}; --fish-eye: ${item.eye}; --fish-shadow: ${item.shadow};`}
+      >
+        <span class="ocean-fish__tail"></span>
+        <span class="ocean-fish__body"></span>
+      </span>
     ))}
   </div>
 
@@ -78,9 +89,9 @@ const fish = [
       border-top: 1px solid var(--color-border-strong);
       padding-block: 1.75rem 3.45rem;
       background:
-        linear-gradient(180deg, transparent, rgba(16, 42, 70, 0.16)) bottom / 100% 3.8rem no-repeat,
-        linear-gradient(180deg, transparent 36%, rgba(7, 16, 28, 0.76)),
-        linear-gradient(180deg, transparent 64%, rgba(10, 29, 48, 0.34));
+        linear-gradient(180deg, transparent, rgba(154, 217, 209, 0.07)) bottom / 100% 3.8rem no-repeat,
+        linear-gradient(180deg, transparent 36%, rgba(24, 35, 30, 0.86)),
+        linear-gradient(180deg, transparent 64%, rgba(27, 40, 34, 0.36));
     }
 
     .footer-inner {
@@ -134,16 +145,17 @@ const fish = [
       pointer-events: none;
       image-rendering: pixelated;
       background:
-        linear-gradient(90deg, rgba(178, 224, 255, 0.07) 0 4px, transparent 4px 20px) bottom / 56px 0.55rem repeat-x,
-        linear-gradient(90deg, rgba(2, 9, 19, 0.48) 0 18px, rgba(7, 25, 43, 0.32) 18px 36px) bottom / 88px 0.55rem repeat-x,
-        linear-gradient(180deg, rgba(82, 149, 190, 0.11), transparent 34%),
-        linear-gradient(180deg, #0a2741 0%, #06192d 54%, #030d1c 100%);
+        linear-gradient(90deg, rgba(255, 243, 207, 0.09) 0 4px, transparent 4px 20px) bottom / 56px 0.55rem repeat-x,
+        linear-gradient(90deg, rgba(13, 20, 17, 0.34) 0 18px, rgba(33, 48, 41, 0.28) 18px 36px) bottom / 88px 0.55rem repeat-x,
+        linear-gradient(180deg, rgba(154, 217, 209, 0.11), transparent 34%),
+        linear-gradient(180deg, var(--color-bg) 0%, var(--color-surface-2) 54%, var(--color-code-block) 100%);
     }
 
     .footer-ocean::before,
     .footer-ocean::after {
       content: "";
       position: absolute;
+      z-index: 1;
       inset-inline: -3rem;
       display: block;
       height: 0.95rem;
@@ -154,15 +166,15 @@ const fish = [
     .footer-ocean::before {
       --wave-speed: 8200ms;
       top: 0.35rem;
-      opacity: 0.22;
+      opacity: 0.34;
       background-size: 80px 100%;
       background-image: linear-gradient(
         90deg,
         transparent 0 12px,
-        rgba(161, 211, 242, 0.14) 12px 16px,
-        rgba(35, 100, 142, 0.24) 16px 32px,
+        rgba(154, 217, 209, 0.26) 12px 16px,
+        rgba(66, 80, 70, 0.36) 16px 32px,
         transparent 32px 46px,
-        rgba(83, 154, 190, 0.16) 46px 58px,
+        rgba(200, 244, 239, 0.18) 46px 58px,
         transparent 58px 80px
       );
     }
@@ -170,15 +182,15 @@ const fish = [
     .footer-ocean::after {
       --wave-speed: 11600ms;
       top: 1.05rem;
-      opacity: 0.34;
+      opacity: 0.46;
       background-size: 96px 100%;
       background-image: linear-gradient(
         90deg,
-        rgba(3, 18, 34, 0.32) 0 12px,
-        rgba(181, 226, 255, 0.2) 12px 16px,
-        rgba(29, 83, 127, 0.28) 16px 40px,
+        rgba(16, 33, 28, 0.38) 0 12px,
+        rgba(255, 243, 207, 0.2) 12px 16px,
+        rgba(109, 123, 113, 0.34) 16px 40px,
         transparent 40px 56px,
-        rgba(75, 135, 175, 0.18) 56px 72px,
+        rgba(154, 217, 209, 0.22) 56px 72px,
         transparent 72px 96px
       );
       animation-direction: reverse;
@@ -192,11 +204,13 @@ const fish = [
       --end-x: calc(100vw + 5rem);
       --end-y: 0.1rem;
       position: absolute;
+      z-index: 2;
       left: -4rem;
       bottom: var(--depth);
       width: 36px;
       height: 20px;
       opacity: 0.9;
+      filter: drop-shadow(0 0 1px var(--fish-shadow));
       transform: translateX(var(--start-x)) var(--flip) scale(var(--scale));
       transform-origin: center;
       animation: ocean-fish-swim var(--speed) linear infinite;
@@ -214,23 +228,22 @@ const fish = [
       right: -4rem;
     }
 
-    .ocean-fish::before,
-    .ocean-fish::after {
-      content: "";
+    .ocean-fish__body,
+    .ocean-fish__tail {
       position: absolute;
       width: 4px;
       height: 4px;
       background: var(--fish-color);
     }
 
-    .ocean-fish::before {
+    .ocean-fish__body {
       left: 12px;
       top: 4px;
       box-shadow:
         4px 0 var(--fish-color),
         8px 0 var(--fish-shine),
         12px 0 var(--fish-color),
-        16px 0 #03101d,
+        16px 0 var(--fish-eye),
         0 4px var(--fish-color),
         4px 4px var(--fish-color),
         8px 4px var(--fish-color),
@@ -241,7 +254,7 @@ const fish = [
         12px 8px var(--fish-color);
     }
 
-    .ocean-fish::after {
+    .ocean-fish__tail {
       left: 4px;
       top: 8px;
       box-shadow:
@@ -294,7 +307,7 @@ const fish = [
       .footer-ocean::before,
       .footer-ocean::after,
       .ocean-fish,
-      .ocean-fish::after {
+      .ocean-fish__tail {
         animation: none;
       }
 
