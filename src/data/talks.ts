@@ -10,6 +10,7 @@ export type TalkAppearance = {
   event?: string;
   slidesHref?: string;
   links?: TalkLink[];
+  isUpcoming?: boolean;
 };
 
 export type Talk = {
@@ -57,6 +58,8 @@ export const talks: Talk[] = [
         date: "2026-08-27",
         event:
           "MFCS 2026 - 51st International Symposium on Mathematical Foundations of Computer Science, Paris",
+        slidesHref: "/notes/mfcs-2026-polycontrolled-props-qudit-circuits.pdf",
+        isUpcoming: false,
       },
       {
         id: "polycontrolled-props-qudit-circuits-fmqc-2026",
