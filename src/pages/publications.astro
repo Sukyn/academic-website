@@ -133,7 +133,7 @@ const talkTimeline = talks
         hasExtendedAbstract: links.some((link) =>
           link.label.toLowerCase().includes("extended abstract"),
         ),
-        isUpcoming: sortTime > todayTime,
+        isUpcoming: appearance.isUpcoming ?? sortTime > todayTime,
       };
     }),
   )

@@ -47,11 +47,13 @@ const nav = [
     }
 
     .brand {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       font-size: 1.72rem;
       font-family: var(--font-display);
       font-weight: 600;
       letter-spacing: 0;
+      line-height: 1;
       color: var(--color-heading);
       text-shadow: 0 0 18px rgba(154, 217, 209, 0.12);
       text-decoration: none;
@@ -92,6 +94,12 @@ const nav = [
       font-weight: 600;
       color: var(--color-accent);
       border-bottom-color: var(--color-accent);
+    }
+
+    @media (max-width: 520px) {
+      .brand {
+        font-size: 1.55rem;
+      }
     }
   </style>
 </header>
