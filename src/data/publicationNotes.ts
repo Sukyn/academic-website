@@ -11,6 +11,7 @@ export type PublicationUpdate = {
 export type PublicationNote = {
   status: string;
   summary: string;
+  displayMeta?: string;
   fullVersionUrl?: string;
   links?: PublicationLink[];
   updates?: PublicationUpdate[];
@@ -24,6 +25,8 @@ export const publicationNotesById: Record<string, PublicationNote> = {
   },
   "blake:LIPIcs.MFCS.2026.6": {
     status: "MFCS 2026 proceedings; Best Student Paper award",
+    displayMeta:
+      "51st International Symposium on Mathematical Foundations of Computer Science (MFCS 2026) proceedings; Best Student Paper award",
     summary:
       "Gives a finite dimension-uniform equational presentation for exact qudit circuits using primitive value-control in a polycontrolled PROP.",
     fullVersionUrl: "https://arxiv.org/abs/2602.09873",

@@ -77,7 +77,7 @@ const pubsWithLinks = pubs.map((pub) => {
     links: publicationLinks(pub, note),
     note,
     hasPublishedCitation: hasPublishedCitation(pub),
-    meta: uniqueMeta([note?.status, pub.venue, pub.year]),
+    meta: uniqueMeta([note?.displayMeta ?? note?.status, note?.displayMeta ? undefined : pub.venue, pub.year]),
   };
 });
 
