@@ -1,4 +1,4 @@
-# Colin Blake academic website
+# My academic website
 
 Astro site for publications, talks, outreach, contact information, and research ideas.
 
@@ -17,3 +17,6 @@ Main content lives in:
 - `src/data/` for publications notes, talks, outreach, and research ideas
 - `src/content/publications.bibtex` for BibTeX-backed publication metadata
 - `public/` for PDFs and static assets
+
+Todo :
+- Add dragons
