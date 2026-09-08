@@ -148,7 +148,8 @@ function appearanceDateLabel(appearance: TalkAppearance) {
 }
 
 function appearanceSortTime(appearance: TalkAppearance) {
-  return appearance.date ? Date.parse(`${appearance.date}T00:00:00Z`) : Number.NEGATIVE_INFINITY;
+  if (appearance.date) return Date.parse(`${appearance.date}T00:00:00Z`);
+  return appearance.isUpcoming ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
 }
 
 const now = new Date();

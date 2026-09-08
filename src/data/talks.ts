@@ -21,6 +21,17 @@ export type Talk = {
 
 export const talks: Talk[] = [
   {
+    id: "equations-quantum-circuits-qubits-qudits",
+    title: "Equations for quantum circuits: from qubits to qudits",
+    appearances: [
+      {
+        id: "rouen-theoretical-computer-science-seminar-quantum-circuits",
+        date: "2026-10-15",
+        event: "Séminaire d'informatique théorique, Université de Rouen Normandie",
+      },
+    ],
+  },
+  {
     id: "controlled-gates-in-qudits",
     title: "Controlled Gates in Qudits",
     appearances: [
