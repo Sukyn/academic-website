@@ -1,5 +1,6 @@
 ---
 import { siteProfile } from "../data/site";
+import FactsList from "../components/FactsList.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
 const quickFacts = [
@@ -27,14 +28,7 @@ const quickFacts = [
       equations turn into normal forms, rewrite systems, or small tools.
     </p>
 
-    <dl class="quick-facts" aria-label="Quick facts">
-      {quickFacts.map((fact) => (
-        <div>
-          <dt>{fact.label}</dt>
-          <dd>{fact.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <FactsList class="quick-facts" aria-label="Quick facts" facts={quickFacts} />
 
     <aside class="disambiguation" aria-labelledby="disambiguation-title">
       <h2 id="disambiguation-title">Disambiguation</h2>
@@ -144,28 +138,6 @@ const quickFacts = [
   <style>
     .quick-facts {
       margin: 1rem 0 1.5rem;
-    }
-
-    .quick-facts div {
-      padding: 0.6rem 0;
-      border-top: 1px solid var(--color-border);
-    }
-
-    .quick-facts div:last-child {
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    .quick-facts dt {
-      margin-bottom: 0.2rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--color-accent);
-    }
-
-    .quick-facts dd {
-      margin: 0;
     }
 
     .disambiguation {

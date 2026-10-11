@@ -1,5 +1,6 @@
 ---
 import ScratchProfileCard from "../components/ScratchProfileCard.astro";
+import FactsList from "../components/FactsList.astro";
 import { profileLinks, siteProfile } from "../data/site";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
@@ -73,14 +74,7 @@ const currentTopics = [
     </ul>
 
     <h2>Research profile</h2>
-    <dl class="profile-list">
-      {profileFacts.map((fact) => (
-        <div>
-          <dt>{fact.label}</dt>
-          <dd>{fact.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <FactsList class="profile-list" facts={profileFacts} />
 
     <h2>External profiles</h2>
     <ul>
@@ -125,28 +119,6 @@ const currentTopics = [
 
     .profile-list {
       margin: 1rem 0 0;
-    }
-
-    .profile-list div {
-      padding: 0.6rem 0;
-      border-top: 1px solid var(--color-border);
-    }
-
-    .profile-list div:last-child {
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    .profile-list dt {
-      margin-bottom: 0.2rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--color-accent);
-    }
-
-    .profile-list dd {
-      margin: 0;
     }
 
     @media (min-width: 760px) {

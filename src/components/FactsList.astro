@@ -1,0 +1,42 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+interface Props extends HTMLAttributes<"dl"> {
+  facts: Array<{ label: string; value: string }>;
+}
+
+const { facts, ...attributes } = Astro.props;
+---
+
+<dl {...attributes}>
+  {facts.map((fact) => (
+    <div>
+      <dt>{fact.label}</dt>
+      <dd>{fact.value}</dd>
+    </div>
+  ))}
+</dl>
+
+<style>
+  dl div {
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--color-border);
+  }
+
+  dl div:last-child {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  dl dt {
+    margin-bottom: 0.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  dl dd {
+    margin: 0;
+  }
+</style>

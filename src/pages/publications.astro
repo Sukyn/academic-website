@@ -32,19 +32,11 @@ function publicationMeta(publication: Pub, note?: PublicationNote) {
   const venue = publication.venue?.trim();
 
   if (status && venue) {
-    const alias = conferenceAliases(venue).find((candidate) => {
-      const pattern = new RegExp(`^${escapeRegExp(candidate)}(?=\\b|\\s|[,;:])`, "i");
-
-      return pattern.test(status);
-    });
-
-    if (alias) {
-      const expandedStatus = status.replace(
-        new RegExp(`^${escapeRegExp(alias)}(?=\\b|\\s|[,;:])`, "i"),
-        venue,
-      );
-
-      return uniqueMeta([expandedStatus, publication.year]);
+    for (const alias of conferenceAliases(venue)) {
+      const pattern = new RegExp(`^${escapeRegExp(alias)}(?=\\b|\\s|[,;:])`, "i");
+      if (pattern.test(status)) {
+        return uniqueMeta([status.replace(pattern, venue), publication.year]);
+      }
     }
   }
 
@@ -121,16 +113,11 @@ function formatTalkDate(date: string) {
   return talkDateFormatter.format(new Date(`${date}T00:00:00Z`));
 }
 
-function itemLinks(item: {
-  slidesHref?: string;
-  links?: { label: string; href: string }[];
-}) {
-  const links: { label: string; href: string }[] = [];
-
-  if (item.slidesHref) links.push({ label: "Slides", href: item.slidesHref });
-  links.push(...(item.links ?? []));
-
-  return links;
+function itemLinks(item: TalkAppearance) {
+  return [
+    ...(item.slidesHref ? [{ label: "Slides", href: item.slidesHref }] : []),
+    ...(item.links ?? []),
+  ];
 }
 
 function appearanceDateLabel(appearance: TalkAppearance) {
@@ -240,7 +227,7 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
     {pubsWithCitations.map((publication) => (
       <ContentDialog id={`${publication.id}-cite`} labelledBy={`${publication.id}-cite-title`}>
-        <h3 id={`${publication.id}-cite-title`} class="dialog-title">
+        <h3 id={`${publication.id}-cite-title`}>
           Cite
         </h3>
         <p class="pub-title">
@@ -578,12 +565,6 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
       font-weight: 600;
     }
 
-    .math-inline {
-      color: var(--color-heading);
-      font-family: var(--font-body);
-      white-space: nowrap;
-    }
-
     .pub-meta,
     .pub-links {
       font-size: 0.95rem;
@@ -649,10 +630,6 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
     .citation-block {
       max-height: 24rem;
-    }
-
-    .citation-block code {
-      white-space: pre;
     }
   </style>
 </BaseLayout>

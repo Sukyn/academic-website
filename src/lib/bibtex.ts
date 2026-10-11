@@ -39,14 +39,12 @@ function pickVenue(tags: Record<string, any>) {
   );
 }
 
-function outerBracesWrapValue(value: string) {
-  if (!value.startsWith("{") || !value.endsWith("}")) return false;
-
+function findClosingDelimiter(source: string, start: number, open: string, close: string) {
   let depth = 0;
   let escaped = false;
 
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
 
     if (escaped) {
       escaped = false;
@@ -58,13 +56,21 @@ function outerBracesWrapValue(value: string) {
       continue;
     }
 
-    if (char === "{") depth += 1;
-    if (char === "}") depth -= 1;
+    if (char === open) depth += 1;
+    if (char === close) depth -= 1;
 
-    if (depth === 0 && index < value.length - 1) return false;
+    if (depth === 0) return index;
   }
 
-  return depth === 0;
+  return -1;
+}
+
+function outerBracesWrapValue(value: string) {
+  return (
+    value.startsWith("{") &&
+    value.endsWith("}") &&
+    findClosingDelimiter(value, 0, "{", "}") === value.length - 1
+  );
 }
 
 function cleanDisplayText(value: string) {
@@ -115,31 +121,7 @@ function extractRawEntries(source: string) {
     if (commaIndex === -1) break;
 
     const citationKey = source.slice(bodyStart + 1, commaIndex).trim();
-    let depth = 0;
-    let escaped = false;
-    let endIndex = -1;
-
-    for (let cursor = bodyStart; cursor < source.length; cursor += 1) {
-      const char = source[cursor];
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-
-      if (char === openChar) depth += 1;
-      if (char === closeChar) depth -= 1;
-
-      if (depth === 0) {
-        endIndex = cursor;
-        break;
-      }
-    }
+    const endIndex = findClosingDelimiter(source, bodyStart, openChar, closeChar);
 
     if (citationKey && endIndex !== -1) {
       entries.set(citationKey, source.slice(atIndex, endIndex + 1).trim());

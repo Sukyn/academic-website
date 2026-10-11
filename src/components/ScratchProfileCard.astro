@@ -69,7 +69,6 @@ const imageSources = Array.from(
     let scratching = false;
     let revealed = false;
     let currentIndex = 0;
-    let roundTimer = 0;
     let transitioning = false;
     let coverSource = "";
     let coverAsset = null;
@@ -104,8 +103,8 @@ const imageSources = Array.from(
     };
 
     const drawDrawable = (drawable, rect) => {
-      const sourceWidth = "naturalWidth" in drawable ? drawable.naturalWidth : drawable.width;
-      const sourceHeight = "naturalHeight" in drawable ? drawable.naturalHeight : drawable.height;
+      const sourceWidth = drawable.naturalWidth;
+      const sourceHeight = drawable.naturalHeight;
       if (!sourceWidth || !sourceHeight) return;
 
       const scale = Math.max(rect.width / sourceWidth, rect.height / sourceHeight);
@@ -207,12 +206,14 @@ const imageSources = Array.from(
         image.src = nextSource;
       });
 
-    const advanceRound = () => {
-      if (roundTimer) {
-        window.clearTimeout(roundTimer);
-        roundTimer = 0;
-      }
+    const finishTransition = () => {
+      ready = true;
+      transitioning = false;
+      root.dataset.ready = "true";
+      updatePointerState();
+    };
 
+    const advanceRound = () => {
       if (currentIndex >= sources.length - 1) {
         ready = false;
         transitioning = false;
@@ -230,10 +231,7 @@ const imageSources = Array.from(
 
       void waitForImage(sources[nextIndex]).then(() => {
         currentIndex = nextIndex;
-        ready = true;
-        transitioning = false;
-        root.dataset.ready = "true";
-        updatePointerState();
+        finishTransition();
       });
     };
 
@@ -286,9 +284,7 @@ const imageSources = Array.from(
 
       transitioning = true;
       updatePointerState();
-      roundTimer = window.setTimeout(() => {
-        advanceRound();
-      }, 240);
+      window.setTimeout(advanceRound, 240);
     };
 
     const onPointerDown = (event) => {
@@ -321,12 +317,7 @@ const imageSources = Array.from(
       root.dataset.ready = "true";
       updatePointerState();
 
-      void waitForImage(sources[currentIndex]).then(() => {
-        ready = true;
-        transitioning = false;
-        root.dataset.ready = "true";
-        updatePointerState();
-      });
+      void waitForImage(sources[currentIndex]).then(finishTransition);
     };
 
     canvas.addEventListener("pointerdown", onPointerDown);

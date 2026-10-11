@@ -80,9 +80,6 @@
 
         canvas.width = Math.floor(cssW * dpr);
         canvas.height = Math.floor(cssH * dpr);
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
@@ -136,10 +133,8 @@
         };
 
         const featureCount = randInt(3, 5);
-        const sides = ["left", "right"];
-
         for (let index = 0; index < featureCount; index += 1) {
-          const side = sides[index % 2] ?? (Math.random() > 0.5 ? "left" : "right");
+          const side = index % 2 === 0 ? "left" : "right";
           system.features.push(createFeature(system, side));
         }
 

@@ -69,10 +69,7 @@ img {
   height: auto;
 }
 
-input,
-button,
-textarea,
-select {
+button {
   font: inherit;
 }
 
@@ -243,7 +240,6 @@ a:focus-visible {
 .button:hover {
   color: var(--color-accent-hover);
   background: var(--color-accent-soft);
-  text-decoration: none;
   transform: translateY(-1px);
 }
 
@@ -257,7 +253,6 @@ a:focus-visible {
 .button.primary:hover {
   background: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
-  color: #10211c;
 }
 
 .button.ghost {

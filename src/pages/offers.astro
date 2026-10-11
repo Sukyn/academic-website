@@ -150,7 +150,7 @@ for (const offer of offerSummaries) {
           {detail.links ? (
             <p class="refs">
               <strong>Reading:</strong>{" "}
-              <span class="refs-links">{detail.links.map((link, index) => (
+              <span>{detail.links.map((link, index) => (
                 <span>{index > 0 ? ", " : ""}<a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}</a></span>
               ))}</span>
             </p>
@@ -192,7 +192,8 @@ for (const offer of offerSummaries) {
       background: var(--color-surface);
     }
 
-    .spotlight-grid {
+    .spotlight-grid,
+    .topic-grid {
       display: grid;
       grid-template-columns: 1fr;
       gap: 0.75rem;
@@ -200,7 +201,8 @@ for (const offer of offerSummaries) {
     }
 
     @media (min-width: 760px) {
-      .spotlight-grid {
+      .spotlight-grid,
+      .topic-grid {
         grid-template-columns: 1fr 1fr;
       }
     }
@@ -261,19 +263,6 @@ for (const offer of offerSummaries) {
       flex-wrap: wrap;
     }
 
-    .topic-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 0.75rem;
-      margin-top: 0.75rem;
-    }
-
-    @media (min-width: 760px) {
-      .topic-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-
     .topic-card {
       text-decoration: none;
       border: 1px solid var(--color-border);
@@ -326,7 +315,6 @@ for (const offer of offerSummaries) {
 
     .dialog-title {
       margin: 0 0 1rem;
-      padding-right: 0;
     }
 
     .dialog-body > :last-child {
@@ -336,10 +324,6 @@ for (const offer of offerSummaries) {
     .offer-line {
       font-weight: 700;
       color: var(--color-heading);
-    }
-
-    .first-steps ul {
-      margin-top: 0;
     }
 
     .refs {

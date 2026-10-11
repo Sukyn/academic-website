@@ -25,7 +25,6 @@ const refs = {
 
   circuitPresentations: "https://quantum-journal.org/papers/q-2022-06-13-734/",
   cnotDihedralPresentation: "https://arxiv.org/abs/1701.00140",
-  cnotDihedralSynthesis: "https://arxiv.org/abs/2006.12042",
 
   phasePolynomialsQubit: "https://arxiv.org/abs/1303.2042",
   phasePolynomialsQudit: "https://arxiv.org/abs/1902.05634",
