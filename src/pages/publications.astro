@@ -11,17 +11,7 @@ import bibtex from "../content/publications.bibtex?raw";
 const pubs = parseBibtexToPubs(bibtex);
 
 function uniqueMeta(parts: Array<string | number | undefined>) {
-  const seen = new Set<string>();
-
-  return parts
-    .filter(Boolean)
-    .map(String)
-    .filter((part) => {
-      if (seen.has(part)) return false;
-      seen.add(part);
-      return true;
-    })
-    .join(" | ");
+  return [...new Set(parts.filter(Boolean).map(String))].join(" | ");
 }
 
 function escapeRegExp(value: string) {
@@ -358,8 +348,9 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
 
     (() => {
       const marker = "__citationCopyBindings";
-      if ((window as typeof window & { [key: string]: boolean })[marker]) return;
-      (window as typeof window & { [key: string]: boolean })[marker] = true;
+      const state = window as typeof window & { [key: string]: boolean };
+      if (state[marker]) return;
+      state[marker] = true;
 
       document.addEventListener("click", async (event) => {
         const target = event.target;

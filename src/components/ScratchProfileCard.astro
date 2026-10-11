@@ -196,23 +196,14 @@ const imageSources = Array.from(
           return;
         }
 
-        const cleanup = () => {
-          image.removeEventListener("load", onLoad);
-          image.removeEventListener("error", onError);
-        };
-
-        const onLoad = () => {
-          cleanup();
+        const onComplete = () => {
+          image.removeEventListener("load", onComplete);
+          image.removeEventListener("error", onComplete);
           resolve();
         };
 
-        const onError = () => {
-          cleanup();
-          resolve();
-        };
-
-        image.addEventListener("load", onLoad);
-        image.addEventListener("error", onError);
+        image.addEventListener("load", onComplete);
+        image.addEventListener("error", onComplete);
         image.src = nextSource;
       });
 

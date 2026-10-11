@@ -1,13 +1,11 @@
 type DialogBindingOptions = {
   marker: string;
   triggerAttribute: string;
-  closeSelector?: string;
 };
 
 export function bindDialogControls({
   marker,
   triggerAttribute,
-  closeSelector = "[data-modal-close]",
 }: DialogBindingOptions) {
   const state = window as typeof window & { [key: string]: boolean };
   if (state[marker]) return;
@@ -31,7 +29,7 @@ export function bindDialogControls({
       return;
     }
 
-    const closeButton = target.closest(closeSelector);
+    const closeButton = target.closest("[data-modal-close]");
     if (closeButton instanceof HTMLElement) {
       const dialog = closeButton.closest("dialog");
       if (dialog instanceof HTMLDialogElement) dialog.close();

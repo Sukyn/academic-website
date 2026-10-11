@@ -16,23 +16,16 @@
   (() => {
     const WALLPAPER_SELECTOR = "#zx-wallpaper";
     const TAU = Math.PI * 2;
-    const FPS = 24;
-    const FRAME_MS = 1000 / FPS;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     /**
      * @typedef {{
-     *   type: "marker";
      *   x: number;
      *   line: number;
      *   shape: "dot" | "square";
      *   tone: "light" | "dark";
      *   size: number;
      * }} MarkerFeature
-     */
-
-    /**
-     * @typedef {MarkerFeature} Feature
      */
 
     /**
@@ -46,7 +39,7 @@
      *   phase: number;
      *   speed: number;
      *   drift: number;
-     *   features: Feature[];
+     *   features: MarkerFeature[];
      * }} System
      */
 
@@ -75,8 +68,6 @@
       let cssW = 0;
       let cssH = 0;
       let raf = 0;
-      let last = 0;
-      let accMs = 0;
 
       const rand = (min, max) => min + Math.random() * (max - min);
       const randInt = (min, max) => Math.floor(rand(min, max + 1));
@@ -121,7 +112,6 @@
 
       function createFeature(system, side) {
         return /** @type {MarkerFeature} */ ({
-          type: "marker",
           x: marginBandX(side),
           line: randInt(0, system.lineCount - 1),
           shape: pick(["dot", "square"]),
@@ -178,7 +168,7 @@
         return gradient;
       }
 
-      function strokeChalk(drawPath, alpha, width, useGradient = true) {
+      function strokeChalk(drawPath, alpha, width) {
         const layers = [
           { dx: 0, dy: 0, alpha, width },
           { dx: 0.42, dy: -0.22, alpha: alpha * 0.46, width: width + 0.45 },
@@ -193,9 +183,7 @@
           ctx.translate(layer.dx, layer.dy);
           ctx.beginPath();
           drawPath();
-          ctx.strokeStyle = useGradient
-            ? makeGradient(layer.alpha)
-            : `rgba(245, 241, 231, ${layer.alpha})`;
+          ctx.strokeStyle = makeGradient(layer.alpha);
           ctx.lineWidth = layer.width;
           ctx.stroke();
           ctx.restore();
@@ -213,7 +201,7 @@
           for (let x = startX + step; x <= endX; x += step) {
             ctx.lineTo(x, lineYAt(system, line, x, time));
           }
-        }, opacity, 1.04, true);
+        }, opacity, 1.04);
       }
 
       function markerFill(tone, alpha) {
@@ -361,22 +349,12 @@
           return;
         }
 
-        if (!last) last = now;
-        accMs += now - last;
-        last = now;
-
-        while (accMs >= FRAME_MS) {
-          accMs -= FRAME_MS;
-        }
-
         draw(now);
         raf = requestAnimationFrame(loop);
       }
 
       function startLoop() {
         if (raf || !shouldRun()) return;
-        last = 0;
-        accMs = 0;
         raf = requestAnimationFrame(loop);
       }
 
