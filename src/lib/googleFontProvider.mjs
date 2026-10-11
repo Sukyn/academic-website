@@ -14,11 +14,23 @@ export const provider = (options) => {
         resolveFont: async (...args) => {
           const result = await initialized.resolveFont(...args);
           if (!result) return;
+          const fonts = result.fonts.map((font) => {
+            if (font.unicodeRange?.length || !font.meta?.priority) return font;
+            // Match the modern subsets' coverage: a full legacy face otherwise
+            // triggers a download even for symbols the font cannot render.
+            const ranges = result.fonts
+              .filter((other) => !other.meta?.priority &&
+                other.weight === font.weight && other.style === font.style)
+              .flatMap((other) => other.unicodeRange ?? []);
+            return ranges.length
+              ? { ...font, unicodeRange: [...new Set(ranges)] }
+              : font;
+          });
           // CSS checks overlapping faces last-first. Put legacy full fonts before
           // the WOFF2 subsets so modern browsers use the smaller preloaded files.
           return {
             ...result,
-            fonts: [...result.fonts].sort(
+            fonts: fonts.sort(
               (a, b) => (b.meta?.priority ?? 0) - (a.meta?.priority ?? 0),
             ),
           };
