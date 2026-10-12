@@ -2,8 +2,8 @@ import { circuitTikz, layoutCircuit, panelSvg, type Panel } from '../lib/circuit
 import type { Circuit } from '../lib/circuits/circuit-engine';
 
 const form = document.querySelector<HTMLFormElement>('#circuit-form')!;
-const dimension = document.querySelector<HTMLInputElement>('#dimension')!;
-const controls = document.querySelector<HTMLInputElement>('#controls')!;
+const dimension = document.querySelector<HTMLSelectElement>('#dimension')!;
+const controls = document.querySelector<HTMLSelectElement>('#controls')!;
 const algorithm = document.querySelector<HTMLSelectElement>('#algorithm')!;
 const depth = document.querySelector<HTMLInputElement>('#depth')!;
 const depthValue = document.querySelector<HTMLOutputElement>('#depth-value')!;
@@ -57,7 +57,7 @@ function fail(text: string) {
 
 function construct(resetDepth = false) {
   if (!form.checkValidity()) {
-    fail('Use a field size from 5 to 256 and 1–32 controls.');
+    fail('Choose a field size and 1–32 controls.');
     return;
   }
   if (resetDepth) {
@@ -83,7 +83,7 @@ function construct(resetDepth = false) {
     depth.setAttribute('aria-valuetext', full ? `${depth.value}, fully expanded` : depth.value);
     basis.hidden = !circuit!.modulus;
     if (circuit!.modulus) {
-      basis.textContent = `F${circuit!.q}: α is a root of ${circuit!.modulus.map((c, i, a) => c ? (i === a.length - 1 ? c : `${c === 1 ? '' : c}α${a.length - i - 1 > 1 ? '⁰¹²³⁴⁵⁶⁷⁸⁹'[a.length - i - 1] : ''}`) : '').filter(Boolean).join(' + ')} over F${characteristic}.`;
+      basis.textContent = `F${circuit!.q}: α is a root of ${circuit!.modulus.map((c, i, a) => c ? (i === a.length - 1 ? c : `${c === 1 ? '' : c}α${a.length - i - 1 > 1 ? '⁰¹²³⁴⁵⁶⁷⁸⁹'[a.length - i - 1] : ''}`) : '').filter(Boolean).join(' + ')} over F${characteristic} (Conway polynomial).`;
     }
     draw();
     preview.setAttribute('aria-busy', 'false');

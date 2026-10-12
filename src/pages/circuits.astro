@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import fields from '../lib/circuits/fields.json';
 ---
 
 <BaseLayout title="Toffoli decompositions" description="Product-addition circuit constructions." noindex>
@@ -7,10 +8,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <h1 id="circuit-title">Toffoli decompositions</h1>
     <form id="circuit-form" class="circuit-controls">
       <label><span>Field size <i>q</i></span>
-        <input id="dimension" name="dimension" type="number" min="5" max="256" step="1" value="5" required />
+        <select id="dimension" name="dimension" required>
+          {Object.keys(fields).map(q => <option value={q} selected={q === '5'}>{q}</option>)}
+        </select>
       </label>
       <label><span>Controls <i>k</i></span>
-        <input id="controls" name="controls" type="number" min="1" max="32" step="1" value="5" required />
+        <select id="controls" name="controls" required>
+          {Array.from({ length: 32 }, (_, i) => i + 1).map(k => <option value={k} selected={k === 5}>{k}</option>)}
+        </select>
       </label>
       <label class="algorithm-field">Construction
         <select id="algorithm" name="algorithm">
@@ -65,7 +70,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     height: 2.5rem;
     padding: .35rem .65rem;
   }
-  input[type="number"] { width: 6rem; font-variant-numeric: tabular-nums; }
+  #dimension, #controls { width: 6rem; font-variant-numeric: tabular-nums; }
   select { width: 13rem; }
   .depth-field { flex: 1; min-width: 10rem; max-width: 18rem; }
   .depth-field span { display: flex; justify-content: space-between; gap: 1rem; }
