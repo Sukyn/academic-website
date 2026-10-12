@@ -79,7 +79,7 @@ export default defineConfig({
   },
   integrations: [
     sitemap({
-      filter: (page) => !new URL(page).pathname.startsWith("/offers"),
+      filter: (page) => !/^\/(offers|circuits)(\/|$)/.test(new URL(page).pathname),
     }),
   ],
 });

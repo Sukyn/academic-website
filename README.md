@@ -27,3 +27,10 @@ declarations before WOFF2 subsets so browsers use the smaller preloaded files.
 
 Todo :
 - Add dragons
+
+The unlisted circuit tool is at `/circuits/` (excluded from search indexing and
+the sitemap). It supports field sizes up to 256 of characteristic at least 5,
+1–32 controls, and up to 12,000 displayed operations. Run `npm run test:circuits` to
+compare the browser implementation with the Python references. To refresh those
+references, run `python tests/make_circuit_references.py --source-root PATH_TO_TOFFOLI --output-dir tmp/circuit-references`, then copy `references.json` to
+`tests/circuit-references.json` and `fields.json` to `src/lib/circuits/fields.json`.

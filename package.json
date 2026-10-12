@@ -6,7 +6,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check"
+    "check": "astro check",
+    "test:circuits": "node --test tests/circuits.test.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.0",

@@ -1,0 +1,135 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Toffoli decompositions" description="Product-addition circuit constructions." noindex>
+  <section class="circuit-tool" aria-labelledby="circuit-title">
+    <h1 id="circuit-title">Toffoli decompositions</h1>
+    <form id="circuit-form" class="circuit-controls">
+      <label><span>Field size <i>q</i></span>
+        <input id="dimension" name="dimension" type="number" min="5" max="256" step="1" value="5" required />
+      </label>
+      <label><span>Controls <i>k</i></span>
+        <input id="controls" name="controls" type="number" min="1" max="32" step="1" value="5" required />
+      </label>
+      <label class="algorithm-field">Construction
+        <select id="algorithm" name="algorithm">
+          <option value="simple_polarization">Simple polarization</option>
+          <option value="divide-and-conquer">Divide-and-conquer</option>
+          <option value="borrow">Borrow</option>
+          <option value="borrow-and-conquer" selected>Borrow-and-conquer</option>
+        </select>
+      </label>
+      <label class="depth-field" for="depth">
+        <span>Recursion <output id="depth-value" for="depth">1</output></span>
+        <input id="depth" name="depth" type="range" min="0" max="4" step="1" value="1" />
+      </label>
+      <div class="circuit-actions">
+        <button id="toggle-layout" class="button" type="button" aria-label="Continuous horizontal layout" aria-pressed="false" aria-controls="circuit-preview" title="Show in one horizontal row">↔</button>
+        <button id="copy-tikz" class="button" type="button" disabled>Copy TikZ</button>
+      </div>
+    </form>
+    <p id="circuit-status" role="status" aria-live="polite">Constructing…</p>
+    <p id="field-basis" hidden></p>
+    <div id="circuit-preview" class="circuit-preview" aria-busy="true" role="region" aria-label="Circuit diagram" tabindex="0"></div>
+    <details id="copy-fallback" hidden>
+      <summary>TikZ</summary>
+      <textarea id="tikz-code" aria-label="TikZ code" readonly spellcheck="false"></textarea>
+    </details>
+    <noscript>Enable JavaScript to construct a circuit.</noscript>
+  </section>
+</BaseLayout>
+
+<script>
+  import '../scripts/circuits';
+</script>
+
+<style>
+  .circuit-tool h1 { margin-bottom: 1.8rem; }
+  .circuit-controls {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 1.2rem 1.5rem;
+    padding-bottom: 1.4rem;
+    border-bottom: 1px solid var(--color-border);
+    font-family: var(--font-ui);
+  }
+  label { display: flex; flex-direction: column; gap: .4rem; font-size: .95rem; }
+  input, select {
+    border: 1px solid var(--color-border-strong);
+    border-radius: 3px;
+    background: var(--color-surface-2);
+    color: var(--color-heading);
+    font: inherit;
+    height: 2.5rem;
+    padding: .35rem .65rem;
+  }
+  input[type="number"] { width: 6rem; font-variant-numeric: tabular-nums; }
+  select { width: 13rem; }
+  .depth-field { flex: 1; min-width: 10rem; max-width: 18rem; }
+  .depth-field span { display: flex; justify-content: space-between; gap: 1rem; }
+  output { color: var(--color-accent); font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; padding: 0; accent-color: var(--color-accent); border: 0; background: transparent; cursor: pointer; }
+  input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible, .circuit-preview:focus-visible {
+    outline: 2px solid var(--color-accent); outline-offset: 4px;
+  }
+  .circuit-actions { display: flex; gap: .5rem; margin-left: auto; }
+  button { min-width: 6.8rem; height: 2.5rem; cursor: pointer; }
+  #toggle-layout { min-width: 2.5rem; width: 2.5rem; padding: 0; font-size: 1.4rem; }
+  #toggle-layout[aria-pressed="true"] { color: var(--color-accent); border-color: var(--color-accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #circuit-status, #field-basis {
+    font-family: var(--font-ui); color: var(--color-muted); font-size: .92rem;
+    margin: .7rem 0 0; min-height: 1.6em;
+  }
+  #circuit-status[data-error] { color: #f4b6a8; }
+  #field-basis { margin-top: 0; }
+  .circuit-preview {
+    margin-top: .4rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    padding: 1rem .5rem;
+    overflow-x: auto;
+    min-height: 18rem;
+  }
+  .circuit-preview[aria-busy="true"] { opacity: .45; }
+  .circuit-preview:empty { border-color: transparent; background: transparent; }
+  .circuit-preview :global(.circuit-row) {
+    content-visibility: auto;
+    margin-inline: 0;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .circuit-preview :global(.circuit-row + .circuit-row) {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .circuit-preview :global(.circuit-row:only-child) { margin-inline: auto; }
+  .circuit-preview :global(svg) { display: block; max-width: 100%; height: auto; overflow: visible; }
+  .circuit-preview[data-continuous] :global(.circuit-row),
+  .circuit-preview[data-continuous] :global(svg) { max-width: none; }
+  .circuit-preview[data-continuous] :global(.circuit-row) { width: max-content; }
+  .circuit-preview :global(line), .circuit-preview :global(path) {
+    stroke: var(--color-text); stroke-width: 1.15; fill: none;
+  }
+  .circuit-preview :global(circle), .circuit-preview :global(rect) {
+    stroke: var(--color-text); stroke-width: 1.15; fill: var(--color-surface-2);
+  }
+  .circuit-preview :global(circle.dot) { fill: var(--color-text); }
+  .circuit-preview :global(text) { fill: var(--color-text); font-family: Georgia, serif; font-size: 14px; }
+  .circuit-preview :global(.wire-label text) { fill: var(--color-muted); font: 11px var(--font-mono); }
+  .circuit-preview :global(.annotation text) {
+    font-size: 12px; paint-order: stroke; stroke: var(--color-surface-2); stroke-width: 4px; stroke-linejoin: round;
+  }
+  textarea { display: block; width: 100%; min-height: 15rem; margin-top: .5rem; background: var(--color-code-bg); color: var(--color-text); font: .8rem var(--font-mono); }
+  @media (max-width: 600px) {
+    .circuit-controls { gap: 1rem; }
+    .algorithm-field { flex: 1; min-width: 12rem; }
+    select { width: 100%; }
+    .depth-field { max-width: none; }
+    .circuit-tool h1 { margin-bottom: 1.3rem; }
+  }
+</style>

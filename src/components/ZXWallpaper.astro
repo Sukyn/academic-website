@@ -163,7 +163,7 @@
         return gradient;
       }
 
-      function strokeChalk(drawPath, alpha, width) {
+      function strokeChalk(path, alpha, width) {
         const layers = [
           { dx: 0, dy: 0, alpha, width },
           { dx: 0.42, dy: -0.22, alpha: alpha * 0.46, width: width + 0.45 },
@@ -176,11 +176,9 @@
         for (const layer of layers) {
           ctx.save();
           ctx.translate(layer.dx, layer.dy);
-          ctx.beginPath();
-          drawPath();
           ctx.strokeStyle = makeGradient(layer.alpha);
           ctx.lineWidth = layer.width;
-          ctx.stroke();
+          ctx.stroke(path);
           ctx.restore();
         }
       }
@@ -190,13 +188,12 @@
         const endX = cssW + 48;
         const step = 24;
 
-        strokeChalk(() => {
-          ctx.moveTo(startX, lineYAt(system, line, startX, time));
-
-          for (let x = startX + step; x <= endX; x += step) {
-            ctx.lineTo(x, lineYAt(system, line, x, time));
-          }
-        }, opacity, 1.04);
+        const path = new Path2D();
+        path.moveTo(startX, lineYAt(system, line, startX, time));
+        for (let x = startX + step; x <= endX; x += step) {
+          path.lineTo(x, lineYAt(system, line, x, time));
+        }
+        strokeChalk(path, opacity, 1.04);
       }
 
       function markerFill(tone, alpha) {

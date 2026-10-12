@@ -9,14 +9,12 @@ import "../styles/global.css";
 export interface Props {
   title: string;
   description?: string;
-  includeKatex?: boolean;
   noindex?: boolean;
 }
 
 const {
   title,
   description = "Quantum computing research, publications, and collaboration ideas by Colin Blake.",
-  includeKatex = false,
   noindex = false,
 } = Astro.props;
 
@@ -63,13 +61,6 @@ const canonical = Astro.url.toString();
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
-
-    {includeKatex ? (
-      <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.css"
-      />
-    ) : null}
 
   </head>
 

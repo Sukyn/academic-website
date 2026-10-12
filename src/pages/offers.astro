@@ -10,6 +10,7 @@ import {
 } from "../data/offerSummaries";
 import { focusNow, legend, offerDetails, topics, type OfferDetail } from "../data/offerDetails";
 import { renderInlineMath } from "../lib/inlineMath";
+import "katex/dist/katex.min.css";
 
 const topicSections = topics.map((topic) => {
   const offers = offerSummariesByTopic[topic.key];
@@ -30,7 +31,6 @@ for (const offer of offerSummaries) {
 <BaseLayout
   title="Ideas"
   description="Research and collaboration ideas around qudit circuits, rewriting, exact synthesis, and outreach."
-  includeKatex
   noindex
 >
   <article class="ideas">
