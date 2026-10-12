@@ -270,7 +270,6 @@ get('epsilon').addEventListener('input', () => {
   }
   update();
 });
-onClick('reset-view', () => sphere.resetView());
 onClick('pick-target', () => {
   if (busy || level) return;
   picking = !picking;
