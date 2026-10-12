@@ -5,10 +5,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
 
 <BaseLayout title="Quantum golf" description="Ten quantum golf challenges. Reach a Bloch-sphere target using H and T gates.">
   <a class="back" href="/games/">← Games</a>
-  <div class="heading">
-    <h1>Quantum golf</h1>
-    <div class="score"><span><output id="strokes">0</output> strokes</span><span title="Pure-state trace distance">D = <output id="distance">0.0000</output></span></div>
-  </div>
+  <h1>Quantum golf</h1>
 
   <div class="level-bar">
     <button class="button ghost" id="previous-level" type="button" aria-label="Previous level" disabled>←</button>
@@ -99,9 +96,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
   [hidden] { display: none !important; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .back { font-family: var(--font-ui); font-size: .85rem; text-decoration: none; }
-  .heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .7rem; }
-  h1 { margin: 0; }
-  .score { display: flex; gap: 1.5rem; color: var(--color-muted); font-family: var(--font-ui); font-size: .9rem; }
+  h1 { margin: .7rem 0 0; }
   output { color: var(--color-heading); font-variant-numeric: tabular-nums; }
   .level-bar { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; font-family: var(--font-ui); }
   .level-bar button, .level-bar select { height: 2.5rem; line-height: normal; }
@@ -156,7 +151,6 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
   button:disabled { opacity: .35; cursor: default; }
   button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, canvas:focus-visible, .ranking:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
   @media (max-width: 600px) {
-    .score { width: 100%; gap: 1rem; font-size: .8rem; }
     .sphere-view { height: 330px; }
     #coordinate-form { gap: .45rem; padding: .5rem; }
     input[type="number"] { width: 3.6rem; }

@@ -15,10 +15,7 @@ const sphere = new BlochSphere(get('sphere'), { onPick: setTarget });
 
 function update() {
   const wasWon = won;
-  const distance = traceDistance(state, target);
-  won = distance <= epsilon() + 1e-12;
-  get('strokes').textContent = sequence.length;
-  get('distance').textContent = distance.toFixed(4);
+  won = traceDistance(state, target) <= epsilon() + 1e-12;
   get('epsilon').value = epsilon();
   get('epsilon-value').textContent = `ε = ${epsilon().toFixed(3)}`;
   get('sequence').textContent = [...sequence].join(' ');
