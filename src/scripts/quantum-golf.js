@@ -41,7 +41,7 @@ function update() {
   get('show-results').hidden = !level || !won;
   get('win-results').hidden = !currentPlayer;
   for (const id of ['player-name', 'submit-score']) get(id).disabled = Boolean(scoreAbort || currentPlayer);
-  sphere.setState({ state, target, epsilon: epsilon(), pickMode: picking });
+  sphere.setState({ state, target, epsilon: epsilon(), pickMode: picking, sequence, animation: null });
   if (level && won && !wasWon) openWin();
 }
 
@@ -216,7 +216,7 @@ function apply(gate) {
     const progress = duration ? Math.max(0, Math.min(1, (now - start) / duration)) : 1;
     const point = rotate(progress);
     moveCamera(progress);
-    sphere.setState({ state: point });
+    sphere.setState({ state: point, animation: { gate, rotate, progress } });
     if (progress < 1) requestAnimationFrame(frame);
     else {
       sequence += gate;
@@ -258,6 +258,12 @@ onClick('gate-h', () => apply('H'));
 onClick('gate-t', () => apply('T'));
 onClick('undo', undo);
 onClick('restart', reset);
+onClick('toggle-trace', () => {
+  const button = get('toggle-trace');
+  const showTrace = button.getAttribute('aria-pressed') !== 'true';
+  button.setAttribute('aria-pressed', String(showTrace));
+  sphere.setState({ showTrace });
+});
 onClick('new-hole', newHole);
 get('epsilon').addEventListener('input', () => {
   const value = Number(get('epsilon').value);

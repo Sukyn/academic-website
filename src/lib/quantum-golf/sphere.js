@@ -1,4 +1,4 @@
-import { gateTrajectory, normalize, targetCap } from './quantum.js';
+import { ZERO_STATE, gateTrajectory, normalize, targetCap } from './quantum.js';
 
 const TAU = Math.PI * 2;
 const colors = { sphere: '154,217,209', state: '168,241,213', H: '238,159,134', T: '181,162,234', target: '231,199,119' };
@@ -29,8 +29,9 @@ export class BlochSphere {
     this.ctx = canvas.getContext('2d');
     this.onPick = onPick;
     this.model = {};
+    this.history = [];
     this.resetView();
-    this.setState({ state: [0, 0, 1], target: null, epsilon: 0.12, pickMode: false });
+    this.setState({ state: [0, 0, 1], target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: false, animation: null });
     this.pointers = new Map();
     canvas.addEventListener('pointerdown', (event) => this.pointerDown(event));
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
@@ -46,7 +47,7 @@ export class BlochSphere {
 
   setState(next) {
     if (Object.entries(next).every(([key, value]) => this.model[key] === value)) return;
-    const { state, target, epsilon } = this.model;
+    const { state, target, epsilon, sequence, showTrace } = this.model;
     Object.assign(this.model, next);
     // Geometry changes with the circuit or hole, never with the camera.
     if (state !== this.model.state) {
@@ -55,6 +56,18 @@ export class BlochSphere {
     }
     if (target !== this.model.target || epsilon !== this.model.epsilon) {
       this.boundary = this.model.target ? targetCap(this.model.target, this.model.epsilon, 96) : null;
+    }
+    if (sequence !== this.model.sequence || showTrace !== this.model.showTrace) {
+      const circuit = this.model.showTrace ? this.model.sequence : '';
+      let shared = 0;
+      while (shared < this.history.length && this.history[shared].gate === circuit[shared]) shared++;
+      this.history.length = shared;
+      let point = this.history.at(-1)?.points.at(-1) ?? ZERO_STATE;
+      for (const gate of circuit.slice(shared)) {
+        const points = gateTrajectory(point, gate, 32);
+        this.history.push({ gate, points });
+        point = points.at(-1);
+      }
     }
     this.canvas.style.cursor = this.model.pickMode ? 'crosshair' : 'grab';
     this.render();
@@ -249,6 +262,12 @@ export class BlochSphere {
     const ctx = this.ctx, state = this.project(this.state), target = this.model.target && this.project(this.model.target);
     const lines = grid.map(projectPath), boundary = this.boundary && projectPath(this.boundary);
     const traces = this.traces.map(({ gate, points }) => ({ gate, points: projectPath(points) }));
+    const history = this.history.map(({ gate, points }) => ({ gate, points: projectPath(points) }));
+    const animation = this.model.showTrace && this.model.animation;
+    if (animation && animation.progress > 0) {
+      history.push({ gate: animation.gate,
+        points: projectPath(Array.from({ length: 33 }, (_, i) => animation.rotate(animation.progress * i / 32))) });
+    }
     const axis = [this.project([0, 0, 0]), state];
     ctx.clearRect(0, 0, this.width, this.height);
     ctx.lineCap = ctx.lineJoin = 'round';
@@ -258,6 +277,7 @@ export class BlochSphere {
     for (const front of [false, true]) {
       for (const points of lines) this.path(points, front, color('sphere', front ? 0.2 : 0.065), 0.8, front ? [] : [2, 5]);
       this.cap(target, boundary, front);
+      for (const { gate, points } of history) this.path(points, front, color(gate, front ? 0.6 : 0.18), 2);
       for (const { gate, points } of traces) this.path(points, front, color(gate, front ? 0.48 : 0.2), 1.6, front ? [5, 5] : [2, 5]);
       this.path(axis, front, color('state', front ? 0.75 : 0.3), 1, front ? [] : [4, 5]);
     }
