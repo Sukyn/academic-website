@@ -4,6 +4,7 @@ import { siteProfile } from "../data/site";
 const pathname = Astro.url.pathname.replace(/\/$/, "") || "/";
 
 const nav = [
+  { href: "/games", label: "Games" },
   { href: "/about", label: "About" },
   { href: "/publications", label: "Publications" },
   { href: "/contact", label: "Contact" },
@@ -21,7 +22,7 @@ const nav = [
 
     <nav class="site-nav" aria-label="Main navigation">
       {nav.map(({ href, label }) => (
-        <a href={href} aria-current={pathname === href ? "page" : undefined}>
+        <a href={href} aria-current={(pathname === href || (href === "/games" && pathname.startsWith("/games/"))) ? "page" : undefined}>
           {label}
         </a>
       ))}

@@ -1,0 +1,163 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import LEVELS from '../../lib/quantum-golf/levels.json';
+---
+
+<BaseLayout title="Quantum golf" description="Ten quantum golf challenges. Reach a Bloch-sphere target using H and T gates.">
+  <a class="back" href="/games/">← Games</a>
+  <div class="heading">
+    <h1>Quantum golf</h1>
+    <div class="score"><span><output id="strokes">0</output> strokes</span><span title="Pure-state trace distance">D = <output id="distance">0.0000</output></span></div>
+  </div>
+
+  <div class="level-bar">
+    <button class="button ghost" id="previous-level" type="button" aria-label="Previous level" disabled>←</button>
+    <label class="sr-only" for="level">Level</label>
+    <select id="level">
+      {LEVELS.map(item => <option value={item.id}>{item.id} · {item.title}</option>)}
+      <option value="infinite">∞ · Infinite</option>
+    </select>
+    <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
+  </div>
+
+  <section class="golf" aria-label="Quantum golf">
+    <div class="sphere-view">
+      <canvas id="sphere" tabindex="0" role="img" aria-label="Bloch sphere. Camera follows gate endpoints. Drag to rotate, scroll to zoom. Arrow keys rotate the view; H and T apply gates."></canvas>
+      <button class="view-reset" id="reset-view" type="button" title="Reset view" aria-label="Reset sphere view">↺</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="controls">
+      <div class="gates">
+        <button class="button gate h" id="gate-h" type="button" title="Hadamard · H">H</button>
+        <button class="button gate t" id="gate-t" type="button" title="T gate · T">T</button>
+      </div>
+      <label class="hole" id="hole-controls">
+        <span>Hole <output id="epsilon-value" for="epsilon">ε = 0.220</output></span>
+        <input id="epsilon" aria-label="Hole size epsilon" type="range" min="0.03" max="0.4" step="0.005" value="0.2" />
+      </label>
+    </div>
+
+    <div class="round-controls">
+      <div class="free-controls" id="free-controls" hidden>
+        <button class="button ghost" id="new-hole" type="button" title="New random target · N">New hole</button>
+        <button class="button ghost" id="pick-target" type="button" aria-pressed="false">Pick target</button>
+        <details>
+          <summary title="Set target angles">θ, φ</summary>
+          <form id="coordinate-form">
+            <label>θ <input id="target-theta" type="number" min="0" max="180" step="any" value="90" required aria-label="Target polar angle in degrees" />°</label>
+            <label>φ <input id="target-phi" type="number" min="0" max="360" step="any" value="45" required aria-label="Target azimuth in degrees" />°</label>
+            <button class="button" type="submit">Set</button>
+          </form>
+        </details>
+      </div>
+      <button class="button ghost" id="undo" type="button" title="Undo · Backspace" disabled>Undo</button>
+      <button class="button ghost" id="restart" type="button" title="Restart · R">Reset</button>
+      <button class="button ghost" id="show-results" type="button" hidden>Scores</button>
+    </div>
+    <p id="sequence" aria-label="Gate sequence in chronological order"></p>
+    <p class="best-count" id="best-count" role="status" hidden></p>
+    <noscript>Enable JavaScript to play.</noscript>
+  </section>
+
+  <section class="leaderboard" id="leaderboard-section" aria-labelledby="leaderboard-title">
+    <h2 id="leaderboard-title">Leaderboard</h2>
+    <div class="ranking" tabindex="0" role="region" aria-label="Leaderboard scores">
+      <table><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Strokes</th></tr></thead><tbody id="leaderboard-body"></tbody></table>
+    </div>
+    <p class="message" id="leaderboard-status" role="status"></p>
+  </section>
+
+  <dialog class="win-dialog" id="win-dialog" aria-labelledby="win-title">
+    <button class="close-win" id="close-win" type="button" aria-label="Close popup">×</button>
+    <h2 id="win-title">GG</h2>
+    <form class="score-form" id="score-form">
+      <label for="player-name">Name or nickname</label>
+      <input id="player-name" name="name" type="text" maxlength="48" pattern=".{1,24}" required autocomplete="nickname" autofocus />
+      <button class="button" id="submit-score" type="submit">Validate</button>
+    </form>
+    <div id="win-results" hidden>
+      <p id="player-rank" role="status"></p>
+      <div class="ranking" tabindex="0" role="region" aria-label="Your leaderboard position">
+        <table><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Strokes</th></tr></thead><tbody id="result-leaderboard-body"></tbody></table>
+      </div>
+      <div class="result-actions">
+        <button class="button ghost" id="try-again" type="button">Try again</button>
+        <button class="button" id="result-next" type="button">Next level</button>
+      </div>
+    </div>
+    <p class="message" id="score-status" role="status" aria-live="polite"></p>
+  </dialog>
+</BaseLayout>
+
+<script>
+  import '../../scripts/quantum-golf.js';
+</script>
+
+<style>
+  [hidden] { display: none !important; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .back { font-family: var(--font-ui); font-size: .85rem; text-decoration: none; }
+  .heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .7rem; }
+  h1 { margin: 0; }
+  .score { display: flex; gap: 1.5rem; color: var(--color-muted); font-family: var(--font-ui); font-size: .9rem; }
+  output { color: var(--color-heading); font-variant-numeric: tabular-nums; }
+  .level-bar { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; font-family: var(--font-ui); }
+  .level-bar button { width: 2rem; padding: .25rem; }
+  select, input[type="text"], input[type="number"] { border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-surface-2); color: var(--color-text); font: inherit; padding: .35rem .5rem; }
+  select { width: min(18rem, calc(100% - 5rem)); }
+  .sphere-view { position: relative; height: clamp(340px, 50vh, 490px); }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .view-reset { position: absolute; right: 0; bottom: 1rem; border: 0; background: none; color: var(--color-muted); font-size: 1.6rem; cursor: pointer; }
+  #status { position: absolute; top: .7rem; left: 50%; transform: translateX(-50%); margin: 0; color: var(--color-heading); font-family: var(--font-ui); font-size: .95rem; pointer-events: none; }
+  .controls, .round-controls { max-width: 37rem; margin-inline: auto; display: flex; align-items: center; gap: .7rem; }
+  .controls { justify-content: space-between; padding-top: .8rem; border-top: 1px solid var(--color-border); }
+  .gates, .free-controls { display: flex; gap: .7rem; align-items: center; }
+  .gate { width: 3.3rem; height: 3.3rem; padding: 0; font-family: var(--font-mono); font-size: 1.65rem; background: transparent; }
+  .h { color: #ee9f86; border-color: #ee9f8677; }
+  .t { color: #b5a2ea; border-color: #b5a2ea77; }
+  .hole { display: flex; flex-direction: column; gap: .35rem; width: min(55%, 17rem); font-family: var(--font-ui); font-size: .85rem; }
+  .hole span { display: flex; justify-content: space-between; gap: .5rem; }
+  input[type="range"] { width: 100%; accent-color: var(--color-heading); cursor: pointer; }
+  .round-controls { position: relative; flex-wrap: wrap; justify-content: center; margin-top: .9rem; font-family: var(--font-ui); font-size: .85rem; }
+  .round-controls .button { padding: .35rem .65rem; font-size: .85rem; background: transparent; }
+  #pick-target[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
+  summary { cursor: pointer; color: var(--color-muted); }
+  #coordinate-form { position: absolute; bottom: 2rem; right: 0; z-index: 2; display: flex; align-items: center; gap: .7rem; padding: .75rem; border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-surface); }
+  #coordinate-form label { display: flex; gap: .25rem; align-items: center; }
+  input[type="number"] { width: 4.2rem; padding: .25rem; }
+  #sequence, .best-count { max-width: 37rem; margin: .9rem auto 0; min-height: 1.5em; text-align: center; overflow-wrap: anywhere; font-family: var(--font-mono); color: var(--color-muted); font-size: .8rem; }
+  .leaderboard { max-width: 37rem; margin: 1.4rem auto 0; font-family: var(--font-ui); }
+  h2 { font-size: 1.4rem; margin: 0 0 .7rem; }
+  .ranking { max-height: 16rem; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  table :global(th), table :global(td) { text-align: left; padding: .4rem .65rem; border-bottom: 1px solid var(--color-border); }
+  table :global(th) { color: var(--color-muted); font-weight: 400; }
+  table :global(th:last-child), table :global(td:last-child) { text-align: right; font-variant-numeric: tabular-nums; }
+  table :global(.benchmark) { color: var(--color-heading); font-weight: 600; }
+  table :global(.current-player) { background: var(--color-surface-2); color: var(--color-heading); font-weight: 600; }
+  .score-form { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; font-size: .9rem; }
+  .score-form label { width: 100%; }
+  .score-form input { flex: 1; min-width: 8rem; width: 12rem; }
+  .score-form button { font-size: .9rem; padding: .4rem .65rem; }
+  .message { margin: .5rem 0 0; color: var(--color-muted); font-size: .85rem; }
+  .message:empty { display: none; }
+  .win-dialog { width: min(34rem, calc(100% - 2rem)); max-height: 85vh; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-family: var(--font-ui); }
+  .win-dialog::backdrop { background: rgba(3, 12, 9, .8); }
+  #win-title { text-align: center; margin: 0 0 .75rem; font-size: 2.4rem; line-height: 1; }
+  .close-win { position: absolute; top: .4rem; right: .6rem; border: 0; background: transparent; color: var(--color-muted); font-size: 1.6rem; cursor: pointer; }
+  #player-rank { margin: 0 0 1rem; text-align: center; color: var(--color-heading); font-variant-numeric: tabular-nums; }
+  .win-dialog .ranking { max-height: 23rem; }
+  .win-dialog table { font-size: .85rem; line-height: 1.35; }
+  .win-dialog table :global(th), .win-dialog table :global(td) { padding: .25rem .5rem; }
+  .result-actions { display: flex; justify-content: space-between; gap: .7rem; margin-top: 1.2rem; }
+  button:disabled { opacity: .35; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, canvas:focus-visible, .ranking:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+  @media (max-width: 600px) {
+    .score { width: 100%; gap: 1rem; font-size: .8rem; }
+    .sphere-view { height: 330px; }
+    #coordinate-form { gap: .45rem; padding: .5rem; }
+    input[type="number"] { width: 3.6rem; }
+    .free-controls { flex-wrap: wrap; justify-content: center; }
+  }
+</style>
