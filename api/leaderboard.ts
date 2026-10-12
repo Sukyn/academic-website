@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import {
   CAMPAIGN, getLevel, readSubmission, SubmissionError, validateSubmission,
-} from "../src/lib/quantum-golf/leaderboard.ts";
+} from "../src/lib/quantum-golf/leaderboard.js";
 
 function getSql() {
   const url = process.env.DATABASE_URL;
