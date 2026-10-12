@@ -28,7 +28,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
         <button class="button gate h" id="gate-h" type="button" title="Hadamard · H">H</button>
         <button class="button gate t" id="gate-t" type="button" title="T gate · T">T</button>
       </div>
-      <label class="hole" id="hole-controls">
+      <label class="hole" id="hole-controls" hidden>
         <span>Hole <output id="epsilon-value" for="epsilon">ε = 0.220</output></span>
         <input id="epsilon" aria-label="Hole size epsilon" type="range" min="0.03" max="0.4" step="0.005" value="0.2" />
       </label>

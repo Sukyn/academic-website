@@ -28,7 +28,7 @@ function update() {
   get('free-controls').hidden = Boolean(level);
   get('leaderboard-section').hidden = !level;
   get('best-count').hidden = Boolean(level);
-  get('hole-controls').title = level ? 'Fixed hole for this level' : '';
+  get('hole-controls').hidden = Boolean(level);
   for (const gate of ['h', 't']) get(`gate-${gate}`).disabled = busy || won || picking;
   for (const id of ['new-hole', 'pick-target', 'epsilon']) get(id).disabled = busy || Boolean(level);
   get('restart').disabled = busy;
