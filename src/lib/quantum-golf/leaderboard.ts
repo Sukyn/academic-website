@@ -13,9 +13,8 @@ export class SubmissionError extends Error {
 }
 
 export function getLevel(id: unknown) {
-  const number = typeof id === "string" ? Number(id) : id;
-  const level = typeof number === "number" && Number.isInteger(number)
-    ? campaign.levels.find((item) => item.id === number) : undefined;
+  const value = typeof id === "string" ? Number(id) : id;
+  const level = campaign.levels.find(item => item.id === value);
   if (!level) throw new SubmissionError("Choose a campaign level from 1 to 10.");
   return level;
 }

@@ -8,7 +8,7 @@ The `quantum-golf` Neon project uses separate `production` and `preview` branche
 
 To recreate this setup, create a Neon database through its console or Vercel's **Storage** integration, then configure `DATABASE_URL` on the Vercel project. Use a separate Neon branch for Preview and local testing so test scores stay out of the live leaderboard.
 
-If the integration uses a prefix, configure an unprefixed `DATABASE_URL` in Vercel to point to that same database. Use the pooled connection for the endpoint and the direct connection (`DATABASE_URL_UNPOOLED`) for migrations. Keep both credentials in Vercel or an ignored local environment file; never put them in browser code or Git.
+Use the pooled connection for the endpoint and the direct connection (`DATABASE_URL_UNPOOLED`) for migrations. Keep credentials in Vercel or an ignored local environment file.
 
 ## Create tables and transfer scores
 
@@ -23,15 +23,11 @@ The first command creates the schema. The second also imports a backup: either a
 
 The importer preserves IDs, campaign versions, timestamps, and every attempt. Exact retries are safe. Incompatible IDs or duplicate circuits under a different ID stop the transaction without replacing existing scores. It also advances the identity counter beyond the imported IDs. The endpoint never creates or migrates tables during requests.
 
-## Verify and switch
+## Development and verification
 
-1. Import the backup into the Preview database and deploy a preview. The game uses `/api/leaderboard` on its own origin by default.
-2. Play a campaign hole, save a nickname, check its rank, replay it, and verify that its best score and neighbouring ranks remain correct. Confirm imported names and scores appear.
-3. Before production cutover, obtain a fresh backup from the existing service and import it into the Production database using that environment's credentials. Minimise the gap between this export and cutover so new scores are included.
-4. Deploy to Production and verify a saved score on your live domain. Remove any legacy `PUBLIC_QUANTUM_GOLF_API` override if one was configured.
-5. Keep the old service available until the new endpoint is verified and the transfer is complete.
+The game always calls `/api/leaderboard` on its own origin. Test changes with the Preview database, then deploy and verify a campaign win, nickname submission, displayed rank, and Next level on the live website.
 
-A missing `DATABASE_URL`, missing tables, or inaccessible database produces a 503 response. Check the Vercel function logs and project environment settings, then redeploy if the settings changed. No ChatGPT login or Sites service is needed once the new endpoint is selected.
+A missing `DATABASE_URL`, missing tables, or inaccessible database produces a 503 response. Check the Vercel function logs and project environment settings, then redeploy if the settings changed.
 
 For local games with scores, run `vercel dev` in the website repository after pulling Preview environment settings. Plain `astro dev` serves the game UI but does not run functions in the root `api/` directory.
 

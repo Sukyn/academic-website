@@ -22,18 +22,17 @@ function number(value: unknown) {
   return result;
 }
 
-async function board(level: number, player: { id?: number; name?: string } = {}) {
-  const sql = getSql();
+async function board(sql: ReturnType<typeof getSql>, level: number, player: { id?: number; name?: string } = {}) {
   const rows = await sql`
-    WITH attempts AS (
-      SELECT id, name, moves, created_at,
-        ROW_NUMBER() OVER (PARTITION BY name ORDER BY moves, created_at, id) AS attempt
+    WITH best AS (
+      SELECT DISTINCT ON (name) id, name, moves, created_at
       FROM scores WHERE campaign = ${CAMPAIGN} AND level = ${level}
+      ORDER BY name, moves, created_at, id
     ), ranked AS (
       SELECT id, name, moves,
         ROW_NUMBER() OVER (ORDER BY moves, created_at, id) AS rank,
         COUNT(*) OVER () AS total
-      FROM attempts WHERE attempt = 1
+      FROM best
     ), selected_player AS (
       SELECT name FROM scores WHERE campaign = ${CAMPAIGN} AND level = ${level}
         AND (id = ${player.id ?? null} OR name = ${player.name ?? null}) LIMIT 1
@@ -65,7 +64,7 @@ export default {
         if (id !== undefined && (!Number.isSafeInteger(id) || id < 1)) {
           throw new SubmissionError("Choose a valid player record.");
         }
-        return Response.json(await board(level, { id }), {
+        return Response.json(await board(getSql(), level, { id }), {
           headers: { "Cache-Control": id === undefined ? "public, max-age=15" : "no-store" },
         });
       }
@@ -76,7 +75,7 @@ export default {
         VALUES (${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves}, ${Date.now()})
         ON CONFLICT (campaign, level, name, sequence) DO NOTHING
       `;
-      return Response.json(await board(score.level, { name: score.name }), {
+      return Response.json(await board(sql, score.level, { name: score.name }), {
         status: 201, headers: { "Cache-Control": "no-store" },
       });
     } catch (error) {

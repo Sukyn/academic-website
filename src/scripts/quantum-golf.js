@@ -1,7 +1,7 @@
 import { ZERO_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
-const LEADERBOARD_API = import.meta.env?.PUBLIC_QUANTUM_GOLF_API || '/api/leaderboard';
+const LEADERBOARD_API = '/api/leaderboard';
 
 const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);
@@ -158,8 +158,8 @@ async function loadLeaderboard() {
   try {
     const data = await fetchScores(`${LEADERBOARD_API}?level=${level.id}${player}`, { signal: request.signal });
     if (boardAbort === request) leaderboard(data);
-  } catch (error) {
-    if (boardAbort === request && error.name !== 'AbortError') {
+  } catch {
+    if (boardAbort === request) {
       get('leaderboard-status').textContent = 'Scores temporarily unavailable.';
     }
   }
@@ -188,8 +188,8 @@ async function submitScore(event) {
     boardAbort = null;
     leaderboard(data);
     get('leaderboard-status').textContent = '';
-  } catch (error) {
-    if (scoreAbort === submission && error.name !== 'AbortError') {
+  } catch {
+    if (scoreAbort === submission) {
       get('score-status').textContent = 'Scores temporarily unavailable.';
     }
   } finally {
