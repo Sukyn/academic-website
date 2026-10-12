@@ -1,7 +1,7 @@
 import { ZERO_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
-const LEADERBOARD_API = import.meta.env?.PUBLIC_QUANTUM_GOLF_API || 'https://quantum-golf-scores-colin.astralpine1.chatgpt.site/api/leaderboard';
+const LEADERBOARD_API = import.meta.env?.PUBLIC_QUANTUM_GOLF_API || '/api/leaderboard';
 
 const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);

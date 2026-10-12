@@ -2,6 +2,8 @@
 
 Astro site for publications, talks, outreach, contact information, and research ideas.
 
+Quantum golf uses a native Vercel function at `/api/leaderboard` and a Neon Postgres database. Setup, local development, and score migration are documented in [tools/quantum-golf/SETUP.md](tools/quantum-golf/SETUP.md).
+
 ## Commands
 
 ```sh
