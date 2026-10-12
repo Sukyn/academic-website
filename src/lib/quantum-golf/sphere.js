@@ -31,7 +31,7 @@ export class BlochSphere {
     this.model = {};
     this.history = [];
     this.view = { yaw: 0.72, pitch: 0.28, zoom: 1 };
-    this.setState({ state: ZERO_STATE, target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: false, animation: null });
+    this.setState({ state: ZERO_STATE, target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: true, animation: null });
     this.pointers = new Map();
     canvas.addEventListener('pointerdown', (event) => this.pointerDown(event));
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
