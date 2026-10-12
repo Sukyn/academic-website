@@ -17,7 +17,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
     <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
   </div>
 
-  <section class="golf" aria-label="Quantum golf">
+  <section aria-label="Quantum golf">
     <div class="sphere-view">
       <canvas id="sphere" tabindex="0" role="img" aria-label="Bloch sphere. Camera follows gate endpoints. Drag to rotate, scroll to zoom. Arrow keys rotate the view; H and T apply gates."></canvas>
       <p id="status" role="status" aria-live="polite"></p>
@@ -53,7 +53,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
       <button class="button ghost" id="show-results" type="button" hidden>Scores</button>
     </div>
     <p id="sequence" aria-label="Gate sequence in chronological order"></p>
-    <p class="best-count" id="best-count" role="status" hidden></p>
+    <p id="best-count" role="status" hidden></p>
     <noscript>Enable JavaScript to play.</noscript>
   </section>
 
@@ -121,7 +121,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
   #coordinate-form { position: absolute; bottom: 2rem; right: 0; z-index: 2; display: flex; align-items: center; gap: .7rem; padding: .75rem; border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-surface); }
   #coordinate-form label { display: flex; gap: .25rem; align-items: center; }
   input[type="number"] { width: 4.2rem; padding: .25rem; }
-  #sequence, .best-count { max-width: 37rem; margin: .9rem auto 0; min-height: 1.5em; text-align: center; overflow-wrap: anywhere; font-family: var(--font-mono); color: var(--color-muted); font-size: .8rem; }
+  #sequence, #best-count { max-width: 37rem; margin: .9rem auto 0; min-height: 1.5em; text-align: center; overflow-wrap: anywhere; font-family: var(--font-mono); color: var(--color-muted); font-size: .8rem; }
   .leaderboard { max-width: 37rem; margin: 1.4rem auto 0; font-family: var(--font-ui); }
   h2 { font-size: 1.4rem; margin: 0 0 .7rem; }
   .ranking { max-height: 16rem; overflow: auto; }

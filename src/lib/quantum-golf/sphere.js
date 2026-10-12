@@ -30,8 +30,8 @@ export class BlochSphere {
     this.onPick = onPick;
     this.model = {};
     this.history = [];
-    this.resetView();
-    this.setState({ state: [0, 0, 1], target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: false, animation: null });
+    this.view = { yaw: 0.72, pitch: 0.28, zoom: 1 };
+    this.setState({ state: ZERO_STATE, target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: false, animation: null });
     this.pointers = new Map();
     canvas.addEventListener('pointerdown', (event) => this.pointerDown(event));
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
@@ -107,11 +107,6 @@ export class BlochSphere {
 
   zoomBy(factor) {
     this.view.zoom = clamp(this.view.zoom * factor, 0.65, 1.5);
-    this.render();
-  }
-
-  resetView() {
-    this.view = { yaw: 0.72, pitch: 0.28, zoom: 1 };
     this.render();
   }
 
