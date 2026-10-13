@@ -246,15 +246,38 @@ const scoreColumns = ['Rank', 'Player', 'Strokes'];
   @media (max-width: 760px) {
     .game-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
     .mode-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
-    .mode-menu .button { min-height: 2.7rem; padding: .4rem .5rem; font-size: .85rem; }
+    .mode-menu .button { padding: .4rem .5rem; font-size: .85rem; }
     .mode-menu #daily-status { grid-column: 1 / -1; }
-    .daily-menu { grid-template-columns: minmax(0, 1fr) 1.5rem; }
+    .daily-menu { grid-template-columns: minmax(0, 1fr) 2.75rem; }
     .daily-archive { font-size: .8rem; }
+    .game-layout .button, .game-dialog button, #sequence :global(button) { min-width: 2.75rem; min-height: 2.75rem; }
+    .advanced-features > summary, .free-controls summary { min-height: 2.75rem; padding-block: .5rem; }
+    .level-bar { min-width: 0; }
+    .level-bar select, #show-rules { height: 2.75rem; }
+    .daily-archive select, input[type="number"], .score-form input { min-height: 2.75rem; font-size: 1rem; }
+    .camera-panel { width: min(100%, 16rem); }
+    .game-dialog { padding: 1rem; max-height: 90dvh; }
+    .close-dialog { width: 2.75rem; top: 0; right: 0; }
+    .score-form input { min-width: 0; }
+    table :global(td:nth-child(2)) { overflow-wrap: anywhere; }
   }
   @media (max-width: 600px) {
-    .sphere-view { height: 330px; }
-    #coordinate-form { gap: .45rem; padding: .5rem; }
-    input[type="number"] { width: 3.6rem; }
-    .free-controls { flex-wrap: wrap; justify-content: center; }
+    :global(main.container) { padding-top: 1rem; }
+    .game-layout { gap: .75rem; margin-top: .75rem; }
+    .mode-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mode-menu > div { grid-column: 1 / -1; }
+    .mode-menu .button { font-size: .95rem; text-align: center; }
+    .game-toolbar, .level-bar { gap: .4rem; }
+    #show-rules { margin-left: auto; }
+    .sphere-view { height: clamp(250px, 75vw, 320px); }
+    .controls { flex-direction: column; gap: .6rem; }
+    .gate { width: 4.5rem; height: 3.5rem; }
+    .hole { width: 100%; }
+    input[type="range"] { min-height: 2.75rem; }
+    .round-controls { gap: .5rem; }
+    .free-controls { flex-basis: 100%; order: 1; flex-wrap: wrap; justify-content: center; gap: .5rem; }
+    .free-controls details { width: 100%; }
+    #coordinate-form { position: static; flex-wrap: wrap; justify-content: center; gap: .5rem; padding: .5rem; }
+    #sequence:empty { display: none; }
   }
 </style>
