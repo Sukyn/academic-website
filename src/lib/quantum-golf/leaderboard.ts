@@ -1,5 +1,5 @@
 import campaign from "./campaign.json" with { type: "json" };
-import { ZERO_STATE, applyGate, traceDistance } from "./quantum.js";
+import { START_STATE, applyGate, traceDistance } from "./quantum.js";
 
 export const CAMPAIGN = campaign.version;
 export const MAX_SEQUENCE = 512;
@@ -33,8 +33,7 @@ export function validateSubmission(input: unknown) {
   if (typeof sequence !== "string" || !sequence.length || /[^HT]/.test(sequence) || sequence.length > MAX_SEQUENCE) {
     throw new SubmissionError("Use a circuit of 1 to 512 H/T gates.");
   }
-  let state = ZERO_STATE;
-  for (const gate of sequence) state = applyGate(state, gate);
+  const state = [...sequence].reduce(applyGate, START_STATE);
   if (traceDistance(state, level.target) > level.epsilon + 1e-12) {
     throw new SubmissionError("That circuit does not reach this level's hole.");
   }

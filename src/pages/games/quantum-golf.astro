@@ -14,6 +14,7 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
       {LEVELS.map(item => <option value={item.id}>{item.id} · {item.title}</option>)}
       <option value="infinite">∞ · Infinite</option>
     </select>
+    <button class="button ghost" id="show-rules" type="button" aria-haspopup="dialog">Rules</button>
     <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
   </div>
 
@@ -65,8 +66,16 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
     <p class="message" id="leaderboard-status" role="status"></p>
   </section>
 
-  <dialog class="win-dialog" id="win-dialog" aria-labelledby="win-title">
-    <button class="close-win" id="close-win" type="button" aria-label="Close popup">×</button>
+  <dialog class="game-dialog rules-dialog" id="rules-dialog" aria-labelledby="rules-title">
+    <button class="close-dialog" id="close-rules" type="button" aria-label="Close rules">×</button>
+    <h2 id="rules-title">Rules</h2>
+    <p>Start at |+⟩ = (|0⟩ + |1⟩)/√2. Reach the gold hole with as few H and T presses as possible. Drag the sphere to change your view.</p>
+    <p><strong>H</strong> makes a half-turn around the diagonal between the x and z axes. <strong>T</strong> turns the point 45° around the z axis.</p>
+    <p>This is approximate synthesis of a quantum state: use a small set of gates to approach a target. The hole sets the allowed error ε. A smaller hole needs a closer match.</p>
+  </dialog>
+
+  <dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
+    <button class="close-dialog" id="close-win" type="button" aria-label="Close popup">×</button>
     <h2 id="win-title">GG</h2>
     <form class="score-form" id="score-form">
       <label for="player-name">Name or nickname</label>
@@ -101,7 +110,8 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
   .level-bar button, .level-bar select { height: 2.5rem; line-height: normal; }
   .level-bar button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2rem; padding: 0; }
   select, input[type="text"], input[type="number"] { border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-surface-2); color: var(--color-text); font: inherit; padding: .35rem .5rem; }
-  select { width: min(18rem, calc(100% - 5rem)); padding-block: 0; }
+  select { flex: 1; max-width: 18rem; min-width: 0; padding-block: 0; }
+  #show-rules { width: auto; padding-inline: .7rem; }
   .sphere-view { position: relative; height: clamp(340px, 50vh, 490px); }
   canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
   #status { position: absolute; top: .7rem; left: 50%; transform: translateX(-50%); margin: 0; color: var(--color-heading); font-family: var(--font-ui); font-size: .95rem; pointer-events: none; }
@@ -138,10 +148,11 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
   .score-form button { font-size: .9rem; padding: .4rem .65rem; }
   .message { margin: .5rem 0 0; color: var(--color-muted); font-size: .85rem; }
   .message:empty { display: none; }
-  .win-dialog { width: min(34rem, calc(100% - 2rem)); max-height: 85vh; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-family: var(--font-ui); }
-  .win-dialog::backdrop { background: rgba(3, 12, 9, .8); }
+  .game-dialog { width: min(34rem, calc(100% - 2rem)); max-height: 85vh; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-family: var(--font-ui); }
+  .game-dialog::backdrop { background: rgba(3, 12, 9, .8); }
+  .rules-dialog p { margin: .8rem 0 0; line-height: 1.55; }
   #win-title { text-align: center; margin: 0 0 .75rem; font-size: 2.4rem; line-height: 1; }
-  .close-win { position: absolute; top: .4rem; right: .6rem; border: 0; background: transparent; color: var(--color-muted); font-size: 1.6rem; cursor: pointer; }
+  .close-dialog { position: absolute; top: .4rem; right: .6rem; border: 0; background: transparent; color: var(--color-muted); font-size: 1.6rem; cursor: pointer; }
   #player-rank { margin: 0 0 1rem; text-align: center; color: var(--color-heading); font-variant-numeric: tabular-nums; }
   .win-dialog .ranking { max-height: 23rem; }
   .win-dialog table { font-size: .85rem; line-height: 1.35; }

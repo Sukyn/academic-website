@@ -1,9 +1,7 @@
-import { normalize } from './quantum.js';
+import { START_STATE, normalize } from './quantum.js';
 
-// Minimize total H + T button presses, from |0>, for a state target.
-// Increasing-depth exhaustive search needs no approximate state deduplication.
-// Every shortest word starts with H and excludes HH and T^8: removing any
-// of these preserves the state and strictly shortens the word.
+// Increasing-depth search minimizes H + T presses from |+⟩.
+// Skip HH and T^8: either identity can be removed from any shortest word.
 export function solveShortest(target, epsilon, { maxDepth = 28, maxNodes = 800000 } = {}) {
   target = normalize(target);
   if (!Number.isFinite(epsilon) || epsilon <= 0 || epsilon > 1) {
@@ -40,7 +38,7 @@ export function solveShortest(target, epsilon, { maxDepth = 28, maxNodes = 80000
     if (visited >= maxNodes) { stopped = true; return false; }
     visited++;
     if (remaining === 0) return test(x, y, z, depth);
-    if (tRun > 0) {
+    if (remaining === depth || tRun > 0) {
       word.push('H');
       if (visit(z, -y, x, remaining - 1, 0, depth)) return true;
       word.pop();
@@ -55,14 +53,8 @@ export function solveShortest(target, epsilon, { maxDepth = 28, maxNodes = 80000
   }
   for (let depth = 0; depth <= maxDepth; depth++) {
     word.length = 0;
-    if (depth === 0) {
-      visited++;
-      if (test(0, 0, 1, 0)) return result('optimal', 0);
-    } else {
-      word.push('H');
-      if (visit(1, 0, 0, depth - 1, 0, depth)) {
-        return result(earliestBoundary < depth ? 'boundary' : 'optimal', depth);
-      }
+    if (visit(...START_STATE, depth, 0, depth)) {
+      return result(earliestBoundary < depth ? 'boundary' : 'optimal', depth);
     }
     if (stopped) break;
     checkedDepth = depth;

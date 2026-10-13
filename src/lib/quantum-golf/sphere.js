@@ -1,4 +1,4 @@
-import { ZERO_STATE, gateTrajectory, normalize, targetCap } from './quantum.js';
+import { START_STATE, gateTrajectory, normalize, targetCap } from './quantum.js';
 
 const TAU = Math.PI * 2;
 const colors = { sphere: '154,217,209', state: '168,241,213', H: '238,159,134', T: '181,162,234', target: '231,199,119' };
@@ -31,7 +31,7 @@ export class BlochSphere {
     this.model = {};
     this.history = [];
     this.view = { yaw: 0.72, pitch: 0.28, zoom: 1 };
-    this.setState({ state: ZERO_STATE, target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: true, animation: null });
+    this.setState({ state: START_STATE, target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: true, animation: null });
     this.pointers = new Map();
     canvas.addEventListener('pointerdown', (event) => this.pointerDown(event));
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
@@ -62,7 +62,7 @@ export class BlochSphere {
       let shared = 0;
       while (shared < this.history.length && this.history[shared].gate === circuit[shared]) shared++;
       this.history.length = shared;
-      let point = this.history.at(-1)?.points.at(-1) ?? ZERO_STATE;
+      let point = this.history.at(-1)?.points.at(-1) ?? START_STATE;
       for (const gate of circuit.slice(shared)) {
         const points = gateTrajectory(point, gate, 32);
         this.history.push({ gate, points });
@@ -284,7 +284,7 @@ export class BlochSphere {
     for (const { gate, points } of traces) this.preview(points, gate);
     if (target) this.circle(target, 3, 'target', true);
     this.circle(state, 5, 'state', true);
-    for (const [label, point] of [['|0⟩', [0, 0, 1.16]], ['|1⟩', [0, 0, -1.16]], ['x', [1.16, 0, 0]], ['y', [0, 1.16, 0]]]) {
+    for (const [label, point] of [['|0⟩', [0, 0, 1.16]], ['|1⟩', [0, 0, -1.16]], ['|+⟩', [1.16, 0, 0]], ['y', [0, 1.16, 0]]]) {
       const p = this.project(point);
       const offset = Math.hypot(p.x - this.cx, p.y - this.cy) < 18 ? (p.depth >= 0 ? -18 : 18) : 0;
       this.label(label, p, 'sphere', 0, offset);

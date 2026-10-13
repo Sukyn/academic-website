@@ -1,5 +1,5 @@
 // Bloch vectors use [sinθ cosφ, sinθ sinφ, cosθ]. Global phase is irrelevant.
-export const ZERO_STATE = Object.freeze([0, 0, 1]);
+export const START_STATE = Object.freeze([1, 0, 0]);
 const ROOT_HALF = Math.SQRT1_2;
 
 export function normalize(vector) {
@@ -85,12 +85,12 @@ export function targetCap(target, epsilon, steps = 96) {
   return points;
 }
 
-// Uniform sphere area is uniform in z. Exclude the initial |0⟩ winning cap.
+// Uniform sphere area is uniform in x. Exclude the initial |+⟩ winning cap.
 export function randomTarget(epsilon, random = Math.random) {
   checkEpsilon(epsilon);
   if (epsilon === 1) throw new RangeError('No target lies outside a hole of size 1.');
-  const z = -1 + 2 * (1 - epsilon * epsilon) * random();
+  const x = -1 + 2 * (1 - epsilon * epsilon) * random();
   const azimuth = 2 * Math.PI * random();
-  const radius = Math.sqrt(Math.max(0, 1 - z * z));
-  return [radius * Math.cos(azimuth), radius * Math.sin(azimuth), z];
+  const radius = Math.sqrt(Math.max(0, 1 - x * x));
+  return [x, radius * Math.cos(azimuth), radius * Math.sin(azimuth)];
 }

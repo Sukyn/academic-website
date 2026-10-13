@@ -1,13 +1,13 @@
-import { ZERO_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
+import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const LEADERBOARD_API = '/api/leaderboard';
 
 const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);
-const dialog = get('win-dialog');
+const dialog = get('win-dialog'), rulesDialog = get('rules-dialog');
 let level = LEVELS[0], freeEpsilon = Number(get('epsilon').value);
-let state = ZERO_STATE, target = level.target, sequence = '';
+let state = START_STATE, target = level.target, sequence = '';
 let busy = false, picking = false, won = false;
 let boardAbort, scoreAbort, worker, currentPlayer = null;
 const epsilon = () => level ? level.epsilon : freeEpsilon;
@@ -23,6 +23,7 @@ function update() {
   get('pick-target').setAttribute('aria-pressed', String(picking));
   get('level').value = level ? String(level.id) : 'infinite';
   get('level').disabled = busy;
+  get('show-rules').disabled = busy;
   get('previous-level').disabled = busy || level?.id === 1;
   for (const id of ['next-level', 'result-next']) get(id).disabled = busy || !level || !won;
   get('free-controls').hidden = Boolean(level);
@@ -65,7 +66,7 @@ function resetScores() {
 function reset() {
   if (busy) return;
   resetScores();
-  state = ZERO_STATE;
+  state = START_STATE;
   sequence = '';
   picking = false;
   get('target-theta').value = (Math.acos(target[2]) * 180 / Math.PI).toFixed(2);
@@ -229,7 +230,7 @@ function undo() {
   if (busy || !sequence) return;
   resetScores();
   sequence = sequence.slice(0, -1);
-  state = [...sequence].reduce(applyGate, ZERO_STATE);
+  state = [...sequence].reduce(applyGate, START_STATE);
   update();
 }
 
@@ -249,6 +250,8 @@ onClick('next-level', nextLevel);
 onClick('result-next', nextLevel);
 onClick('try-again', reset);
 onClick('close-win', () => dialog.close());
+onClick('show-rules', () => { if (!busy && !rulesDialog.open) rulesDialog.showModal(); });
+onClick('close-rules', () => rulesDialog.close());
 onClick('show-results', openWin);
 get('score-form').addEventListener('submit', submitScore);
 onClick('gate-h', () => apply('H'));
@@ -285,7 +288,7 @@ get('coordinate-form').addEventListener('submit', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (dialog.open) return;
+  if (dialog.open || rulesDialog.open) return;
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName) || event.target.isContentEditable) return;
   const key = event.key.toLowerCase();
