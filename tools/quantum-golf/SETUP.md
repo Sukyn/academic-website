@@ -31,6 +31,8 @@ node --env-file=.env.local tools/quantum-golf/migrate.mjs --scores "C:\absolute\
 
 The command installs the schema and imports scores without replacing conflicting records. Check rankings in Preview before using a restored database in Production. Run the same command without `--scores` only when installing or updating the schema; normal requests never migrate it.
 
+The API validates circuits without a gate-count cap, then saves only score details. Requests must fit Vercel's 4.5 MB payload limit. For a live upgrade, make the old `sequence` column nullable, create `scores_submission_moves` from `schema.sql`, deploy the API, then run the migration to drop the old column.
+
 ## Unavailable scores
 
 A 503 response means the database connection or schema is unavailable. Check Vercel function logs and that environment's `DATABASE_URL`. Redeploy after changing Vercel environment settings.

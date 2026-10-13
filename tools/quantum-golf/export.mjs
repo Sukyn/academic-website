@@ -7,7 +7,7 @@ class ExportError extends Error {}
 
 export async function exportScores(sql, path) {
   const rows = await sql.query(`
-    SELECT id, campaign, level, name, sequence, moves, created_at
+    SELECT id, campaign, level, name, moves, created_at
     FROM scores ORDER BY id
   `);
   await writeFile(path, JSON.stringify({ exportedAt: new Date().toISOString(), rows }, null, 2) + '\n',

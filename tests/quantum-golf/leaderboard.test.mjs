@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { websiteFile } from '../../tools/quantum-golf/website.mjs';
 const {
-  CAMPAIGN, MAX_SEQUENCE, SubmissionError, getLevel, validateSubmission, readSubmission,
+  CAMPAIGN, MAX_SUBMISSION_BYTES, SubmissionError, getLevel, validateSubmission, readSubmission,
 } = await import(websiteFile('src/lib/quantum-golf/leaderboard.ts'));
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { START_STATE, applyGate, traceDistance } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));
@@ -21,7 +21,7 @@ test('shared score validator replays each fixed campaign hole and derives the sc
     assert.equal(score.campaign, CAMPAIGN);
     assert.equal(score.level, level.id);
     assert.equal(score.moves, level.optimalMoves);
-    assert.equal(score.sequence, result.sequence);
+    assert.equal('sequence' in score, false, 'The validated score discards the circuit');
     assert.equal(score.name, 'Ada');
     rejectsSubmission({ level: level.id, name: 'Ada', sequence: 'HH', epsilon: 1, target: [0, 0, 1], moves: level.optimalMoves });
   }
@@ -40,33 +40,40 @@ test('name validation counts Unicode code points and rejects invisible control c
 });
 
 test('small server replay agrees with the game for long winning and random circuits', () => {
+  const length = 1358;
   let seed = 42;
   for (const level of LEVELS) {
     const { sequence } = solveShortest(level.target, level.epsilon, { maxDepth: level.optimalMoves, maxNodes: 2_000_000 });
-    const padded = sequence + 'HTTTTTTTTH'.repeat(Math.floor((MAX_SEQUENCE - sequence.length) / 10));
+    const padded = sequence + 'HTTTTTTTTH'.repeat(Math.floor((length - sequence.length) / 10));
     assert.equal(validateSubmission(valid({ level: level.id, sequence: padded })).moves, padded.length);
     for (let sample = 0; sample < 8; sample++) {
-      const circuit = Array.from({ length: MAX_SEQUENCE }, () => {
+      const circuit = Array.from({ length }, () => {
         seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
         return seed & 0x80000000 ? 'H' : 'T';
       }).join('');
       const state = [...circuit].reduce(applyGate, START_STATE);
       const payload = valid({ level: level.id, sequence: circuit });
       if (traceDistance(state, level.target) <= level.epsilon + 1e-12) {
-        assert.equal(validateSubmission(payload).moves, MAX_SEQUENCE);
+        assert.equal(validateSubmission(payload).moves, length);
       } else rejectsSubmission(payload);
     }
   }
 });
 
-test('score validation rejects malformed, excessive or nonwinning circuits', () => {
+test('score validation rejects malformed or nonwinning circuits without a gate-count cap', () => {
   for (const payload of [null, [], 'H', 3, {}, valid({ level: 0 }), valid({ level: LEVELS.length + 1 }), valid({ level: 1.5 }), valid({ level: NaN })]) {
     rejectsSubmission(payload);
   }
-  for (const sequence of ['', 'X', 'h', 'H T', 'H\n', 'HH', 'H', null, ['H'], 'H'.repeat(MAX_SEQUENCE + 1)]) {
+  for (const sequence of ['', 'X', 'h', 'H T', 'H\n', 'HH', 'H', null, ['H']]) {
     rejectsSubmission(valid({ sequence }));
   }
-  assert.equal(validateSubmission(valid({ sequence: 'H' + 'T'.repeat(MAX_SEQUENCE - 3) + 'HT' })).moves, MAX_SEQUENCE);
+  rejectsSubmission({ level: 11, name: 'Colin', moves: 1358 });
+  const level = LEVELS.find(level => level.id === 11);
+  const { sequence } = solveShortest(level.target, level.epsilon, { maxDepth: level.optimalMoves, maxNodes: 2_000_000 });
+  const padded = sequence + 'H'.repeat(1358 - sequence.length);
+  assert.equal(padded.length, 1358);
+  assert.equal(validateSubmission(valid({ level: 11, name: 'Colin', sequence: padded })).moves, 1358);
+  assert.equal(validateSubmission(valid({ level: 2, sequence: 'H' + 'T'.repeat(10_000) })).moves, 10_001);
 });
 
 test('streamed JSON score requests enforce a byte limit and preserve split UTF-8 names', async () => {
@@ -85,14 +92,20 @@ test('streamed JSON score requests enforce a byte limit and preserve split UTF-8
   await assert.rejects(() => readSubmission(new Request('https://example.test', { method: 'POST', body: '{bad' })), (error) => error instanceof SubmissionError && error.status === 400);
   await assert.rejects(() => readSubmission(new Request('https://example.test', { method: 'POST' })), (error) => error instanceof SubmissionError && error.status === 400);
   // Character count is below the byte cap; UTF-8 byte count exceeds it.
-  await assert.rejects(() => readSubmission(new Request('https://example.test', { method: 'POST', body: '🦊'.repeat(600) })), (error) => error instanceof SubmissionError && error.status === 413);
+  await assert.rejects(() => readSubmission(new Request('https://example.test', {
+    method: 'POST', body: '🦊'.repeat(Math.floor(MAX_SUBMISSION_BYTES / 4) + 1),
+  })), (error) => error instanceof SubmissionError && error.status === 413);
 
   const chunks = new ReadableStream({ start(controller) {
-    controller.enqueue(new Uint8Array(1400));
-    controller.enqueue(new Uint8Array(700));
+    controller.enqueue(new Uint8Array(MAX_SUBMISSION_BYTES));
+    controller.enqueue(Uint8Array.of(0));
     controller.close();
   } });
   await assert.rejects(() => readSubmission(new Request('https://example.test', { method: 'POST', body: chunks, duplex: 'half' })), (error) => error instanceof SubmissionError && error.status === 413);
+  const long = valid({ level: 2, sequence: 'H' + 'T'.repeat(10_000) });
+  assert.deepEqual(await readSubmission(new Request('https://example.test', {
+    method: 'POST', body: JSON.stringify(long),
+  })), long, 'Circuits exceeding the old 2KB request limit are read intact');
 });
 
 test('server campaign metadata agrees with playable holes and contains no solutions', async () => {

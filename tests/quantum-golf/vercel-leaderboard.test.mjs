@@ -10,6 +10,7 @@ import { websiteFile } from '../../tools/quantum-golf/website.mjs';
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { DAILY_VERSION, dailyBounds, dailyPuzzle } = await import(websiteFile('src/lib/quantum-golf/daily.js'));
+const { MAX_SUBMISSION_BYTES } = await import(websiteFile('src/lib/quantum-golf/leaderboard.ts'));
 
 const source = await readFile(websiteFile('api/leaderboard.ts'), 'utf8');
 // Replace only the database transport. The Vercel handler, score validation and
@@ -104,8 +105,10 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
     assert.equal((await get(1, undefined, 'https://unrelated.example')).status, 403);
     assert.equal((await post(valid(), 'https://unrelated.example')).status, 403);
     assert.equal((await post(valid({ sequence: 'H', moves: 1, epsilon: 1 }))).status, 400);
+    assert.equal((await post(valid({ level: 11, sequence: null, moves: 1358 }))).status, 400,
+      'The public API still requires a winning circuit, including when a move count is supplied');
     assert.equal((await post(valid({ name: 'Ada\u202e' }))).status, 400);
-    for (const [body, status] of [['{bad', 400], ['🦊'.repeat(600), 413]]) {
+    for (const [body, status] of [['{bad', 400], ['🦊'.repeat(600), 400], ['T'.repeat(MAX_SUBMISSION_BYTES + 1), 413]]) {
       const rejected = await route.fetch(new Request(endpoint, {
         method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body,
       }));
@@ -155,12 +158,45 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
     assert.equal(finalBoard.total, 1);
     assert.deepEqual(await (await get(finalHole.id, finalBoard.currentPlayer.id)).json(), finalBoard);
     assert.equal((await (await get()).json()).total, 1, 'The extra hole does not alter existing rankings');
+    const hole11 = LEVELS.find(level => level.id === 11);
+    const hole11Solution = solveShortest(hole11.target, hole11.epsilon, { maxDepth: hole11.optimalMoves, maxNodes: 2_000_000 });
+    const padded = hole11Solution.sequence + 'H'.repeat(1358 - hole11Solution.sequence.length);
+    response = await post(valid({ level: 11, name: 'Colin', sequence: padded }));
+    assert.equal(response.status, 201, 'A verified 1358-gate level 11 solution is accepted');
+    const colinBoard = await response.json();
+    assert.equal(colinBoard.currentPlayer.moves, 1358);
+    const alternative = 'HH' + padded.slice(0, -2);
+    assert.notEqual(alternative, padded);
+    assert.deepEqual(await (await post(valid({ level: 11, name: 'Colin', sequence: alternative }))).json(), colinBoard,
+      'Different winning circuits with the same move count share one score');
+
+    let seed = 42;
+    const prefix = Array.from({ length: 10_000 }, () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed & 0x80000000 ? 'H' : 'T';
+    }).join('');
+    const inverse = [...prefix].reverse().map(gate => gate === 'H' ? 'H' : 'TTTTTTT').join('');
+    const long = valid({ level: 11, name: 'Long circuit', sequence: prefix + inverse + hole11Solution.sequence });
+    response = await post(long);
+    assert.equal(response.status, 201, 'Long mixed circuits are validated without being indexed or stored');
+    const longBoard = await response.json();
+    assert.equal(longBoard.currentPlayer.moves, long.sequence.length);
+    const countBeforeRetry = await count();
+    assert.deepEqual(await (await post(long)).json(), longBoard, 'Long-circuit retries preserve the player ID and rank');
+    assert.equal(await count(), countBeforeRetry);
+    assert.deepEqual(await (await get(11, longBoard.currentPlayer.id)).json(), longBoard);
+    for (const entry of longBoard.entries) {
+      assert.deepEqual(Object.keys(entry).sort(), ['id', 'moves', 'name', 'rank'], 'Leaderboards never expose stored circuits');
+    }
+    const savedLong = (await database.query('SELECT * FROM scores WHERE id = $1', [longBoard.currentPlayer.id])).rows[0];
+    assert.deepEqual(Object.keys(savedLong).sort(), ['campaign', 'created_at', 'id', 'level', 'moves', 'name'],
+      'Stored scores contain neither a circuit nor a circuit fingerprint');
     for (const name of ['Ada', 'ada', 'Zoë', 'Zoe\u0308']) {
       assert.equal((await post(valid({ level: 2, name, sequence: 'HT' }))).status, 201);
     }
     assert.equal((await (await get(2)).json()).total, 5, 'Exact case-sensitive Unicode nicknames keep their original identities');
-    await database.query('INSERT INTO scores (campaign, level, name, sequence, moves, created_at) VALUES ($1, 1, $2, $3, 1, 0)',
-      ['retired-campaign', 'Old campaign', 'H']);
+    await database.query('INSERT INTO scores (campaign, level, name, moves, created_at) VALUES ($1, 1, $2, 1, 0)',
+      ['retired-campaign', 'Old campaign']);
     assert.equal((await (await get()).json()).total, 1, 'Previous campaigns cannot contaminate current ranks');
 
     // A tied timestamp deliberately exercises the ID ordering used for old D1
@@ -249,37 +285,39 @@ test('score migration preserves IDs and timestamps, retries safely and rolls bac
     row({ id: 73, sequence: 'TH', moves: 2, created_at: 1791811123456 }),
     row({ id: '101', level: 2, name: '🦊', sequence: 'HT', moves: 2 }),
     row({ id: 8, campaign: 'retired-campaign', name: 'Historical', created_at: 1 }),
+    row({ id: 201, level: 11, name: 'Colin', sequence: undefined, moves: 1358 }),
   ];
   const snapshot = async () => (await database.query('SELECT * FROM scores ORDER BY id')).rows;
   try {
     assert.equal(await migrate(sql), 0, 'Schema setup needs no existing backup');
-    assert.equal(await migrate(sql, backup), 4);
+    assert.equal(await migrate(sql, backup), 5);
     const imported = await snapshot();
     assert.deepEqual(imported.map(value => ({ ...value, id: Number(value.id), created_at: Number(value.created_at) })),
-      backup.map(value => ({
+      backup.map(({ sequence, ...value }) => ({
         ...value, id: Number(value.id), level: Number(value.level), moves: Number(value.moves), created_at: Number(value.created_at),
       })).sort((a, b) => a.id - b.id), 'All historical attempts, names, IDs and tie timestamps survive intact');
     await migrate(sql, backup);
     assert.deepEqual(await snapshot(), imported, 'Repeating the same import leaves records unchanged');
     const inserted = await database.query(`
-      INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
-      VALUES ('quantum-golf-v1', 1, 'New visitor', 'H', 1, 1791812123456) RETURNING id
+      INSERT INTO scores (campaign, level, name, moves, created_at)
+      VALUES ('quantum-golf-v1', 1, 'New visitor', 1, 1791812123456) RETURNING id
     `);
-    assert.equal(Number(inserted.rows[0].id), 102, 'New visitors continue after the highest preserved player ID');
+    assert.equal(Number(inserted.rows[0].id), 202, 'New visitors continue after the highest preserved player ID');
     await migrate(sql, backup);
     const intact = await snapshot();
-    assert.equal(intact.length, 5, 'Retrying the backup preserves scores submitted after migration');
+    assert.equal(intact.length, 6, 'Retrying the backup preserves scores submitted after migration');
 
     const fresh = row({ id: 500, name: 'Imported next' });
     await assert.rejects(() => migrate(sql, [fresh, row({ name: 'Conflicting identity' })]));
     assert.deepEqual(await snapshot(), intact, 'A mismatched existing ID rolls back every new record in that batch');
     await assert.rejects(() => migrate(sql, [fresh, row({ id: 501 })]));
-    assert.deepEqual(await snapshot(), intact, 'A circuit duplicated under a different ID also rolls back the batch');
+    assert.deepEqual(await snapshot(), intact, 'A score duplicated under a different ID also rolls back the batch');
 
     for (const bad of [
       [row(), row()], [row({ id: '9007199254740992' })], [row({ moves: 2 })],
-      [row({ level: 2147483648 })],
-      [row({ name: '🦊'.repeat(25) })], [row({ name: 'Ada\u202e' })], [row({ sequence: 'HX', moves: 2 })], null,
+      [row({ level: 2147483648 })], [row({ sequence: undefined, moves: 2147483648 })],
+      [row({ name: '🦊'.repeat(25) })], [row({ name: 'Ada\u202e' })], [row({ sequence: 'HX', moves: 2 })],
+      [row({ moves: 0 })], null,
     ]) {
       const before = queryCount;
       await assert.rejects(() => migrate(sql, bad));
@@ -340,13 +378,14 @@ test('JSON export restores all historical scores and refuses to overwrite a back
   const directory = await mkdtemp(resolve(tmpdir(), 'quantum-golf-backup-'));
   const path = resolve(directory, 'scores.json');
   const rows = [
-    { id: 9, campaign: 'retired-campaign', level: 1, name: 'Zoë 🦊', sequence: 'T', moves: 1, created_at: 0 },
-    { id: 101, campaign: 'quantum-golf-v2-plus', level: 15, name: 'Ada', sequence: 'HT', moves: 2, created_at: 9007199254740991 },
+    { id: 9, campaign: 'retired-campaign', level: 1, name: 'Zoë 🦊', moves: 1, created_at: 0 },
+    { id: 101, campaign: 'quantum-golf-v2-plus', level: 15, name: 'Ada', moves: 2, created_at: 9007199254740991 },
+    { id: 202, campaign: 'quantum-golf-v2-plus', level: 11, name: 'Colin', moves: 1358, created_at: 1791810123456 },
   ];
   try {
     await migrate(adapter(databases[0]), rows);
     const source = { query: async query => (await databases[0].query(query)).rows };
-    assert.equal(await exportScores(source, path), 2);
+    assert.equal(await exportScores(source, path), 3);
     const saved = await readFile(path, 'utf8');
     const backup = JSON.parse(saved);
     assert.ok(Number.isFinite(Date.parse(backup.exportedAt)));
@@ -363,7 +402,7 @@ test('JSON export restores all historical scores and refuses to overwrite a back
   }
 });
 
-test('campaign expansion upgrades the old ten-hole constraint without changing stored scores', async () => {
+test('schema removes legacy circuit storage while preserving scores and upgrading level limits', async () => {
   const { migrate } = await import(websiteFile('tools/quantum-golf/migrate.mjs'));
   const database = new PGlite();
   const sql = {
@@ -374,16 +413,27 @@ test('campaign expansion upgrades the old ten-hole constraint without changing s
       return results;
     }),
   };
-  const insert = level => database.query(`
-    INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
-    VALUES ('quantum-golf-v2-plus', $1, 'Existing visitor', 'T', 1, 1791810123456)
+  const insert = (level, legacy = false) => database.query(`
+    INSERT INTO scores (campaign, level, name, moves, created_at${legacy ? ', sequence' : ''})
+    VALUES ('quantum-golf-v2-plus', $1, 'Existing visitor', 1, 1791810123456${legacy ? ", 'T'" : ''})
     RETURNING *
   `, [level]);
   try {
-    const schema = await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8');
-    await database.exec(schema.replace('CHECK (level >= 1)', 'CHECK (level BETWEEN 1 AND 10)'));
-    const preserved = (await insert(1)).rows[0];
-    await assert.rejects(() => insert(15), /scores_level_check/);
+    await database.exec(`
+      CREATE TABLE scores (
+        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+        campaign TEXT NOT NULL CHECK (length(campaign) > 0),
+        level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 10),
+        name TEXT COLLATE "C" NOT NULL CHECK (char_length(name) BETWEEN 1 AND 24),
+        sequence TEXT NOT NULL CHECK (length(sequence) BETWEEN 1 AND 512 AND sequence !~ '[^HT]'),
+        moves INTEGER NOT NULL,
+        created_at BIGINT NOT NULL CHECK (created_at >= 0),
+        CONSTRAINT scores_check CHECK (moves = length(sequence))
+      );
+      CREATE UNIQUE INDEX scores_submission ON scores (campaign, level, name, sequence);
+    `);
+    const { sequence, ...preserved } = (await insert(1, true)).rows[0];
+    await assert.rejects(() => insert(15, true), /scores_level_check/);
     assert.equal(await migrate(sql), 0);
     assert.deepEqual((await database.query('SELECT * FROM scores WHERE id = $1', [preserved.id])).rows, [preserved],
       'The expansion preserves existing scores, IDs and tie timestamps');
@@ -393,6 +443,26 @@ test('campaign expansion upgrades the old ten-hole constraint without changing s
     assert.deepEqual((await database.query('SELECT * FROM scores ORDER BY id')).rows, [preserved, added],
       'Repeating the schema upgrade preserves both old and new level scores');
     await assert.rejects(() => insert(0), /scores_level_check/);
+    const long = (await database.query(`
+      INSERT INTO scores (campaign, level, name, moves, created_at)
+      VALUES ('quantum-golf-v2-plus', 11, 'Long visitor', 1358, 1791810123456) RETURNING *
+    `)).rows[0];
+    const owner = (await database.query(`
+      INSERT INTO scores (campaign, level, name, moves, created_at)
+      VALUES ('quantum-golf-v2-plus', 11, 'Colin', 1358, 1791810123456) RETURNING *
+    `)).rows[0];
+    await migrate(sql);
+    assert.deepEqual((await database.query('SELECT * FROM scores ORDER BY id')).rows, [preserved, added, long, owner],
+      'Repeated upgrades preserve long scores and owner-recorded scores');
+    const indexes = (await database.query("SELECT indexname FROM pg_indexes WHERE tablename = 'scores'")).rows.map(row => row.indexname);
+    assert.ok(indexes.includes('scores_submission_moves'));
+    assert.equal(indexes.includes('scores_submission'), false, 'The raw circuit B-tree index is removed');
+    for (const moves of [0, -1]) {
+      await assert.rejects(() => database.query(`
+        INSERT INTO scores (campaign, level, name, moves, created_at)
+        VALUES ('quantum-golf-v2-plus', 11, 'Invalid', $1, 1791810123456)
+      `, [moves]), /scores_moves_check/);
+    }
   } finally { await database.close(); }
 });
 

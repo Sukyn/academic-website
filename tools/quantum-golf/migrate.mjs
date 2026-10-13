@@ -15,17 +15,17 @@ export async function migrate(sql, rows = []) {
   const ids = new Set();
   const scores = rows.map((row, index) => {
     if (!row || !integer(row.id, 1) || !integer(row.level, 1) || Number(row.level) > 2147483647 ||
-      !integer(row.moves, 1) || !integer(row.created_at) ||
+      !integer(row.moves, 1) || Number(row.moves) > 2147483647 || !integer(row.created_at) ||
       typeof row.campaign !== 'string' || !row.campaign || row.campaign.includes('\0') ||
       typeof row.name !== 'string' || !row.name.trim() || Array.from(row.name).length > 24 || /\p{C}/u.test(row.name) ||
-      typeof row.sequence !== 'string' || !row.sequence.length || row.sequence.length > 512 || /[^HT]/.test(row.sequence) ||
-      Number(row.moves) !== row.sequence.length || ids.has(Number(row.id))) {
+      (row.sequence != null && (typeof row.sequence !== 'string' || !row.sequence.length || /[^HT]/.test(row.sequence) ||
+        Number(row.moves) !== row.sequence.length)) || ids.has(Number(row.id))) {
       throw new MigrationError(`Invalid score backup record ${index + 1}.`);
     }
     ids.add(Number(row.id));
-    return [Number(row.id), row.campaign, Number(row.level), row.name, row.sequence, Number(row.moves), Number(row.created_at)];
+    return [Number(row.id), row.campaign, Number(row.level), row.name, Number(row.moves), Number(row.created_at)];
   });
-  const schema = (await Promise.all(['schema.sql', '001-expand-levels.sql'].map(file =>
+  const schema = (await Promise.all(['schema.sql', '001-expand-levels.sql', '002-unlimited-circuits.sql'].map(file =>
     readFile(new URL(file, import.meta.url), 'utf8')))).join('\n');
   const queries = schema.split(';').map(statement => statement.trim()).filter(Boolean).map(statement => sql.query(statement));
   queries.push(sql.query('LOCK TABLE scores IN SHARE ROW EXCLUSIVE MODE'));
@@ -33,11 +33,11 @@ export async function migrate(sql, rows = []) {
     // An exact retry keeps its ID. A different record at that ID fails the
     // primary key's NOT NULL rule, rolling back the entire import.
     queries.push(sql.query(`
-      INSERT INTO scores (id, campaign, level, name, sequence, moves, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO scores (id, campaign, level, name, moves, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (id) DO UPDATE SET id = CASE WHEN
-        (scores.campaign, scores.level, scores.name, scores.sequence, scores.moves, scores.created_at) =
-        (EXCLUDED.campaign, EXCLUDED.level, EXCLUDED.name, EXCLUDED.sequence, EXCLUDED.moves, EXCLUDED.created_at)
+        (scores.campaign, scores.level, scores.name, scores.moves, scores.created_at) =
+        (EXCLUDED.campaign, EXCLUDED.level, EXCLUDED.name, EXCLUDED.moves, EXCLUDED.created_at)
         THEN scores.id END
     `, score));
   }

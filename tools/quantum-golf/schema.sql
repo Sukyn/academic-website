@@ -4,13 +4,12 @@ CREATE TABLE IF NOT EXISTS scores (
   campaign TEXT NOT NULL CHECK (length(campaign) > 0),
   level INTEGER NOT NULL CHECK (level >= 1),
   name TEXT COLLATE "C" NOT NULL CHECK (char_length(name) BETWEEN 1 AND 24),
-  sequence TEXT NOT NULL CHECK (length(sequence) BETWEEN 1 AND 512 AND sequence !~ '[^HT]'),
-  moves INTEGER NOT NULL CHECK (moves = length(sequence)),
+  moves INTEGER NOT NULL CONSTRAINT scores_moves_check CHECK (moves > 0),
   created_at BIGINT NOT NULL CHECK (created_at >= 0 AND created_at <= 9007199254740991)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS scores_submission
-  ON scores (campaign, level, name, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS scores_submission_moves
+  ON scores (campaign, level, name, moves);
 
 CREATE INDEX IF NOT EXISTS scores_ranking
   ON scores (campaign, level, moves, created_at, id);

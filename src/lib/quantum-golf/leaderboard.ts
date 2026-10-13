@@ -3,7 +3,7 @@ import { START_STATE, applyGate, traceDistance } from "./quantum.js";
 import { DAILY_VERSION, dailyBounds, dailyDate, dailyPuzzle, validDailyDate } from "./daily.js";
 
 export const CAMPAIGN = campaign.version;
-export const MAX_SEQUENCE = 512;
+export const MAX_SUBMISSION_BYTES = 4_500_000;
 
 export class SubmissionError extends Error {
   status: number;
@@ -49,10 +49,11 @@ export function validateSubmission(input: unknown, now = Date.now()) {
     throw new SubmissionError("Use a name of 1 to 24 characters.");
   }
   const sequence = payload.sequence;
-  if (typeof sequence !== "string" || !sequence.length || /[^HT]/.test(sequence) || sequence.length > MAX_SEQUENCE) {
-    throw new SubmissionError("Use a circuit of 1 to 512 H/T gates.");
+  if (typeof sequence !== "string" || !sequence.length || /[^HT]/.test(sequence)) {
+    throw new SubmissionError("Use one or more H/T gates.");
   }
-  const state = [...sequence].reduce(applyGate, START_STATE);
+  let state = START_STATE;
+  for (const gate of sequence) state = applyGate(state, gate);
   if (traceDistance(state, level.target) > level.epsilon + 1e-12) {
     throw new SubmissionError("That circuit does not reach this level's hole.");
   }
@@ -60,7 +61,7 @@ export function validateSubmission(input: unknown, now = Date.now()) {
     throw new SubmissionError("That score is below the verified minimum.");
   }
   return {
-    campaign: board.campaign, level: board.level, name, sequence, moves: sequence.length,
+    campaign: board.campaign, level: board.level, name, moves: sequence.length,
     ...("date" in board ? { date: board.date, opensAt: board.opensAt, closesAt: board.closesAt } : {}),
   };
 }
@@ -74,7 +75,7 @@ export async function readSubmission(request: Request) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 2048) {
+    if (size > MAX_SUBMISSION_BYTES) {
       await reader.cancel();
       throw new SubmissionError("Submission is too large.", 413);
     }

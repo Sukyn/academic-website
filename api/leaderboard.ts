@@ -80,13 +80,13 @@ export default {
         // Paris midnight cannot slip onto yesterday's leaderboard.
         const inserted = await sql`
           WITH scoring_time AS MATERIALIZED (SELECT clock_timestamp() AS instant)
-          INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
-          SELECT ${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves},
+          INSERT INTO scores (campaign, level, name, moves, created_at)
+          SELECT ${score.campaign}, ${score.level}, ${score.name}, ${score.moves},
             FLOOR(EXTRACT(EPOCH FROM instant) * 1000)::bigint
           FROM scoring_time
           WHERE instant >= to_timestamp(${score.opensAt} / 1000.0)
             AND instant < to_timestamp(${score.closesAt} / 1000.0)
-          ON CONFLICT (campaign, level, name, sequence) DO UPDATE SET id = scores.id
+          ON CONFLICT (campaign, level, name, moves) DO UPDATE SET id = scores.id
             WHERE clock_timestamp() >= to_timestamp(${score.opensAt} / 1000.0)
               AND clock_timestamp() < to_timestamp(${score.closesAt} / 1000.0)
           RETURNING id
@@ -94,9 +94,9 @@ export default {
         if (!inserted.length) throw new SubmissionError("This puzzle's leaderboard is closed.", 409);
       } else {
         await sql`
-          INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
-          VALUES (${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves}, ${Date.now()})
-          ON CONFLICT (campaign, level, name, sequence) DO NOTHING
+          INSERT INTO scores (campaign, level, name, moves, created_at)
+          VALUES (${score.campaign}, ${score.level}, ${score.name}, ${score.moves}, ${Date.now()})
+          ON CONFLICT (campaign, level, name, moves) DO NOTHING
         `;
       }
       return Response.json(await board(sql, score.campaign, score.level, { name: score.name }), {
