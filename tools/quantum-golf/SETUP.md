@@ -19,7 +19,7 @@ node --env-file=.env.local tools/quantum-golf/migrate.mjs
 node --env-file=.env.local tools/quantum-golf/migrate.mjs --scores "C:\absolute\path\quantum-golf-scores.json"
 ```
 
-The first command creates the schema. The second also imports a backup: either an array of database records or an object containing a `rows` array. Each record needs `id`, `campaign`, `level`, `name`, `sequence`, `moves`, and `created_at`.
+The first command creates or updates the schema, including removing the former ten-level limit. Run it against Preview before Production; it preserves existing scores. The campaign data controls which levels accept new submissions. The second also imports a backup: either an array of database records or an object containing a `rows` array. Each record needs `id`, `campaign`, `level`, `name`, `sequence`, `moves`, and `created_at`.
 
 The importer preserves IDs, campaign versions, timestamps, and every attempt. Exact retries are safe. Incompatible IDs or duplicate circuits under a different ID stop the transaction without replacing existing scores. It also advances the identity counter beyond the imported IDs. The endpoint never creates or migrates tables during requests.
 

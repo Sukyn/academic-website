@@ -14,7 +14,7 @@ export async function migrate(sql, rows = []) {
   if (!Array.isArray(rows)) throw new MigrationError('The score backup must contain an array of records.');
   const ids = new Set();
   const scores = rows.map((row, index) => {
-    if (!row || !integer(row.id, 1) || !integer(row.level, 1) || Number(row.level) > 10 ||
+    if (!row || !integer(row.id, 1) || !integer(row.level, 1) ||
       !integer(row.moves, 1) || !integer(row.created_at) ||
       typeof row.campaign !== 'string' || !row.campaign || row.campaign.includes('\0') ||
       typeof row.name !== 'string' || !row.name.trim() || Array.from(row.name).length > 24 || /\p{C}/u.test(row.name) ||
@@ -25,7 +25,8 @@ export async function migrate(sql, rows = []) {
     ids.add(Number(row.id));
     return [Number(row.id), row.campaign, Number(row.level), row.name, row.sequence, Number(row.moves), Number(row.created_at)];
   });
-  const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
+  const schema = (await Promise.all(['schema.sql', '001-expand-levels.sql'].map(file =>
+    readFile(new URL(file, import.meta.url), 'utf8')))).join('\n');
   const queries = schema.split(';').map(statement => statement.trim()).filter(Boolean).map(statement => sql.query(statement));
   queries.push(sql.query('LOCK TABLE scores IN SHARE ROW EXCLUSIVE MODE'));
   for (const score of scores) {
