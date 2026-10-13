@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import {
-  CAMPAIGN, getLevel, readSubmission, SubmissionError, validateSubmission,
+  getBoard, readSubmission, SubmissionError, validateSubmission,
 } from "../src/lib/quantum-golf/leaderboard.js";
 
 function getSql(request: Request) {
@@ -24,11 +24,11 @@ function number(value: unknown) {
   return result;
 }
 
-async function board(sql: ReturnType<typeof getSql>, level: number, player: { id?: number; name?: string } = {}) {
+async function board(sql: ReturnType<typeof getSql>, campaign: string, level: number, player: { id?: number; name?: string } = {}) {
   const rows = await sql`
     WITH best AS (
       SELECT DISTINCT ON (name) id, name, moves, created_at
-      FROM scores WHERE campaign = ${CAMPAIGN} AND level = ${level}
+      FROM scores WHERE campaign = ${campaign} AND level = ${level}
       ORDER BY name, moves, created_at, id
     ), ranked AS (
       SELECT id, name, moves,
@@ -36,7 +36,7 @@ async function board(sql: ReturnType<typeof getSql>, level: number, player: { id
         COUNT(*) OVER () AS total
       FROM best
     ), selected_player AS (
-      SELECT name FROM scores WHERE campaign = ${CAMPAIGN} AND level = ${level}
+      SELECT name FROM scores WHERE campaign = ${campaign} AND level = ${level}
         AND (id = ${player.id ?? null} OR name = ${player.name ?? null}) LIMIT 1
     )
     SELECT ranked.*, name = (SELECT name FROM selected_player) AS is_player
@@ -60,24 +60,46 @@ export default {
       checkOrigin(request);
       if (request.method === "GET") {
         const params = new URL(request.url).searchParams;
-        const level = getLevel(params.get("level")).id;
+        const selected = getBoard({
+          ...(params.has("level") ? { level: params.get("level") } : {}),
+          ...(params.has("date") ? { date: params.get("date") } : {}),
+        });
         const rawPlayer = params.get("player");
         const id = rawPlayer === null ? undefined : Number(rawPlayer);
         if (id !== undefined && (!Number.isSafeInteger(id) || id < 1)) {
           throw new SubmissionError("Choose a valid player record.");
         }
-        return Response.json(await board(getSql(request), level, { id }), {
+        return Response.json(await board(getSql(request), selected.campaign, selected.level, { id }), {
           headers: { "Cache-Control": id === undefined ? "public, max-age=15" : "no-store" },
         });
       }
       const score = validateSubmission(await readSubmission(request));
       const sql = getSql(request);
-      await sql`
-        INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
-        VALUES (${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves}, ${Date.now()})
-        ON CONFLICT (campaign, level, name, sequence) DO NOTHING
-      `;
-      return Response.json(await board(sql, score.level, { name: score.name }), {
+      if ("date" in score) {
+        // Use the database clock in the write itself: a request that waits across
+        // Paris midnight cannot slip onto yesterday's leaderboard.
+        const inserted = await sql`
+          WITH scoring_time AS MATERIALIZED (SELECT clock_timestamp() AS instant)
+          INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
+          SELECT ${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves},
+            FLOOR(EXTRACT(EPOCH FROM instant) * 1000)::bigint
+          FROM scoring_time
+          WHERE instant >= to_timestamp(${score.opensAt} / 1000.0)
+            AND instant < to_timestamp(${score.closesAt} / 1000.0)
+          ON CONFLICT (campaign, level, name, sequence) DO UPDATE SET id = scores.id
+            WHERE clock_timestamp() >= to_timestamp(${score.opensAt} / 1000.0)
+              AND clock_timestamp() < to_timestamp(${score.closesAt} / 1000.0)
+          RETURNING id
+        `;
+        if (!inserted.length) throw new SubmissionError("This puzzle's leaderboard is closed.", 409);
+      } else {
+        await sql`
+          INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
+          VALUES (${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves}, ${Date.now()})
+          ON CONFLICT (campaign, level, name, sequence) DO NOTHING
+        `;
+      }
+      return Response.json(await board(sql, score.campaign, score.level, { name: score.name }), {
         status: 201, headers: { "Cache-Control": "no-store" },
       });
     } catch (error) {

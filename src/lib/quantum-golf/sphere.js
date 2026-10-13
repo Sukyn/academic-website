@@ -101,6 +101,12 @@ export class BlochSphere {
     };
   }
 
+  focus(point) {
+    this.view = { ...this.view };
+    this.cameraTo(point)(1);
+    this.render();
+  }
+
   rotateBy(dx, dy) {
     this.view = { ...this.view, yaw: this.view.yaw + dx * 0.007,
       pitch: clamp(this.view.pitch + dy * 0.007, -Math.PI / 2, Math.PI / 2) };

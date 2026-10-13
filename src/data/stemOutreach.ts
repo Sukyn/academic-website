@@ -17,7 +17,7 @@ export const stemOutreach: StemOutreachItem[] = [
     id: "les-chevaliers-du-quantique",
     title: "Les Chevaliers du Quantique",
     date: "2025-04-04",
-    meta: "Scientific Game Jam Nancy 2025 | First prize",
+    meta: "Scientific Game Jam Nancy 2025 | First prize of the jury",
     summary:
       "Video-game adaptation of a printable circuit-simplification tutorial game built from my research, turning quantum-circuit rewriting into an accessible puzzle format for middle-school students and above.",
     links: [

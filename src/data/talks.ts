@@ -141,4 +141,15 @@ export const talks: Talk[] = [
       },
     ],
   },
+  {
+    id: "zx-calculus-hermiticity-preserving-superoperator",
+    title: "Proving the completeness of fragments of ZX-Calculus with a new Hermiticity-preserving superoperator",
+    appearances: [
+      {
+        id: "quacklings-day-2023",
+        date: "2023-06-27",
+        event: "Quacklings Day 2023",
+      },
+    ],
+  },
 ];

@@ -1,5 +1,6 @@
 import campaign from "./campaign.json" with { type: "json" };
 import { START_STATE, applyGate, traceDistance } from "./quantum.js";
+import { DAILY_VERSION, dailyBounds, dailyDate, dailyPuzzle, validDailyDate } from "./daily.js";
 
 export const CAMPAIGN = campaign.version;
 export const MAX_SEQUENCE = 512;
@@ -19,12 +20,30 @@ export function getLevel(id: unknown) {
   return level;
 }
 
-export function validateSubmission(input: unknown) {
+export function getBoard(selector: { level?: unknown; date?: unknown }, now = Date.now()) {
+  if (Object.hasOwn(selector, "date")) {
+    if (Object.hasOwn(selector, "level")) throw new SubmissionError("Choose a campaign level or a daily puzzle.");
+    if (!validDailyDate(selector.date, now)) throw new SubmissionError("Choose an available daily puzzle.");
+    const date = selector.date as string;
+    return {
+      campaign: DAILY_VERSION, level: Number(date.replaceAll("-", "")),
+      hole: dailyPuzzle(date), date, ...dailyBounds(date),
+    };
+  }
+  const hole = getLevel(selector.level);
+  return { campaign: CAMPAIGN, level: hole.id, hole };
+}
+
+export function validateSubmission(input: unknown, now = Date.now()) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new SubmissionError("Expected a score submission.");
   }
-  const payload = input as { level?: unknown; name?: unknown; sequence?: unknown };
-  const level = getLevel(payload.level);
+  const payload = input as { level?: unknown; date?: unknown; name?: unknown; sequence?: unknown };
+  const board = getBoard(payload, now);
+  if ("date" in board && board.date !== dailyDate(now)) {
+    throw new SubmissionError("This puzzle's leaderboard is closed.", 409);
+  }
+  const level = board.hole;
   const name = typeof payload.name === "string" ? payload.name.trim().replace(/\s+/gu, " ") : "";
   if (!name || Array.from(name).length > 24 || /\p{C}/u.test(name)) {
     throw new SubmissionError("Use a name of 1 to 24 characters.");
@@ -40,7 +59,10 @@ export function validateSubmission(input: unknown) {
   if (sequence.length < level.optimalMoves) {
     throw new SubmissionError("That score is below the verified minimum.");
   }
-  return { campaign: CAMPAIGN, level: level.id, name, sequence, moves: sequence.length };
+  return {
+    campaign: board.campaign, level: board.level, name, sequence, moves: sequence.length,
+    ...("date" in board ? { date: board.date, opensAt: board.opensAt, closesAt: board.closesAt } : {}),
+  };
 }
 
 export async function readSubmission(request: Request) {

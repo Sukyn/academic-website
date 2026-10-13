@@ -148,6 +148,43 @@ test('manual rotation takes control from an active animation', () => {
   assert.deepEqual(instance.view, manualView);
 });
 
+test('focus centers back-facing targets and poles once without changing the round or zoom', () => {
+  const instance = sphere(), sequence = 'THT';
+  instance.setState({ sequence, state: [...sequence].reduce(applyGate, START_STATE), showTrace: true });
+  instance.zoomBy(1.3);
+  const model = { ...instance.model }, state = instance.state, history = instance.history, paths = [...history];
+  let draws = 0;
+  instance.ctx.clearRect = () => draws++;
+  for (const point of [[-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    const yaw = instance.view.yaw, before = draws;
+    instance.focus(point);
+    assert.equal(draws, before + 1, 'A focus command draws exactly once');
+    const projected = instance.project(point);
+    close(projected.x, instance.cx);
+    close(projected.y, instance.cy);
+    close(projected.depth, 1);
+    close(instance.view.zoom, 1.3);
+    if (point[2]) close(instance.view.yaw, yaw);
+    assert.ok(Object.values(instance.view).every(Number.isFinite));
+    assert.deepEqual(instance.model, model);
+    assert.equal(instance.state, state);
+    assert.equal(instance.history, history);
+    paths.forEach((path, index) => assert.equal(instance.history[index], path));
+  }
+});
+
+test('focus takes control from an active camera animation', () => {
+  const instance = sphere();
+  const follow = instance.cameraTo([0, 0, 1]);
+  follow(0.3);
+  instance.focus([0, -1, 0]);
+  const focusedView = { ...instance.view };
+  follow(0.5);
+  follow(1);
+  assert.deepEqual(instance.view, focusedView, 'A gate animation cannot override an explicit focus command');
+  centered(instance, [0, -1, 0]);
+});
+
 test('trace follows physical gate curves and reuses only the unchanged circuit prefix', () => {
   const instance = sphere();
   instance.setState({ sequence: 'TH' });

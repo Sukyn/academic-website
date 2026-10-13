@@ -1,7 +1,6 @@
 ---
 import { publicationNotesById, type PublicationNote } from "../data/publicationNotes";
 import ContentDialog from "../components/ContentDialog.astro";
-import { stemOutreach } from "../data/stemOutreach";
 import { talks, type TalkAppearance } from "../data/talks";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { parseBibtexToPubs, type Pub } from "../lib/bibtex";
@@ -153,13 +152,6 @@ const talkTimeline = talks
     }),
   )
   .sort((left, right) => right.sortTime - left.sortTime);
-
-const outreachByDate = [...stemOutreach].sort((left, right) => {
-  const leftTime = Date.parse(`${left.date}T00:00:00Z`);
-  const rightTime = Date.parse(`${right.date}T00:00:00Z`);
-
-  return rightTime - leftTime;
-});
 ---
 
 <BaseLayout
@@ -295,34 +287,6 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
         ))}
       </ul>
     )}
-
-    <h2>STEM Outreach</h2>
-
-    {outreachByDate.length === 0 ? (
-      <p class="muted">No outreach items listed yet.</p>
-    ) : (
-      <ul class="outreach-list">
-        {outreachByDate.map((item) => (
-          <li id={item.id} class="outreach-item">
-            <p class="pub-title">
-              <strong>{item.title}</strong>
-            </p>
-            {item.meta ? <p class="pub-meta">{item.meta}</p> : null}
-            <p class="pub-summary">{item.summary}</p>
-            <p class="pub-links">
-              {item.links.map((link, index) => (
-                <>
-                  {index > 0 ? <span aria-hidden="true"> | </span> : null}
-                  <a href={link.href} target="_blank" rel="noopener noreferrer">
-                    {link.label}
-                  </a>
-                </>
-              ))}
-            </p>
-          </li>
-        ))}
-      </ul>
-    )}
   </section>
 
   <script>
@@ -385,20 +349,12 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
       margin-bottom: 1.15rem;
     }
 
-    .talk-timeline,
-    .outreach-list {
-      list-style: none;
-      padding: 0;
-      margin: 1.25rem 0 0;
-    }
-
-    .outreach-item {
-      margin-bottom: 1.15rem;
-    }
-
     .talk-timeline {
       display: grid;
       gap: 0;
+      list-style: none;
+      padding: 0;
+      margin: 1.25rem 0 0;
     }
 
     .talk-timeline-item {
@@ -512,20 +468,17 @@ const outreachByDate = [...stemOutreach].sort((left, right) => {
     }
 
     .pub-item > :where(p, h3),
-    .talk-timeline-body > :where(p, h3),
-    .outreach-item > :where(p, h3) {
+    .talk-timeline-body > :where(p, h3) {
       margin: 0.25rem 0 0;
     }
 
     .pub-item > :first-child,
-    .talk-timeline-body > :first-child,
-    .outreach-item > :first-child {
+    .talk-timeline-body > :first-child {
       margin-top: 0;
     }
 
     .pub-item > :last-child,
-    .talk-timeline-body > :last-child,
-    .outreach-item > :last-child {
+    .talk-timeline-body > :last-child {
       margin-bottom: 0;
     }
 

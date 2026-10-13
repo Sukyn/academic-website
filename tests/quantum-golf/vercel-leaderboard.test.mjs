@@ -9,6 +9,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { websiteFile } from '../../tools/quantum-golf/website.mjs';
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
+const { DAILY_VERSION, dailyBounds, dailyPuzzle } = await import(websiteFile('src/lib/quantum-golf/daily.js'));
 
 const source = await readFile(websiteFile('api/leaderboard.ts'), 'utf8');
 // Replace only the database transport. The Vercel handler, score validation and
@@ -24,6 +25,10 @@ const transpile = value => ts.transpileModule(value, {
 }).outputText;
 const outputText = transpile(fixture);
 const { default: route } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const dailySource = await readFile(websiteFile('api/daily.ts'), 'utf8');
+const dailyFixture = dailySource.replace(/from\s*(['"])\.\.\/src\/lib\/quantum-golf\/daily\.js\1/,
+  `from '${websiteFile('src/lib/quantum-golf/daily.js').href}'`);
+const { default: dailyRoute } = await import(`data:text/javascript;base64,${Buffer.from(transpile(dailyFixture)).toString('base64')}`);
 
 const endpoint = 'https://www.colin-blake.eu/api/leaderboard';
 const origin = new URL(endpoint).origin;
@@ -49,7 +54,8 @@ test('compiled Vercel ESM imports resolve the emitted validator JavaScript', asy
     await writeFile(new URL('api/leaderboard.js', compiledRoot), transpile(transportSource));
     await writeFile(new URL('src/lib/quantum-golf/leaderboard.js', compiledRoot),
       transpile(await readFile(websiteFile('src/lib/quantum-golf/leaderboard.ts'), 'utf8')));
-    for (const name of ['quantum.js', 'campaign.json']) {
+    await writeFile(new URL('api/daily.js', compiledRoot), transpile(dailySource));
+    for (const name of ['quantum.js', 'campaign.json', 'daily.js', 'solver.js']) {
       await writeFile(new URL(`src/lib/quantum-golf/${name}`, compiledRoot),
         await readFile(websiteFile(`src/lib/quantum-golf/${name}`)));
     }
@@ -59,6 +65,8 @@ test('compiled Vercel ESM imports resolve the emitted validator JavaScript', asy
     const response = await compiled.fetch(new Request(`${endpoint}?level=unknown`));
     assert.equal(response.status, 400, 'The deployed handler can load its validator before servicing requests');
     assert.deepEqual(await response.json(), { error: `Choose a campaign level from 1 to ${LEVELS.length}.` });
+    const { default: compiledDaily } = await import(new URL('api/daily.js', compiledRoot));
+    assert.equal((await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?date=invalid`))).status, 400);
   } finally {
     assert.equal(dirname(resolve(directory)), resolve(tempBase));
     assert.ok(basename(directory).startsWith('vercel-esm-'));
@@ -386,4 +394,163 @@ test('campaign expansion upgrades the old ten-hole constraint without changing s
       'Repeating the schema upgrade preserves both old and new level scores');
     await assert.rejects(() => insert(0), /scores_level_check/);
   } finally { await database.close(); }
+});
+
+test('daily metadata follows Paris midnight without a database or cached future puzzles', async () => {
+  const originalNow = Date.now;
+  const originalUrl = process.env.DATABASE_URL;
+  const address = endpoint.replace('leaderboard', 'daily');
+  const daily = query => dailyRoute.fetch(new Request(`${address}${query ?? ''}`));
+  delete process.env.DATABASE_URL;
+  try {
+    const midnight = Date.parse('2026-10-13T22:00:00Z');
+    Date.now = () => midnight - 1;
+    const response = await daily();
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    const first = await response.json();
+    assert.equal(first.today, '2026-10-13');
+    assert.equal(first.date, first.today);
+    assert.equal(first.startDate, '2026-10-13');
+    assert.equal(first.timeZone, 'Europe/Paris');
+    assert.equal(first.acceptingScores, true);
+    assert.equal(first.serverNow, midnight - 1);
+    assert.equal(first.closesAt, midnight);
+    assert.equal(first.nextChangeAt, midnight);
+    assert.deepEqual(Object.keys(first.puzzle).sort(), ['epsilon', 'optimalMoves', 'target']);
+    assert.ok(first.puzzle.optimalMoves >= 8 && first.puzzle.optimalMoves <= 12);
+    assert.equal((await daily('?date=2026-10-14')).status, 400, 'Tomorrow is not accessible before Paris midnight');
+
+    Date.now = () => midnight;
+    const next = await (await daily()).json();
+    assert.equal(next.today, '2026-10-14');
+    assert.equal(next.acceptingScores, true);
+    assert.equal(next.opensAt, midnight);
+    assert.equal(next.serverNow, midnight);
+    const past = await (await daily('?date=2026-10-13')).json();
+    assert.equal(past.acceptingScores, false);
+    assert.equal(past.nextChangeAt, next.closesAt, 'The refresh deadline follows today even while viewing the archive');
+    assert.deepEqual(past.puzzle, first.puzzle, 'A past puzzle stays exactly the same after rollover');
+    for (const date of ['', 'invalid', '2026-02-30', '2026-10-12', '2026-10-15', '2026-10-14T00:00:00Z']) {
+      assert.equal((await daily(`?date=${encodeURIComponent(date)}`)).status, 400);
+    }
+    const unsupported = await dailyRoute.fetch(new Request(address, { method: 'POST' }));
+    assert.equal(unsupported.status, 405);
+    assert.equal(unsupported.headers.get('Allow'), 'GET');
+  } finally {
+    Date.now = originalNow;
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+  }
+});
+
+test('daily PostgreSQL writes enforce the real scoring day at midnight, independently of the request clock', async () => {
+  const database = new PGlite();
+  const originalUrl = process.env.DATABASE_URL;
+  const originalNow = Date.now;
+  process.env.DATABASE_URL = 'postgresql://test.invalid/quantum_golf';
+  globalThis.__quantumGolfPostgres = async (strings, ...values) => {
+    const query = strings.reduce((sql, part, index) => sql + (index ? `$${index}` : '') + part, '');
+    return (await database.query(query, values)).rows;
+  };
+  const boardFor = (date, player) => route.fetch(new Request(
+    `${endpoint}?date=${date}${player === undefined ? '' : `&player=${player}`}`,
+  ));
+  const count = async () => Number((await database.query('SELECT COUNT(*) AS n FROM scores')).rows[0].n);
+  // Override only PostgreSQL's clock, keeping the API and its conditional SQL
+  // unchanged. This proves slow requests cannot use the application clock.
+  const databaseNow = instant => database.query("SELECT set_config('quantum_golf.test_now', $1, false)", [new Date(instant).toISOString()]);
+  try {
+    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(`
+      CREATE SCHEMA test_clock;
+      CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
+        AS $$ SELECT current_setting('quantum_golf.test_now')::timestamptz $$;
+      SET search_path TO test_clock, pg_catalog, public;
+    `);
+    const date = '2026-10-14';
+    const { opensAt, closesAt } = dailyBounds(date);
+    const puzzle = dailyPuzzle(date);
+    const solution = solveShortest(puzzle.target, puzzle.epsilon, { maxDepth: 12 });
+    assert.equal(solution.status, 'optimal');
+    const payload = { date, name: 'Daily Ada', sequence: solution.sequence };
+    Date.now = () => opensAt;
+    await databaseNow(opensAt - 1);
+    assert.equal((await post(payload)).status, 409, 'Database rejects an early submission even if application clock is ahead');
+    assert.equal(await count(), 0);
+    await databaseNow(opensAt);
+    let response = await post(payload);
+    assert.equal(response.status, 201, 'The scoring interval includes its first instant');
+    let board = await response.json();
+    const id = board.currentPlayer.id;
+    assert.equal(board.currentPlayer.moves, puzzle.optimalMoves);
+    assert.equal(board.total, 1);
+    assert.deepEqual(await (await boardFor(date, id)).json(), board);
+    assert.equal((await (await get()).json()).total, 0, 'Daily scores never enter campaign boards');
+    const saved = (await database.query('SELECT * FROM scores WHERE id = $1', [id])).rows[0];
+    assert.equal(saved.campaign, DAILY_VERSION);
+    assert.equal(saved.level, 20261014);
+    assert.equal(Number(saved.created_at), opensAt, 'Tie timestamps come from the same database instant as the scoring guard');
+
+    Date.now = () => closesAt - 1;
+    await databaseNow(closesAt - 1);
+    response = await post(payload);
+    assert.equal(response.status, 201, 'In-day retries are idempotent');
+    assert.equal((await response.json()).currentPlayer.id, id);
+    assert.equal(await count(), 1);
+    assert.deepEqual((await database.query('SELECT * FROM scores WHERE id = $1', [id])).rows[0], saved);
+    response = await post({ ...payload, name: 'Last instant' });
+    assert.equal(response.status, 201);
+    assert.equal(await count(), 2);
+
+    await database.exec(`
+      CREATE SEQUENCE test_clock.clock_calls;
+      CREATE OR REPLACE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
+        AS $$ SELECT current_setting('quantum_golf.test_now')::timestamptz
+          + CASE WHEN nextval('test_clock.clock_calls') > 1 THEN INTERVAL '1 millisecond' ELSE INTERVAL '0 milliseconds' END $$;
+    `);
+    assert.equal((await post(payload)).status, 409,
+      'A retry that waits for a conflicting row across midnight also checks the clock before updating');
+    assert.equal(await count(), 2);
+    await database.exec(`
+      CREATE OR REPLACE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
+        AS $$ SELECT current_setting('quantum_golf.test_now')::timestamptz $$;
+    `);
+
+    await databaseNow(closesAt);
+    for (const submission of [payload, { ...payload, name: 'Delayed visitor' }]) {
+      assert.equal((await post(submission)).status, 409, 'Requests begun yesterday cannot write at or after midnight');
+    }
+    assert.equal(await count(), 2);
+    Date.now = () => closesAt;
+    assert.equal((await post(payload)).status, 409, 'Stale clients are rejected by the server before a database request');
+    assert.equal((await boardFor(date)).status, 200, 'Past puzzle boards remain readable');
+    const tomorrow = '2026-10-15';
+    assert.deepEqual(await (await boardFor(tomorrow)).json(), { total: 0, entries: [], currentPlayer: null });
+    const tomorrowPuzzle = dailyPuzzle(tomorrow);
+    const tomorrowSolution = solveShortest(tomorrowPuzzle.target, tomorrowPuzzle.epsilon, { maxDepth: 12 });
+    assert.equal((await post({ date: tomorrow, name: 'Next day', sequence: tomorrowSolution.sequence })).status, 201);
+    assert.equal((await (await boardFor(date)).json()).total, 2);
+    assert.equal((await (await boardFor(tomorrow)).json()).total, 1, 'Each civil date has its own independent board');
+    for (const query of ['date=2026-10-14&level=1', 'date=2026-10-16', 'date=2026-02-30', 'date=', 'date=2026-10-12']) {
+      assert.equal((await route.fetch(new Request(`${endpoint}?${query}`))).status, 400);
+    }
+
+    // A DST change creates a 25-hour scoring interval rather than a fixed 24h.
+    const autumn = '2026-10-25';
+    const autumnBounds = dailyBounds(autumn);
+    assert.equal(autumnBounds.closesAt - autumnBounds.opensAt, 25 * 60 * 60 * 1000);
+    Date.now = () => autumnBounds.closesAt - 1;
+    await databaseNow(autumnBounds.closesAt - 1);
+    const autumnPuzzle = dailyPuzzle(autumn);
+    const autumnSolution = solveShortest(autumnPuzzle.target, autumnPuzzle.epsilon, { maxDepth: 12 });
+    assert.equal((await post({ date: autumn, name: 'DST visitor', sequence: autumnSolution.sequence })).status, 201);
+    await databaseNow(autumnBounds.closesAt);
+    assert.equal((await post({ date: autumn, name: 'Late DST visitor', sequence: autumnSolution.sequence })).status, 409);
+  } finally {
+    Date.now = originalNow;
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+    delete globalThis.__quantumGolfPostgres;
+    await database.close();
+  }
 });

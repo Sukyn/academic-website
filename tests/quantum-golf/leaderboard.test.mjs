@@ -8,6 +8,7 @@ const {
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { START_STATE, applyGate, traceDistance } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });
+const { DAILY_VERSION, dailyPuzzle } = await import(websiteFile('src/lib/quantum-golf/daily.js'));
 
 const valid = (changes = {}) => ({ level: 1, name: 'Ada', sequence: 'T', ...changes });
 const rejectsSubmission = (payload) => assert.throws(() => validateSubmission(payload), SubmissionError);
@@ -104,4 +105,28 @@ test('server campaign metadata agrees with playable holes and contains no soluti
     assert.equal('sequence' in level, false);
     assert.equal('witness' in level, false);
   }
+});
+
+test('daily submissions replay the server puzzle and cannot choose their own target or scoring day', () => {
+  const now = Date.parse('2026-10-14T12:00:00Z');
+  const date = '2026-10-14';
+  const puzzle = dailyPuzzle(date);
+  const { status, sequence } = solveShortest(puzzle.target, puzzle.epsilon, { maxDepth: 12 });
+  assert.equal(status, 'optimal');
+  const payload = { date, name: 'Daily Ada', sequence, target: [1, 0, 0], epsilon: 1, moves: 0 };
+  const score = validateSubmission(payload, now);
+  assert.equal(score.campaign, DAILY_VERSION);
+  assert.equal(score.level, 20261014);
+  assert.equal(score.moves, puzzle.optimalMoves);
+  assert.equal(score.date, date);
+  assert.equal(score.opensAt, Date.parse('2026-10-13T22:00:00Z'));
+  assert.equal(score.closesAt, Date.parse('2026-10-14T22:00:00Z'));
+  for (const changes of [
+    { date: '' }, { date: '2026-02-30' }, { date: '2026-10-12' },
+    { date: '2026-10-15' }, { date: '2026-10-14T00:00:00Z' },
+    { date: null }, { date: 20261014 }, { level: 1 }, { sequence: 'H' },
+  ]) assert.throws(() => validateSubmission({ ...payload, ...changes }, now), SubmissionError);
+  assert.throws(() => validateSubmission(payload, score.closesAt),
+    error => error instanceof SubmissionError && error.status === 409);
+  assert.equal(validateSubmission(payload, score.closesAt - 1).moves, puzzle.optimalMoves);
 });
