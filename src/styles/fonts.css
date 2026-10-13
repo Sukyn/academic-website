@@ -1,0 +1,403 @@
+/* Self-hosted original font files; licenses are in public/fonts/. */
+@font-face {
+  font-family:"Grenze Gotisch";
+  src:url("/fonts/0eaff0885a4b6b11.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:400 700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Grenze Gotisch";
+  src:url("/fonts/99fdc389b77b2ef8.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:400 700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Grenze Gotisch";
+  src:url("/fonts/f18d90c97ffdd3f9.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:400 700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/359b5836b691a104.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/69d35f63ca6e95e9.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/331e6a4d682eaa23.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/6487258d2bad61fa.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/504fc1101ab69463.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/5a2911fe91ad2b93.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:600;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/b6f2a01ad5fcc08c.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:600;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/4602225de90fe75c.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:600;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/7f12bfd617c535cb.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:600;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/312b238865e5de6c.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:600;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/b3f806863d99224b.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/a63f8eee1aa2f3ca.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/f562e11806436265.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/4a43b184f857c497.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/9e4fc01111ee5c76.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/0ea9ee73da0a4c98.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:400;
+  font-style:italic;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/f1954e9514fc96fb.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:400;
+  font-style:italic;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/2e653729aeec0e49.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:400;
+  font-style:italic;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/01c837937bd23f98.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:400;
+  font-style:italic;
+}
+
+@font-face {
+  font-family:Spectral;
+  src:url("/fonts/36dac98fc001e6cd.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:400;
+  font-style:italic;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/b5d6e85b14bf9324.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/5dd80a873a2371bd.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/d9401556ac1a1e23.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/4d37c5e93cb70adb.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/ed3dc9ca4379ac2c.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/f9ab4dbecf7a69d9.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:500;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/327390e492eaef50.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:500;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/d7d82bc0a7ccbac7.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:500;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/054a50cc3261ff25.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:500;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/5bac1bd65b142007.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:500;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/aded2d179d29816b.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/96d3cc323baa439d.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/c01c621673dfe6f7.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/807c3bc5c1b87e6a.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Alegreya Sans";
+  src:url("/fonts/c6d8ff8b69f3f272.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Space Mono";
+  src:url("/fonts/479ab8af71cf38f0.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Space Mono";
+  src:url("/fonts/5a0df0f19268a281.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Space Mono";
+  src:url("/fonts/575ce9699c982f75.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:400;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Space Mono";
+  src:url("/fonts/cd1dc8f828b08597.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Space Mono";
+  src:url("/fonts/075778efd01225d5.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  font-weight:700;
+  font-style:normal;
+}
+
+@font-face {
+  font-family:"Space Mono";
+  src:url("/fonts/22ecc8a761a2f468.woff2") format("woff2");
+  font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  font-weight:700;
+  font-style:normal;
+}
+
+:root {
+  --font-display:"Grenze Gotisch",Georgia,serif;
+  --font-body:Spectral,"Iowan Old Style",Georgia,serif;
+  --font-ui:"Alegreya Sans","Avenir Next","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --font-mono:"Space Mono","Cascadia Code",SFMono-Regular,Consolas,"Liberation Mono",monospace;
+}

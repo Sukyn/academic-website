@@ -2,6 +2,7 @@ import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, norm
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const LEADERBOARD_API = '/api/leaderboard';
+class ScoreError extends Error {}
 
 const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);
@@ -141,10 +142,19 @@ function leaderboard({ entries = [], currentPlayer: player = null, total = 0 } =
   }
 }
 
-async function fetchScores(url, options) {
-  const response = await fetch(url, options);
-  if (!response.ok) throw new Error('Scores unavailable');
-  return response.json();
+async function fetchScores(url, request, options = {}) {
+  const timeout = setTimeout(() => request.abort(), 15_000);
+  try {
+    const response = await fetch(url, { ...options, signal: request.signal });
+    const data = await response.json();
+    if (response.status === 400 && typeof data?.error === 'string' && data.error.length <= 160) {
+      throw new ScoreError(data.error);
+    }
+    if (!response.ok) throw new Error('Scores unavailable');
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function loadLeaderboard() {
@@ -157,12 +167,14 @@ async function loadLeaderboard() {
   // The controller itself identifies the current request, even after an abort.
   const request = boardAbort = new AbortController();
   try {
-    const data = await fetchScores(`${LEADERBOARD_API}?level=${level.id}${player}`, { signal: request.signal });
+    const data = await fetchScores(`${LEADERBOARD_API}?level=${level.id}${player}`, request);
     if (boardAbort === request) leaderboard(data);
   } catch {
     if (boardAbort === request) {
       get('leaderboard-status').textContent = 'Scores temporarily unavailable.';
     }
+  } finally {
+    if (boardAbort === request) boardAbort = null;
   }
 }
 
@@ -178,8 +190,8 @@ async function submitScore(event) {
   get('score-status').textContent = 'Saving…';
   update();
   try {
-    const data = await fetchScores(LEADERBOARD_API, {
-      method: 'POST', signal: submission.signal,
+    const data = await fetchScores(LEADERBOARD_API, submission, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level: level.id, name, sequence }),
     });
@@ -189,9 +201,9 @@ async function submitScore(event) {
     boardAbort = null;
     leaderboard(data);
     get('leaderboard-status').textContent = '';
-  } catch {
+  } catch (error) {
     if (scoreAbort === submission) {
-      get('score-status').textContent = 'Scores temporarily unavailable.';
+      get('score-status').textContent = error instanceof ScoreError ? error.message : 'Scores temporarily unavailable.';
     }
   } finally {
     if (scoreAbort === submission) {

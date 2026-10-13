@@ -14,7 +14,7 @@ export async function migrate(sql, rows = []) {
   if (!Array.isArray(rows)) throw new MigrationError('The score backup must contain an array of records.');
   const ids = new Set();
   const scores = rows.map((row, index) => {
-    if (!row || !integer(row.id, 1) || !integer(row.level, 1) ||
+    if (!row || !integer(row.id, 1) || !integer(row.level, 1) || Number(row.level) > 2147483647 ||
       !integer(row.moves, 1) || !integer(row.created_at) ||
       typeof row.campaign !== 'string' || !row.campaign || row.campaign.includes('\0') ||
       typeof row.name !== 'string' || !row.name.trim() || Array.from(row.name).length > 24 || /\p{C}/u.test(row.name) ||
@@ -64,7 +64,7 @@ async function main() {
     } catch { throw new MigrationError('Could not read the JSON score backup. Check its path and format.'); }
     if (!Array.isArray(rows)) throw new MigrationError('The score backup must contain an array of records.');
   }
-  const count = await migrate(neon(url), rows);
+  const count = await migrate(neon(url, { fetchOptions: { signal: AbortSignal.timeout(60_000) } }), rows);
   console.log(`Migration complete. ${count} backed-up scores verified.`);
 }
 

@@ -2,13 +2,14 @@
 
 Astro site for publications, talks, outreach, contact information, and research ideas.
 
-Quantum golf uses a native Vercel function at `/api/leaderboard` and a Neon Postgres database. Setup, local development, and score migration are documented in [tools/quantum-golf/SETUP.md](tools/quantum-golf/SETUP.md).
+Quantum golf uses a native Vercel function at `/api/leaderboard` and a Neon Postgres database. Its source, campaign generator, tests, and database tools are all in this repository. See [game maintenance](tools/quantum-golf/README.md) and [database setup and backups](tools/quantum-golf/SETUP.md).
 
 ## Commands
 
 ```sh
-npm install
+npm ci
 npm run dev
+npm test
 npm run check
 npm run build
 ```
@@ -20,12 +21,10 @@ Main content lives in:
 - `src/content/publications.bibtex` for BibTeX-backed publication metadata
 - `public/` for PDFs and static assets
 
-Fonts are configured in `astro.config.mjs` using Astro's fonts API. Astro downloads
-and caches Google Fonts during development/build, then serves the generated files
-from this site. A first build needs network access. `BaseLayout.astro` preloads
-only four Latin fonts used in the header and body; other weights and subsets load
-on demand, with `font-display: swap`. The Google provider wrapper keeps legacy
-declarations before WOFF2 subsets so browsers use the smaller preloaded files.
+Use Node 24. Fonts are self-hosted in `public/fonts/` and defined in
+`src/styles/fonts.css`. They preserve the original font files and load without a
+Google Fonts request or an experimental Astro provider. `BaseLayout.astro`
+preloads four Latin fonts; other weights and subsets load on demand.
 
 Todo :
 - Add dragons

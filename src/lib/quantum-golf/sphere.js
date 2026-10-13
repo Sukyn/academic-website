@@ -37,6 +37,8 @@ export class BlochSphere {
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
     canvas.addEventListener('pointerup', (event) => this.pointerUp(event));
     canvas.addEventListener('pointercancel', (event) => this.pointerUp(event, true));
+    canvas.addEventListener('lostpointercapture', (event) => this.pointerUp(event, true));
+    canvas.addEventListener('contextrestored', () => this.resize());
     canvas.addEventListener('wheel', (event) => {
       event.preventDefault();
       this.zoomBy(Math.exp(-event.deltaY * 0.001));

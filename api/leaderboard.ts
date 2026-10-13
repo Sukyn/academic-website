@@ -3,10 +3,12 @@ import {
   CAMPAIGN, getLevel, readSubmission, SubmissionError, validateSubmission,
 } from "../src/lib/quantum-golf/leaderboard.js";
 
-function getSql() {
+function getSql(request: Request) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new SubmissionError("Scores are temporarily unavailable. Try again.", 503);
-  return neon(url);
+  return neon(url, {
+    fetchOptions: { signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]) },
+  });
 }
 
 function checkOrigin(request: Request) {
@@ -64,12 +66,12 @@ export default {
         if (id !== undefined && (!Number.isSafeInteger(id) || id < 1)) {
           throw new SubmissionError("Choose a valid player record.");
         }
-        return Response.json(await board(getSql(), level, { id }), {
+        return Response.json(await board(getSql(request), level, { id }), {
           headers: { "Cache-Control": id === undefined ? "public, max-age=15" : "no-store" },
         });
       }
       const score = validateSubmission(await readSubmission(request));
-      const sql = getSql();
+      const sql = getSql(request);
       await sql`
         INSERT INTO scores (campaign, level, name, sequence, moves, created_at)
         VALUES (${score.campaign}, ${score.level}, ${score.name}, ${score.sequence}, ${score.moves}, ${Date.now()})
@@ -80,6 +82,16 @@ export default {
       });
     } catch (error) {
       const known = error instanceof SubmissionError;
+      if (!known || error.status >= 500) {
+        // Database errors can contain credentials or submitted names. Log only
+        // enough metadata to distinguish configuration, timeout and SQL errors.
+        const code = (error as { code?: unknown } | null)?.code;
+        console.error("Quantum golf leaderboard failed.", {
+          configured: Boolean(process.env.DATABASE_URL),
+          error: error instanceof Error ? error.name : "Error",
+          code: typeof code === "string" && /^[A-Z0-9]{5}$/.test(code) ? code : undefined,
+        });
+      }
       return Response.json({ error: known ? error.message : "Scores are temporarily unavailable. Try again." }, {
         status: known ? error.status : 503, headers: { "Cache-Control": "no-store" },
       });

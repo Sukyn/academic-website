@@ -1,9 +1,9 @@
 ---
-import { Font } from "astro:assets";
 import ZXWallpaper from "../components/ZXWallpaper.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
 import { siteProfile } from "../data/site";
+import "../styles/fonts.css";
 import "../styles/global.css";
 
 export interface Props {
@@ -29,22 +29,10 @@ const canonical = Astro.url.toString();
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <Font
-      cssVariable="--font-display"
-      preload={[{ subset: "latin", style: "normal" }]}
-    />
-    <Font
-      cssVariable="--font-body"
-      preload={[{ subset: "latin", weight: 400, style: "normal" }]}
-    />
-    <Font
-      cssVariable="--font-ui"
-      preload={[{ subset: "latin", weight: 400, style: "normal" }]}
-    />
-    <Font
-      cssVariable="--font-mono"
-      preload={[{ subset: "latin", weight: 400, style: "normal" }]}
-    />
+    <link rel="preload" href="/fonts/f18d90c97ffdd3f9.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/504fc1101ab69463.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/ed3dc9ca4379ac2c.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/575ce9699c982f75.woff2" as="font" type="font/woff2" crossorigin />
 
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
