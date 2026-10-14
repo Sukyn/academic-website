@@ -1,9 +1,33 @@
 import { ScoreError, fetchJson } from './http.js';
 import { populateDailyArchive } from './daily-ui.js';
+import { DAY, dailyMetadata, dateTimestamp } from './daily-calendar.js';
+
+function checkResponse(response, date, startDate, validatePuzzle) {
+  if (!response || typeof response !== 'object' || Array.isArray(response) ||
+      !response.puzzle || typeof response.puzzle !== 'object' || Array.isArray(response.puzzle) ||
+      response.startDate !== startDate || !Number.isFinite(response.serverNow) || typeof response.acceptingScores !== 'boolean' ||
+      !Number.isSafeInteger(response.puzzle.optimalMoves) || response.puzzle.optimalMoves < 1) {
+    throw new Error('Invalid daily puzzle response.');
+  }
+  const firstDay = dateTimestamp(response.startDate);
+  const calendar = dailyMetadata(response.date, response.startDate, response.serverNow);
+  // A corrupt server clock must not allocate millions of archive options.
+  // This leaves more than a century of normal daily archives available.
+  if ((dateTimestamp(calendar.today) - firstDay) / DAY + 1 > 50_000) {
+    throw new Error('Daily archive is too large.');
+  }
+  if ((date && response.date !== date) ||
+      ['date', 'today', 'opensAt', 'closesAt', 'nextChangeAt'].some(key => response[key] !== calendar[key]) ||
+      (response.acceptingScores && (!calendar.acceptingScores || response.offline))) {
+    throw new Error('Invalid daily puzzle response.');
+  }
+  validatePuzzle?.(response.puzzle);
+  return response;
+}
 
 /** Daily transport, server clock and refresh lifecycle; gameplay stays in the caller. */
 export function createDailySession({
-  game, onPuzzle, update, selectedDate, isBusy = () => false, fallback,
+  game, startDate, onPuzzle, update, selectedDate, isBusy = () => false, fallback, validatePuzzle,
   settleDelay = 50, get = id => document.getElementById(id),
 }) {
   let info, received, request, timer, loading = false;
@@ -26,10 +50,10 @@ export function createDailySession({
     try {
       const params = new URLSearchParams({ game, ...(date ? { date } : {}) });
       let response;
-      try { response = await fetchJson(`/api/daily?${params}`, job, { cache: 'no-store' }); }
+      try { response = checkResponse(await fetchJson(`/api/daily?${params}`, job, { cache: 'no-store' }), date, startDate, validatePuzzle); }
       catch (error) {
         if (job.signal.aborted || error instanceof ScoreError || !fallback) throw error;
-        response = fallback(date);
+        response = checkResponse(fallback(date), date, startDate, validatePuzzle);
       }
       if (request !== job) return;
       // The caller owns the playable puzzle. Retain only clock/archive metadata here.

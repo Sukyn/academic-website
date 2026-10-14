@@ -1,9 +1,9 @@
-export type PublicationLink = {
+type PublicationLink = {
   label: string;
   href: string;
 };
 
-export type PublicationUpdate = {
+type PublicationUpdate = {
   label: string;
   html: string;
 };

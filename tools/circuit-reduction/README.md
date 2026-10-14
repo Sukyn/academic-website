@@ -42,7 +42,7 @@ Small difficulties and explicit one/two-wire generator requests use bound-certif
 
 Daily puzzles start on **14 October 2026**, use a frozen date/version seed, and have a certified optimum of **10–14 moves**. Score deadlines and archives use the same Paris calendar as Golf, including daylight-saving transitions. When the API is unavailable, the identical seeded daily puzzle remains playable as offline practice; no scores can be submitted without server authorization.
 
-Custom circuits are parsed and independently checked as identity matrices on up to four wires. A worker runs bounded exact iterative-deepening search for their optimum. If the search exhausts its budget, the interface reports that the optimum is undetermined; it does not label a greedy result as optimal.
+Custom imports accept up to 16,384 characters and are independently checked as identity matrices on up to four wires. This bounds paste-time parsing and rendering; interactive identity spacing stays unbounded. A worker runs bounded exact iterative-deepening search for their optimum. If the search exhausts its budget, the interface reports that the optimum is undetermined; it does not label a greedy result as optimal.
 
 ## Checks
 

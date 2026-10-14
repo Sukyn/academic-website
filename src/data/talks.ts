@@ -1,4 +1,4 @@
-export type TalkLink = {
+type TalkLink = {
   label: string;
   href: string;
 };

@@ -17,7 +17,7 @@ const { offer } = Astro.props as { offer: OfferSummary };
     <span class="pill">{offer.fitBadge}</span>
   </div>
 
-  <h4 set:html={renderInlineMath(offer.title)} />
+  <h3 set:html={renderInlineMath(offer.title)} />
 
   <p set:html={renderInlineMath(offer.background)} />
 
@@ -54,9 +54,15 @@ const { offer } = Astro.props as { offer: OfferSummary };
     margin-bottom: 0.65rem;
   }
 
-  .offer-preview-card h4 {
+  .offer-preview-card h3 {
     margin: 0 0 0.55rem;
     color: var(--color-text);
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: inherit;
+    text-shadow: none;
+    text-wrap: wrap;
   }
 
   .offer-preview-card p {

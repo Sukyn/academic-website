@@ -21,9 +21,14 @@ npm run build
 
 - `src/pages/`: routes
 - `src/data/`: talks, outreach, and research notes
+- `src/lib/`, `src/scripts/`: reusable helpers and browser/worker code
 - `src/content/publications.bibtex`: publications
 - `public/`: PDFs, fonts, and other assets
+- `api/`: daily puzzles and validated score endpoints
+- `tests/`, `tools/`: regressions, offline generation, and maintenance checks
 
 [Quantum golf](tools/quantum-golf/README.md) is at `/games/quantum-golf/`.
 [Circuit reduction](tools/circuit-reduction/README.md) is at `/games/circuit-reduction/`.
-The unlisted circuit tool is at `/circuits/`; check it with `npm run test:circuits`.
+The unlisted finite-field circuit tool is at `/circuits/`; its construction algorithms are checked against Python references with `npm run test:circuits`.
+
+See [quality checks](tools/quality/README.md) for whole-site browser, accessibility, dependency, and dead-code audits. Test reports and temporary tools stay in ignored `tmp/`.

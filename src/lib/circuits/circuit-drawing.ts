@@ -8,7 +8,10 @@ export type Panel = { nodes: Node[]; edges: Edge[]; width: number; height: numbe
 const empty = { text: '', tex: '' };
 const signed = (value: number, p: number) => value <= p / 2 ? value : value - p;
 
-export function elementLabel(value: number, p: number): Label {
+function elementLabel(value: number, p: number): Label {
+  if (!Number.isSafeInteger(value) || value < 0 || !Number.isInteger(p) || p < 2 || p > 256) {
+    throw new Error('A field label needs a nonnegative integer and a base between 2 and 256.');
+  }
   const terms: { coefficient: number; degree: number }[] = [];
   for (let degree = 0; value; degree++, value = Math.floor(value / p)) {
     const coefficient = signed(value % p, p);
@@ -17,7 +20,7 @@ export function elementLabel(value: number, p: number): Label {
   const format = (tex: boolean) => terms.map(({ coefficient, degree }, i) => {
     const sign = coefficient < 0 ? '-' : i ? '+' : '';
     const number = degree && Math.abs(coefficient) === 1 ? '' : Math.abs(coefficient);
-    const power = degree > 1 ? (tex ? `^{${degree}}` : '⁰¹²³⁴⁵⁶⁷⁸⁹'[degree]) : '';
+    const power = degree > 1 ? (tex ? `^{${degree}}` : String(degree).replace(/\d/g, digit => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(digit)])) : '';
     return `${sign}${number}${degree ? (tex ? '\\alpha' : 'α') + power : ''}`;
   }).join('') || '0';
   return { text: format(false), tex: format(true) };

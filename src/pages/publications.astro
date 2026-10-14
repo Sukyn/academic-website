@@ -4,6 +4,7 @@ import ContentDialog from "../components/ContentDialog.astro";
 import { talks, type TalkAppearance } from "../data/talks";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { parseBibtexToPubs, type Pub } from "../lib/bibtex";
+import { webUrl } from "../lib/links";
 
 import bibtex from "../content/publications.bibtex?raw";
 
@@ -47,8 +48,9 @@ function publicationLinks(publication: Pub, note?: PublicationNote) {
   const links: Array<{ label: string; href: string }> = [];
 
   function pushLink(label: string, href: string) {
-    if (links.some((link) => link.href === href)) return;
-    links.push({ label, href });
+    const safeHref = webUrl(href);
+    if (!safeHref || links.some((link) => link.href === safeHref)) return;
+    links.push({ label, href: safeHref });
   }
 
   const primaryUrl = note?.fullVersionUrl ?? url;
@@ -57,9 +59,9 @@ function publicationLinks(publication: Pub, note?: PublicationNote) {
     try {
       const parsed = new URL(primaryUrl);
 
-      if (parsed.hostname.includes("arxiv.org")) {
+      if (parsed.hostname === "arxiv.org" || parsed.hostname.endsWith(".arxiv.org")) {
         pushLink("arXiv", primaryUrl);
-      } else if (parsed.hostname.includes("doi.org")) {
+      } else if (parsed.hostname === "doi.org" || parsed.hostname.endsWith(".doi.org")) {
         pushLink("DOI", primaryUrl);
       } else {
         pushLink("Open", primaryUrl);
@@ -236,7 +238,7 @@ const talkTimeline = talks
           </button>
           <span class="citation-copy-status" data-citation-copy-status aria-live="polite"></span>
         </div>
-        <pre class="citation-block"><code id={`${publication.id}-bibtex`}>{publication.citation}</code></pre>
+        <pre class="citation-block" tabindex="0" role="region" aria-label="BibTeX citation"><code id={`${publication.id}-bibtex`}>{publication.citation}</code></pre>
       </ContentDialog>
     ))}
 
@@ -583,6 +585,11 @@ const talkTimeline = talks
 
     .citation-block {
       max-height: 24rem;
+    }
+
+    .citation-block:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
     }
   </style>
 </BaseLayout>

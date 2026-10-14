@@ -32,14 +32,44 @@ const mod = (a: number, p: number) => ((a % p) + p) % p;
 export class Field {
   readonly p: number;
   readonly degree: number;
+  readonly metadata: FieldMetadata;
   private readonly digits: number[][];
 
-  constructor(readonly q: number, readonly metadata: FieldMetadata) {
+  constructor(readonly q: number, metadata: FieldMetadata) {
+    if (!Number.isInteger(q) || q < 5 || q > 256 || !metadata || typeof metadata !== 'object') {
+      throw new Error('Use a prime power ≤ 256 with characteristic ≥ 5.');
+    }
     this.p = metadata.characteristic;
-    // Callers supply canonical metadata from the checked-in fields.json whitelist.
+    if (!Number.isInteger(this.p) || this.p < 5 || this.p > q) {
+      throw new Error('The field characteristic must be prime and at least 5.');
+    }
+    for (let divisor = 2; divisor * divisor <= this.p; divisor++) {
+      if (this.p % divisor === 0) throw new Error('The field characteristic must be prime and at least 5.');
+    }
+    if (metadata.modulus !== undefined && (!Array.isArray(metadata.modulus) ||
+        metadata.modulus.length < 3 || metadata.modulus.length > 4 || metadata.modulus[0] !== 1 ||
+        metadata.modulus.some(c => !Number.isInteger(c) || c < 0 || c >= this.p))) {
+      throw new Error('Use a monic polynomial with coefficients in the prime field.');
+    }
     this.degree = metadata.modulus ? metadata.modulus.length - 1 : 1;
-    this.digits = Array.from({ length: q }, (_, label) =>
+    if (q !== this.p ** this.degree || !Number.isInteger(metadata.primitive) || metadata.primitive < 1 || metadata.primitive >= q) {
+      throw new Error('The field size, polynomial degree and primitive element are inconsistent.');
+    }
+    // Keep the checked-in basis stable if a caller later edits its metadata object.
+    this.metadata = { characteristic: this.p, primitive: metadata.primitive };
+    if (metadata.modulus) this.metadata.modulus = [...metadata.modulus];
+    this.digits = this.degree === 1 ? [] : Array.from({ length: q }, (_, label) =>
       Array.from({ length: this.degree }, (_, index) => Math.floor(label / this.p ** index) % this.p));
+    // A full nonzero orbit proves both irreducibility and the claimed primitive element.
+    // Bound the check by q so malformed polynomials cannot trap construction in a cycle.
+    const seen = new Uint8Array(q);
+    let value = 1;
+    for (let i = 0; i < q - 1; i++) {
+      if (!value || seen[value]) throw new Error('Use an irreducible polynomial and a primitive field element.');
+      seen[value] = 1;
+      value = this.mul(value, this.metadata.primitive);
+    }
+    if (value !== 1) throw new Error('Use an irreducible polynomial and a primitive field element.');
   }
 
   scalar(value: number): number { return mod(value, this.p); }
@@ -260,7 +290,7 @@ export function createConstruction(
       let plan = powerCache.get(degree);
       if (!plan) {
         const order = powerOrder(q, degree);
-        const multiplier = K.pow(metadata.primitive, (q - 1) / order);
+        const multiplier = K.pow(K.metadata.primitive, (q - 1) / order);
         const seen = new Set<number>();
         const swaps: { a: number; b: number; coefficient: number }[] = [];
         for (let a = 1; a < q; a++) {
@@ -381,7 +411,7 @@ export function createConstruction(
     const borrowedWires = Array.from({ length: borrowed }, (_, index) => k + 1 + index);
     product(Array.from({ length: k }, (_, index) => index), k, borrowedWires, algorithm);
     const circuit: Circuit = { q, wire_count: k + 1 + borrowed, operations };
-    if (K.degree > 1) circuit.modulus = [...metadata.modulus!];
+    if (K.degree > 1) circuit.modulus = [...K.metadata.modulus!];
     return circuit;
   }
   return { maxDepth, generate };

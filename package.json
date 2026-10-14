@@ -12,6 +12,7 @@
     "check": "astro check",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs tests/games/*.test.mjs tests/quantum-golf/*.test.mjs tests/circuit-reduction/*.test.mjs",
     "test:circuits": "node --test tests/circuits.test.mjs",
+    "test:site:browser": "node tools/quality/browser.mjs",
     "test:golf": "node --test tests/quantum-golf/*.test.mjs",
     "test:reduction": "node --test tests/circuit-reduction/*.test.mjs",
     "test:reduction:browser": "node tools/circuit-reduction/browser.mjs",

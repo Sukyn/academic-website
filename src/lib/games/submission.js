@@ -9,7 +9,9 @@ export class SubmissionError extends Error {
 
 export function scoreName(value) {
   const name = typeof value === "string" ? value.trim().replace(/\s+/gu, " ") : "";
-  if (!name || Array.from(name).length > 24 || /\p{C}/u.test(name)) {
+  // At most two UTF-16 units per code point: bound the array allocation even
+  // when a malicious request fills its entire body budget with a nickname.
+  if (!name || name.length > 48 || Array.from(name).length > 24 || /\p{C}/u.test(name)) {
     throw new SubmissionError("Use a name of 1 to 24 characters.");
   }
   return name;
@@ -31,7 +33,6 @@ export async function readSubmission(request, maxBytes = MAX_SUBMISSION_BYTES, o
       if (done) break;
       size += value.byteLength;
       if (size > maxBytes) {
-        await reader.cancel();
         throw new SubmissionError("Submission is too large.", 413);
       }
       body += decoder.decode(value, { stream: true });
@@ -44,7 +45,9 @@ export async function readSubmission(request, maxBytes = MAX_SUBMISSION_BYTES, o
       signal.aborted ? 408 : 400);
   } finally {
     signal.removeEventListener("abort", cancel);
-    await reader.cancel().catch(() => {});
+    // A broken upstream cancellation hook must not delay an error response or
+    // replace its status. Cancelling closes pending reads before its hook settles.
+    cancel();
     reader.releaseLock();
   }
 }

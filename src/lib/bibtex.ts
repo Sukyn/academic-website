@@ -1,4 +1,5 @@
 import bibtexParse from "bibtex-parse-js";
+import { webUrl } from "./links";
 
 export type Pub = {
   id: string;
@@ -14,27 +15,13 @@ export type Pub = {
   type?: string;
 };
 
-function getTag(tags: Record<string, any>, key: string): string | undefined {
-  if (!tags) return undefined;
-
-  // exact match
-  if (tags[key] != null) return String(tags[key]);
-
-  // case-insensitive match (covers title/TITLE/Title etc.)
-  const lowerKey = key.toLowerCase();
-  for (const k of Object.keys(tags)) {
-    if (k.toLowerCase() === lowerKey) return String(tags[k]);
-  }
-  return undefined;
-}
-
-function pickVenue(tags: Record<string, any>) {
+function pickVenue(tags: Record<string, string>) {
   return (
-    getTag(tags, "journal") ||
-    getTag(tags, "booktitle") ||
-    getTag(tags, "school") ||
-    getTag(tags, "publisher") ||
-    getTag(tags, "howpublished") ||
+    tags.journal ||
+    tags.booktitle ||
+    tags.school ||
+    tags.publisher ||
+    tags.howpublished ||
     ""
   );
 }
@@ -84,23 +71,37 @@ function cleanDisplayText(value: string) {
 }
 
 function formatAuthorName(name: string) {
+  // Braces make an organisation a single author, including commas and "and".
+  if (outerBracesWrapValue(name.trim())) return cleanDisplayText(name);
   const parts = name
     .split(",")
     .map((part) => cleanDisplayText(part))
     .filter(Boolean);
 
   if (parts.length === 2) return `${parts[1]} ${parts[0]}`;
-  if (parts.length === 3) return `${parts[2]} ${parts[1]} ${parts[0]}`;
+  if (parts.length === 3) return `${parts[2]} ${parts[0]}, ${parts[1]}`;
 
   return cleanDisplayText(name);
 }
 
 function formatAuthors(authors: string) {
-  return authors
-    .replaceAll("\n", " ")
-    .split(/\s+and\s+/i)
-    .map(formatAuthorName)
-    .join(", ");
+  const text = authors.replace(/\s+/g, " ").trim();
+  const names: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "\\") { index += 1; continue; }
+    if (char === "{") depth += 1;
+    else if (char === "}") depth -= 1;
+    else if (depth === 0 && text.slice(index, index + 5).toLowerCase() === " and ") {
+      names.push(text.slice(start, index));
+      index += 4;
+      start = index + 1;
+    }
+  }
+  names.push(text.slice(start));
+  return names.map(formatAuthorName).filter(Boolean).join(", ");
 }
 
 function extractRawEntries(source: string) {
@@ -135,29 +136,37 @@ function extractRawEntries(source: string) {
 }
 
 export function parseBibtexToPubs(bibtex: string): Pub[] {
-  const entries = bibtexParse.toJSON(bibtex) ?? [];
+  // The parser scans % comments until a newline, including at end of input.
+  // The sentinel prevents a trailing comment from trapping the build in a loop.
+  let entries: Array<{ citationKey: string; entryType: string; entryTags?: Record<string, string> }>;
+  try {
+    entries = bibtexParse.toJSON(`${bibtex}\n`);
+  } catch (error) {
+    throw new Error("Invalid publication BibTeX.", { cause: error });
+  }
   const rawEntries = extractRawEntries(bibtex);
 
-  const pubs: Pub[] = entries.map((e: any, index: number) => {
-    const t = (e.entryTags ?? {}) as Record<string, any>;
+  const pubs: Pub[] = entries.filter((entry) => entry.entryTags).map((e, index) => {
+    // Normalise once, rather than scanning every tag for each requested field.
+    const t = Object.fromEntries(Object.entries(e.entryTags!).map(([key, value]) => [key.toLowerCase(), value]));
 
-    const yearRaw = getTag(t, "year");
+    const yearRaw = t.year;
     const year = yearRaw ? Number(yearRaw) : undefined;
 
-    const doi = getTag(t, "doi");
-    const url = getTag(t, "url") ?? (doi ? `https://doi.org/${doi}` : undefined);
+    const doi = t.doi;
+    const url = webUrl(t.url) ?? (doi ? webUrl(`https://doi.org/${doi}`) : undefined);
     const id = e.citationKey ?? `entry-${index + 1}`;
 
     return {
       id,
-      title: cleanDisplayText(getTag(t, "title") ?? "Untitled"),
-      authors: formatAuthors(getTag(t, "author") ?? ""),
+      title: cleanDisplayText(t.title ?? "Untitled"),
+      authors: formatAuthors(t.author ?? ""),
       year: Number.isFinite(year) ? year : undefined,
       venue: pickVenue(t),
       url,
       doi,
-      note: getTag(t, "note"),
-      pages: getTag(t, "pages"),
+      note: t.note,
+      pages: t.pages,
       citation: rawEntries.get(id),
       type: e.entryType,
     };

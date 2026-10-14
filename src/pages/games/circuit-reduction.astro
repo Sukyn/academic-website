@@ -64,7 +64,7 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
             <details><summary>Custom circuit</summary>
               <form id="custom-form">
                 <label for="custom-circuit">One wire per line. Use . H X Z and linked endpoints ZU/ZD or XU/XD.</label>
-                <textarea id="custom-circuit" rows="4" spellcheck="false" required aria-describedby="custom-help">H Z H X</textarea>
+                <textarea id="custom-circuit" rows="4" maxlength="16384" spellcheck="false" required aria-describedby="custom-help">H Z H X</textarea>
                 <p class="message" id="custom-help">Rows must have equal lengths. The circuit must implement the identity. Custom circuits use the same rules.</p>
                 <button class="button" type="submit">Play circuit</button>
               </form>

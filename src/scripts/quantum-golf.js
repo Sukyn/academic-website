@@ -3,6 +3,7 @@ import { formatPuzzleDate as dateLabel, bindDailyControls } from '../lib/games/d
 import { createDailySession } from '../lib/games/daily-session.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
+import { DAILY_START } from '../lib/quantum-golf/daily.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const VIEW_STEPS = { ArrowLeft: [-30, 0], ArrowRight: [30, 0], ArrowUp: [0, -30], ArrowDown: [0, 30] };
@@ -44,7 +45,13 @@ const scores = createScoreboard({
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
 const daily = createDailySession({
-  game: 'quantum-golf', get, update, selectedDate: () => level?.date, isBusy: () => busy,
+  game: 'quantum-golf', startDate: DAILY_START, get, update, selectedDate: () => level?.date, isBusy: () => busy,
+  validatePuzzle(puzzle) {
+    normalize(puzzle.target);
+    if (!Number.isFinite(puzzle.epsilon) || puzzle.epsilon < 0 || puzzle.epsilon > 1) {
+      throw new Error('Invalid daily hole size.');
+    }
+  },
   onPuzzle(info, select) {
     if (!select && level?.date !== info.date) return;
     const same = level?.date === info.date;

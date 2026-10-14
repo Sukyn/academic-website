@@ -10,7 +10,7 @@ import { compileApiFixture, loadApiFixture } from '../../tools/games/api-fixture
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { DAILY_VERSION, dailyBounds, dailyPuzzle } = await import(websiteFile('src/lib/quantum-golf/daily.js'));
-const { MAX_SUBMISSION_BYTES } = await import(websiteFile('src/lib/quantum-golf/leaderboard.js'));
+const { MAX_SUBMISSION_BYTES } = await import(websiteFile('src/lib/games/submission.js'));
 const { CAMPAIGN: CIRCUIT_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_CIRCUIT_BYTES } =
   await import(websiteFile('src/lib/circuit-reduction/leaderboard.js'));
 const { DAILY_VERSION: CIRCUIT_DAILY_VERSION } = await import(websiteFile('src/lib/circuit-reduction/puzzles.js'));
@@ -439,6 +439,18 @@ test('database waits stop on request cancellation or timeout and errors never ex
     assert.equal(JSON.stringify(logs).includes('Sensitive'), false, 'Logs omit database error text and request data');
     assert.deepEqual(logs.at(-1), ['Game leaderboard failed.', {
       configured: true, error: 'TimeoutError', code: undefined,
+    }]);
+    // Error names are mutable too; upstream error objects are not safe log data.
+    globalThis.__quantumGolfPostgres = () => {
+      const error = new Error('Sensitive database message');
+      error.name = 'Sensitive postgresql://user:password@database';
+      error.code = 'Sensitive SQL detail';
+      throw error;
+    };
+    assert.equal((await get()).status, 503);
+    assert.equal(JSON.stringify(logs).includes('Sensitive'), false);
+    assert.deepEqual(logs.at(-1), ['Game leaderboard failed.', {
+      configured: true, error: 'Error', code: undefined,
     }]);
   } finally {
     if (originalUrl === undefined) delete process.env.DATABASE_URL;

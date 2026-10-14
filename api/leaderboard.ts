@@ -122,9 +122,10 @@ export default {
         // Database errors can contain credentials or submitted names. Log only
         // enough metadata to distinguish configuration, timeout and SQL errors.
         const code = (error as { code?: unknown } | null)?.code;
+        const name = error instanceof Error ? error.name : "Error";
         console.error("Game leaderboard failed.", {
           configured: Boolean(process.env.DATABASE_URL),
-          error: error instanceof Error ? error.name : "Error",
+          error: ["Error", "TypeError", "AbortError", "TimeoutError", "NeonDbError"].includes(name) ? name : "Error",
           code: typeof code === "string" && /^[A-Z0-9]{5}$/.test(code) ? code : undefined,
         });
       }

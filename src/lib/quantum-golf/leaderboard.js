@@ -2,7 +2,6 @@ import campaign from "./campaign.json" with { type: "json" };
 import { START_STATE, applyGate, traceDistance } from "./quantum.js";
 import { DAILY_VERSION, dailyBounds, dailyDate, dailyPuzzle, validDailyDate } from "./daily.js";
 import { SubmissionError, scoreName } from "../games/submission.js";
-export { MAX_SUBMISSION_BYTES, SubmissionError, readSubmission } from "../games/submission.js";
 
 export const CAMPAIGN = campaign.version;
 export function getLevel(id) {

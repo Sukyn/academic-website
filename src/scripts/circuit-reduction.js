@@ -1,4 +1,4 @@
-import { RULES, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getLegalMoves, isSolved, parseCircuit, isIdentity, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
+import { RULES, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getLegalMoves, isSolved, parseCircuit, validateCircuit, isIdentity, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
 import { generatePuzzle } from '../lib/circuit-reduction/generator.js';
 import { gateGlyph, spaceGlyph, circuitWires } from '../lib/circuit-reduction/rendering.js';
 import { LEVELS, dailyPuzzle, DAILY_START } from '../lib/circuit-reduction/puzzles.js';
@@ -40,7 +40,8 @@ const scores = createScoreboard({
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
 const daily = createDailySession({
-  game: GAME, get, update, settleDelay: 20,
+  game: GAME, startDate: DAILY_START, get, update, settleDelay: 20,
+  validatePuzzle: puzzle => validateCircuit(puzzle.circuit),
   selectedDate: () => mode === 'daily' ? level.date : undefined,
   onPuzzle(info, select) {
     if (select && (mode !== 'daily' || level.date !== info.date)) {
@@ -294,10 +295,16 @@ onClick('share-score', () => share(get('share-score'))); onClick('share-result',
 onClick('show-rules', () => get('rules-dialog').showModal()); onClick('close-rules', () => get('rules-dialog').close()); onClick('close-win', () => winDialog.close());
 for (const id of ['win-dialog', 'rules-dialog']) get(id).addEventListener('click', event => { if (event.target === get(id)) { const rect = get(id).getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) get(id).close(); } });
 get('score-form').addEventListener('submit', scores.submit);
+const MAX_CUSTOM_INPUT_LENGTH = 16_384;
 get('custom-form').addEventListener('submit', event => {
   event.preventDefault();
+  const text = get('custom-circuit').value;
+  if (text.length > MAX_CUSTOM_INPUT_LENGTH) {
+    get('custom-status').textContent = 'Custom circuits can use up to 16,384 characters.';
+    return;
+  }
   try {
-    const custom = parseCircuit(get('custom-circuit').value);
+    const custom = parseCircuit(text);
     if (isSolved(custom)) throw new Error('This circuit is already empty. Add some gates first.');
     if (!isIdentity(custom)) throw new Error('This circuit is not the identity. Check its gates and linked endpoints.');
     setPuzzle('random', { circuit: custom, optimalMoves: null });
@@ -312,12 +319,14 @@ get('custom-form').addEventListener('submit', event => {
     const finish = result => {
       if (worker !== searchWorker) return;
       worker.terminate(); searchWorker = null;
-      if (result.status === 'optimal') { level.optimalMoves = result.optimalMoves; get('custom-status').textContent = `Shortest solution: ${result.optimalMoves} moves.`; }
+      if (result && !Array.isArray(result) && result.status === 'optimal' && Number.isSafeInteger(result.optimalMoves) && result.optimalMoves > 0) { level.optimalMoves = result.optimalMoves; get('custom-status').textContent = `Shortest solution: ${result.optimalMoves} moves.`; }
       else get('custom-status').textContent = 'Identity verified. Shortest solution not determined within the search limit.';
       update({ board: false });
     };
-    worker.onmessage = ({ data }) => finish(data); worker.onerror = () => finish({ status: 'error' });
-    worker.postMessage({ circuit: custom });
+    worker.onmessage = ({ data }) => finish(data);
+    worker.onerror = event => { event?.preventDefault(); finish(); };
+    worker.onmessageerror = () => finish();
+    try { worker.postMessage({ circuit: custom }); } catch { finish(); }
   } catch (error) { get('custom-status').textContent = error.message; }
 });
 document.addEventListener('keydown', event => {

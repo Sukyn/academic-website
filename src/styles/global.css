@@ -210,6 +210,7 @@ a:focus-visible {
 
 .skip-link {
   position: absolute;
+  z-index: 2;
   left: 1rem;
   top: 0.5rem;
   padding: 0.5rem 0.75rem;
@@ -326,6 +327,12 @@ a:focus-visible {
   border-radius: 999px;
   font-family: var(--font-mono);
   letter-spacing: 0.03em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a {
+    transition: none;
+  }
 }
 
 @media print {

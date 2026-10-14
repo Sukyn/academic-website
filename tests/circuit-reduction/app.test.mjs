@@ -122,9 +122,10 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   globalThis.fetch = (url, options) => new Promise((resolve, reject) => requests.push({ url: String(url), options, resolve, reject }));
   globalThis.setTimeout = (callback, delay) => { const timer = { callback, delay }; timers.set(timer, timer); return timer; };
   globalThis.clearTimeout = timer => timers.delete(timer);
+  let failPosting = false;
   const WorkerMock = class {
     constructor() { this.onmessage = null; this.onerror = null; workers.push(this); }
-    postMessage(message) { this.message = message; }
+    postMessage(message) { if (failPosting) throw new Error('Message could not be posted'); this.message = message; }
     terminate() { this.terminated = true; }
     respond(data) { this.onmessage?.({ data }); }
   };
@@ -438,6 +439,44 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   globalThis.Worker = WorkerMock;
   get('custom-circuit').value = '. X . .'; const validCustom = boardSignature(); await get('custom-form').dispatch('submit');
   assert.match(get('custom-status').textContent, /not the identity/); assert.equal(boardSignature(), validCustom);
+
+  // Import budgets protect parsing, identity evaluation and DOM construction,
+  // while the paper game's interactive horizontal layout remains unlimited.
+  const pasteLimit = Number(get('custom-circuit').getAttribute('maxlength'));
+  assert.equal(pasteLimit, 16_384);
+  const beforeLargePaste = boardSignature(), beforeLargePasteMoves = moveCount(), beforeLargePasteWorkers = workers.length;
+  get('custom-circuit').value = '!'.repeat(pasteLimit + 1);
+  await get('custom-form').dispatch('submit');
+  assert.match(get('custom-status').textContent, /up to 16,384 characters/);
+  assert.equal(boardSignature(), beforeLargePaste, 'An excessive import preserves the current circuit');
+  assert.equal(moveCount(), beforeLargePasteMoves);
+  assert.equal(workers.length, beforeLargePasteWorkers, 'Excessive imports never start searches');
+  get('custom-circuit').value = 'H H'.padEnd(pasteLimit, ' ');
+  await get('custom-form').dispatch('submit');
+  assert.deepEqual(workers.at(-1).message.circuit, [['H', 'H']], 'Imports at the advertised boundary remain valid');
+  workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
+  assert.match(get('custom-status').textContent, /Shortest solution: 1 moves/);
+  for (const result of [null, undefined, [], {}, 'bad', { status: 'optimal' },
+    ...[0, -1, .5, NaN, Infinity, '1'].map(optimalMoves => ({ status: 'optimal', optimalMoves }))]) {
+    get('custom-circuit').value = 'H H'; await get('custom-form').dispatch('submit');
+    const worker = workers.at(-1);
+    assert.doesNotThrow(() => worker.respond(result));
+    assert.equal(worker.terminated, true, 'Malformed terminal replies release their search worker');
+    assert.match(get('custom-status').textContent, /Identity verified.*search limit/);
+  }
+  await get('custom-form').dispatch('submit');
+  const unreadableMessage = workers.at(-1);
+  unreadableMessage.onmessageerror();
+  assert.equal(unreadableMessage.terminated, true);
+  assert.match(get('custom-status').textContent, /Identity verified.*search limit/);
+  failPosting = true;
+  await get('custom-form').dispatch('submit');
+  assert.equal(workers.at(-1).terminated, true, 'A synchronous posting failure releases its worker');
+  assert.match(get('custom-status').textContent, /Identity verified.*search limit/);
+  failPosting = false;
+  await get('custom-form').dispatch('submit');
+  workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
+  assert.match(get('custom-status').textContent, /Shortest solution: 1 moves/, 'A search failure does not prevent the next import');
 
   // Restoring a saved round keeps its result, closes cancelled export UI and
   // fetches the same player's leaderboard instead of treating it as a new try.

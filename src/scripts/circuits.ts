@@ -67,7 +67,13 @@ function construct(resetDepth = false) {
   depthValue.value = depth.value;
   preview.setAttribute('aria-busy', 'true');
   message('Constructing…');
-  const activeWorker = worker ??= new Worker(new URL('./circuit-worker.ts', import.meta.url), { type: 'module' });
+  let activeWorker: Worker;
+  try {
+    activeWorker = worker ??= new Worker(new URL('./circuit-worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    fail('The circuit worker could not start. Please reload and try again.');
+    return;
+  }
   busy = true;
   const id = request;
   activeWorker.onmessage = ({ data }) => {
@@ -90,14 +96,20 @@ function construct(resetDepth = false) {
     copy.disabled = false;
     message();
   };
-  activeWorker.onerror = () => {
-    if (id !== request) return;
+  const reject = () => {
+    if (id !== request || activeWorker !== worker) return;
     activeWorker.terminate();
     worker = undefined;
     busy = false;
     fail('The circuit could not be constructed. Please reload and try again.');
   };
-  activeWorker.postMessage({ id, q: Number(dimension.value), k: Number(controls.value), algorithm: algorithm.value, depth: Number(depth.value) });
+  activeWorker.onerror = reject;
+  activeWorker.onmessageerror = reject;
+  try {
+    activeWorker.postMessage({ id, q: Number(dimension.value), k: Number(controls.value), algorithm: algorithm.value, depth: Number(depth.value) });
+  } catch {
+    reject();
+  }
 }
 
 function schedule(resetDepth = false, delay = 100) {
@@ -146,4 +158,14 @@ copy.addEventListener('click', async () => {
   }
 });
 new ResizeObserver(draw).observe(preview);
+window.addEventListener('pagehide', () => {
+  clearTimeout(timer);
+  request++;
+  worker?.terminate();
+  worker = undefined;
+  busy = false;
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted) schedule(false, 0);
+});
 schedule(false, 0);

@@ -1,4 +1,4 @@
-export type StemOutreachLink = {
+type StemOutreachLink = {
   label: string;
   href: string;
 };

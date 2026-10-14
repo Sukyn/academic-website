@@ -28,4 +28,14 @@ jobs:
       - run: npm run check
       - run: npm run check:golf
       - run: npm test
+      - run: node tools/circuit-reduction/certify-generated.mjs --check-data
       - run: npm run build
+      - name: Check the built website in Chromium
+        run: |
+          npm install --prefix tmp/quality-tools --no-save --package-lock=false --ignore-scripts axe-core@4.14.0 playwright@1.62.1
+          node tmp/quality-tools/node_modules/playwright/cli.js install --with-deps chromium
+          node node_modules/astro/bin/astro.mjs preview --host 127.0.0.1 --port 4323 &
+          preview_pid=$!
+          trap 'kill "$preview_pid"' EXIT
+          curl --retry 10 --retry-delay 1 --retry-connrefused --fail --silent http://127.0.0.1:4323/ > /dev/null
+          npm run test:site:browser

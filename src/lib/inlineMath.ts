@@ -11,36 +11,37 @@ function escapeHtml(s: string) {
 
 export function renderInlineMath(input: string) {
   if (!input) return "";
-
-  let s = input.replaceAll("\\(", "$").replaceAll("\\)", "$");
-  s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_m, inner) => `$${inner}$`);
-
   const parts: string[] = [];
+  let textStart = 0;
+  let opening: { delimiter: string; index: number; end: number } | undefined;
+  const plainText = (text: string) => escapeHtml(text.replaceAll("\\$", "$"));
 
-  while (s.includes("$")) {
-    const a = s.indexOf("$");
-    const b = s.indexOf("$", a + 1);
-    if (b === -1) break;
-
-    const before = s.slice(0, a);
-    if (before) parts.push(escapeHtml(before));
-
-    const math = s.slice(a + 1, b).trim();
-    if (math) {
-      parts.push(
-        katex.renderToString(math, {
-          throwOnError: false,
-          displayMode: false,
-          output: "html",
-          strict: "ignore",
-        }),
-      );
+  // Scan delimiters once. Escaped dollars remain text; unmatched delimiters
+  // remain readable. All supported math delimiters use the same inline style.
+  for (const match of input.matchAll(/\\[\s\S]|\$\$?/g)) {
+    const delimiter = match[0];
+    const index = match.index!;
+    if (!opening) {
+      if (delimiter === "$" || delimiter === "$$" || delimiter === "\\(") {
+        opening = { delimiter, index, end: index + delimiter.length };
+      }
+      continue;
     }
+    const closing = opening.delimiter === "\\(" ? "\\)" : opening.delimiter;
+    if (delimiter !== closing) continue;
 
-    s = s.slice(b + 1);
+    parts.push(plainText(input.slice(textStart, opening.index)));
+    const math = input.slice(opening.end, index).trim();
+    if (math) parts.push(katex.renderToString(math, {
+      throwOnError: false,
+      displayMode: false,
+      output: "htmlAndMathml",
+      strict: "ignore",
+      trust: false,
+    }));
+    textStart = index + delimiter.length;
+    opening = undefined;
   }
-
-  if (s) parts.push(escapeHtml(s));
-
+  parts.push(plainText(input.slice(textStart)));
   return parts.join("");
 }
