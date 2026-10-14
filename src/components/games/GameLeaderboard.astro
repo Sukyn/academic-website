@@ -1,0 +1,12 @@
+---
+interface Props { unit?: string }
+const { unit = 'Moves' } = Astro.props;
+---
+
+<section class="leaderboard" id="leaderboard-section" aria-labelledby="leaderboard-title">
+  <h2 id="leaderboard-title">Leaderboard</h2>
+  <div class="ranking" tabindex="0" role="region" aria-label="Leaderboard scores">
+    <table><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">{unit}</th></tr></thead><tbody id="leaderboard-body"></tbody></table>
+  </div>
+  <p class="message" id="leaderboard-status" role="status"></p>
+</section>

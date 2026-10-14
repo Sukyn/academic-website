@@ -1,66 +1,15 @@
 import { normalize } from './quantum.js';
 import { solveShortest } from './solver.js';
+import { DAY, dateTimestamp, validDailyDate as validCalendarDate } from '../games/daily-calendar.js';
+export { DAILY_TIME_ZONE, dailyDate, dailyBounds } from '../games/daily-calendar.js';
 
 export const DAILY_VERSION = 'quantum-golf-daily-v1-plus';
 export const DAILY_START = '2026-10-13';
-export const DAILY_TIME_ZONE = 'Europe/Paris';
-const DAY = 86_400_000;
 const EPSILON = 0.09;
 const cache = new Map();
-const paris = new Intl.DateTimeFormat('en', {
-  timeZone: DAILY_TIME_ZONE, calendar: 'iso8601', numberingSystem: 'latn',
-  year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-});
-
-function parts(timestamp) {
-  return Object.fromEntries(paris.formatToParts(timestamp)
-    .filter(({ type }) => type !== 'literal').map(({ type, value }) => [type, value]));
-}
-
-function dateTimestamp(date) {
-  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new RangeError('Choose a date in YYYY-MM-DD format.');
-  }
-  const timestamp = Date.parse(`${date}T00:00:00Z`);
-  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date) {
-    throw new RangeError('Choose a valid calendar date.');
-  }
-  return timestamp;
-}
-
-export function dailyDate(now = Date.now()) {
-  const { year, month, day } = parts(now);
-  return `${year.padStart(4, '0')}-${month}-${day}`;
-}
 
 export function validDailyDate(date, now = Date.now()) {
-  try {
-    dateTimestamp(date);
-    return date >= DAILY_START && date <= dailyDate(now);
-  } catch {
-    return false;
-  }
-}
-
-// Convert civil Paris midnight to UTC; the two offsets may differ on DST days.
-function midnight(utcDate) {
-  let result = utcDate;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { year, month, day, hour, minute, second } = parts(result);
-    const local = new Date(0);
-    local.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
-    local.setUTCHours(Number(hour), Number(minute), Number(second), 0);
-    const corrected = utcDate - (local.getTime() - result);
-    if (corrected === result) break;
-    result = corrected;
-  }
-  return result;
-}
-
-export function dailyBounds(date) {
-  const timestamp = dateTimestamp(date);
-  return { opensAt: midnight(timestamp), closesAt: midnight(timestamp + DAY) };
+  return validCalendarDate(date, now, DAILY_START);
 }
 
 // Freeze the seed, geometry and hole size under DAILY_VERSION. Campaign edits

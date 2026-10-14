@@ -1,7 +1,14 @@
 import { neon } from "@neondatabase/serverless";
 import {
-  getBoard, readSubmission, SubmissionError, validateSubmission,
+  getBoard, validateSubmission,
 } from "../src/lib/quantum-golf/leaderboard.js";
+import { readSubmission, SubmissionError } from "../src/lib/games/submission.js";
+
+function checkGame(value: unknown = "quantum-golf") {
+  if (value !== "quantum-golf") {
+    throw new SubmissionError("Choose a supported game.");
+  }
+}
 
 function getSql(request: Request) {
   const url = process.env.DATABASE_URL;
@@ -13,8 +20,13 @@ function getSql(request: Request) {
 
 function checkOrigin(request: Request) {
   const origin = request.headers.get("Origin");
-  if (origin && origin !== new URL(request.url).origin) {
+  if ((origin && origin !== new URL(request.url).origin) ||
+    (request.method === "POST" && request.headers.get("Sec-Fetch-Site") === "cross-site")) {
     throw new SubmissionError("Origin is not allowed.", 403);
+  }
+  if (request.method === "POST" &&
+    request.headers.get("Content-Type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+    throw new SubmissionError("Send scores as JSON.", 415);
   }
 }
 
@@ -58,8 +70,9 @@ export default {
     }
     try {
       checkOrigin(request);
+      const params = new URL(request.url).searchParams;
+      checkGame(params.get("game") ?? undefined);
       if (request.method === "GET") {
-        const params = new URL(request.url).searchParams;
         const selected = getBoard({
           ...(params.has("level") ? { level: params.get("level") } : {}),
           ...(params.has("date") ? { date: params.get("date") } : {}),
@@ -73,7 +86,9 @@ export default {
           headers: { "Cache-Control": id === undefined ? "public, max-age=15" : "no-store" },
         });
       }
-      const score = validateSubmission(await readSubmission(request));
+      const input = await readSubmission(request);
+      if (input && typeof input === "object" && Object.hasOwn(input, "game")) checkGame(input.game);
+      const score = validateSubmission(input);
       const sql = getSql(request);
       if ("date" in score) {
         // Use the database clock in the write itself: a request that waits across
@@ -108,7 +123,7 @@ export default {
         // Database errors can contain credentials or submitted names. Log only
         // enough metadata to distinguish configuration, timeout and SQL errors.
         const code = (error as { code?: unknown } | null)?.code;
-        console.error("Quantum golf leaderboard failed.", {
+        console.error("Game leaderboard failed.", {
           configured: Boolean(process.env.DATABASE_URL),
           error: error instanceof Error ? error.name : "Error",
           code: typeof code === "string" && /^[A-Z0-9]{5}$/.test(code) ? code : undefined,

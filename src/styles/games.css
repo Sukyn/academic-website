@@ -1,0 +1,102 @@
+/* Shared game navigation, overlays, rankings and responsive controls. */
+  .quantum-game [hidden] { display: none !important; }
+  .quantum-game .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .quantum-game .back { font-family: var(--font-ui); font-size: .85rem; text-decoration: none; }
+  .quantum-game h1 { margin: .7rem 0 0; }
+  .quantum-game output { color: var(--color-heading); font-variant-numeric: tabular-nums; }
+  .quantum-game .game-layout { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); gap: 1.5rem; margin-top: 1rem; }
+  .quantum-game .game-content { min-width: 0; }
+  .quantum-game .mode-menu { display: flex; flex-direction: column; gap: .5rem; font-family: var(--font-ui); }
+  .quantum-game .mode-menu .button { width: 100%; padding: .55rem .65rem; text-align: left; font-size: .95rem; }
+  .quantum-game button[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
+  .quantum-game .daily-menu { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; gap: .25rem; }
+  .quantum-game .daily-menu #daily-toggle { padding: 0; text-align: center; }
+  .quantum-game #daily-toggle[aria-expanded="true"] { transform: rotate(180deg); }
+  .quantum-game .daily-archive { display: grid; gap: .4rem; padding-top: .6rem; font-size: .85rem; }
+  .quantum-game .daily-archive select { width: 100%; max-width: none; height: 2.2rem; }
+  .quantum-game .game-toolbar { display: flex; align-items: center; gap: .5rem; min-height: 2.5rem; font-family: var(--font-ui); }
+  .quantum-game .level-bar { display: flex; flex: 1; align-items: center; gap: .5rem; max-width: 24rem; }
+  .quantum-game .level-bar button, .quantum-game .level-bar select { height: 2.5rem; line-height: normal; }
+  .quantum-game .level-bar button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2rem; padding: 0; }
+  .quantum-game select, .quantum-game input[type="text"] { border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-surface-2); color: var(--color-text); font: inherit; padding: .35rem .5rem; }
+  .quantum-game select { flex: 1; max-width: 18rem; min-width: 0; padding-block: 0; }
+  .quantum-game #show-rules { height: 2.5rem; padding: 0 .7rem; line-height: normal; }
+  .quantum-game .daily-heading { margin-top: .75rem; font-family: var(--font-ui); }
+  .quantum-game #daily-title { margin: 0; color: var(--color-heading); font-variant-numeric: tabular-nums; }
+  .quantum-game .round-controls { max-width: 37rem; margin-inline: auto; display: flex; align-items: center; gap: .7rem; }
+  .quantum-game .round-controls { position: relative; flex-wrap: wrap; justify-content: center; margin-top: .9rem; font-family: var(--font-ui); font-size: .85rem; }
+  .quantum-game .round-controls .button, .quantum-game .advanced-features .button, .quantum-game .review-controls .button, .quantum-game .replay-actions .button, .quantum-game .share-actions .button { padding: .35rem .65rem; font-size: .85rem; }
+  .quantum-game .round-controls .button { background: transparent; }
+  .quantum-game summary { cursor: pointer; color: var(--color-muted); }
+  .quantum-game .advanced-features { max-width: 37rem; margin: .7rem auto 0; font-family: var(--font-ui); font-size: .85rem; text-align: center; }
+  .quantum-game .advanced-features > summary { width: fit-content; min-height: 2rem; margin-inline: auto; padding: .35rem .5rem; }
+  .quantum-game .advanced-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .7rem; margin-top: .6rem; }
+  .quantum-game .advanced-features .button { min-height: 2rem; min-width: 2rem; }
+  .quantum-game .replay-actions, .quantum-game .share-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .7rem; }
+  .quantum-game .daily-replay-actions { max-width: 37rem; margin: .7rem auto 0; font-family: var(--font-ui); }
+  .quantum-game #result-replay-actions { margin-top: .6rem; }
+  .quantum-game #sequence, .quantum-game #best-count { max-width: 37rem; margin: .9rem auto 0; min-height: 1.5em; text-align: center; overflow-wrap: anywhere; font-family: var(--font-mono); color: var(--color-muted); font-size: .8rem; }
+  .quantum-game #sequence { display: flex; flex-wrap: wrap; justify-content: center; gap: .2rem; max-height: 8rem; overflow: auto; }
+  .quantum-game #sequence button { min-width: 2rem; min-height: 2rem; padding: .2rem .35rem; border: 1px solid transparent; border-radius: 3px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  .quantum-game #sequence button[aria-current="step"] { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-surface-2); }
+  .quantum-game .review-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: .7rem; margin-top: .6rem; font-family: var(--font-ui); }
+  .quantum-game .review-controls .message { margin: 0; }
+  .quantum-game .leaderboard { max-width: 37rem; margin: 1.4rem auto 0; font-family: var(--font-ui); }
+  .quantum-game h2 { font-size: 1.4rem; margin: 0 0 .7rem; }
+  .quantum-game .ranking { max-height: 16rem; overflow: auto; }
+  .quantum-game table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .quantum-game table th, .quantum-game table td { text-align: left; padding: .4rem .65rem; border-bottom: 1px solid var(--color-border); }
+  .quantum-game table th { color: var(--color-muted); font-weight: 400; }
+  .quantum-game table th:last-child, .quantum-game table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .quantum-game table .benchmark { color: var(--color-heading); font-weight: 600; }
+  .quantum-game table .current-player { background: var(--color-surface-2); color: var(--color-heading); font-weight: 600; }
+  .quantum-game .score-form { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; font-size: .9rem; }
+  .quantum-game .score-form label { width: 100%; }
+  .quantum-game .score-form input { flex: 1; min-width: 8rem; width: 12rem; }
+  .quantum-game .score-form button { font-size: .9rem; padding: .4rem .65rem; }
+  .quantum-game .message { margin: .5rem 0 0; color: var(--color-muted); font-size: .85rem; }
+  .quantum-game .message:empty { display: none; }
+  .quantum-game .game-dialog { width: min(34rem, calc(100% - 2rem)); max-height: 85vh; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-family: var(--font-ui); }
+  .quantum-game .game-dialog::backdrop { background: rgba(3, 12, 9, .8); }
+  .quantum-game .rules-dialog p { margin: .8rem 0 0; line-height: 1.55; }
+  .quantum-game #win-title { text-align: center; margin: 0 0 .75rem; font-size: 2.4rem; line-height: 1; }
+  .quantum-game #win-summary { margin: 0 0 1rem; text-align: center; font-variant-numeric: tabular-nums; }
+  .quantum-game .close-dialog { position: absolute; top: .4rem; right: .6rem; border: 0; background: transparent; color: var(--color-muted); font-size: 1.6rem; cursor: pointer; }
+  .quantum-game #player-rank { margin: 0 0 1rem; text-align: center; color: var(--color-heading); font-variant-numeric: tabular-nums; }
+  .quantum-game .win-dialog .ranking { max-height: 23rem; }
+  .quantum-game .win-dialog table { font-size: .85rem; line-height: 1.35; }
+  .quantum-game .win-dialog table th, .quantum-game .win-dialog table td { padding: .25rem .5rem; }
+  .quantum-game .result-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .7rem; margin-top: 1.2rem; }
+  .quantum-game .share-dialog h2 { padding-right: 1.5rem; }
+  .quantum-game #share-preview { display: block; width: 100%; max-height: 60vh; object-fit: contain; margin: 1rem auto; }
+  .quantum-game .share-actions { margin-top: 1rem; }
+  .quantum-game button:disabled { opacity: .35; cursor: default; }
+  .quantum-game button:focus-visible, .quantum-game input:focus-visible, .quantum-game select:focus-visible, .quantum-game summary:focus-visible, .quantum-game .ranking:focus-visible, .quantum-game .share-actions a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+  @media (max-width: 760px) {
+  .quantum-game .game-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .quantum-game .mode-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+  .quantum-game .mode-menu .button { padding: .4rem .5rem; font-size: .85rem; }
+  .quantum-game .mode-menu #daily-status { grid-column: 1 / -1; }
+  .quantum-game .daily-menu { grid-template-columns: minmax(0, 1fr) 2.75rem; }
+  .quantum-game .daily-archive { font-size: .8rem; }
+  .quantum-game .game-layout .button, .quantum-game .game-dialog .button, .quantum-game .game-dialog button, .quantum-game #sequence button { min-width: 2.75rem; min-height: 2.75rem; }
+  .quantum-game .advanced-features > summary { min-height: 2.75rem; padding-block: .5rem; }
+  .quantum-game .level-bar { min-width: 0; }
+  .quantum-game .level-bar select, .quantum-game #show-rules { height: 2.75rem; }
+  .quantum-game .daily-archive select, .quantum-game .score-form input { min-height: 2.75rem; font-size: 1rem; }
+  .quantum-game .game-dialog { padding: 1rem; max-height: 90dvh; }
+  .quantum-game .close-dialog { width: 2.75rem; top: 0; right: 0; }
+  .quantum-game .score-form input { min-width: 0; }
+  .quantum-game table td:nth-child(2) { overflow-wrap: anywhere; }
+  }
+  @media (max-width: 600px) {
+  main.container:has(.quantum-game) { padding-top: 1rem; }
+  .quantum-game .game-layout { gap: .75rem; margin-top: .75rem; }
+  .quantum-game .mode-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quantum-game .mode-menu > div { grid-column: 1 / -1; }
+  .quantum-game .mode-menu .button { font-size: .95rem; text-align: center; }
+  .quantum-game .game-toolbar, .quantum-game .level-bar { gap: .4rem; }
+  .quantum-game #show-rules { margin-left: auto; }
+  .quantum-game .round-controls { gap: .5rem; }
+  .quantum-game #sequence:empty { display: none; }
+  }

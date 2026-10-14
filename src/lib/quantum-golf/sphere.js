@@ -24,7 +24,7 @@ const grid = [
 
 /** Orthographic sphere: states and targets are unit vectors [x, y, z]. */
 export class BlochSphere {
-  constructor(canvas, { onPick } = {}) {
+  constructor(canvas, { onPick, interactive = true } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.onPick = onPick;
@@ -32,6 +32,7 @@ export class BlochSphere {
     this.history = [];
     this.view = { yaw: 0.72, pitch: 0.28, zoom: 1 };
     this.setState({ state: START_STATE, target: null, epsilon: 0.12, pickMode: false, sequence: '', showTrace: true, animation: null });
+    if (!interactive) { this.resize(canvas.width, canvas.height, 1); return; }
     this.pointers = new Map();
     canvas.addEventListener('pointerdown', (event) => this.pointerDown(event));
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
@@ -49,12 +50,13 @@ export class BlochSphere {
 
   setState(next) {
     if (Object.entries(next).every(([key, value]) => this.model[key] === value)) return;
-    const { state, target, epsilon, sequence, showTrace } = this.model;
+    const { state, target, epsilon, sequence, showTrace, showPreviews } = this.model;
     Object.assign(this.model, next);
     // Geometry changes with the circuit or hole, never with the camera.
-    if (state !== this.model.state) {
+    if (state !== this.model.state || showPreviews !== this.model.showPreviews) {
       this.state = normalize(this.model.state);
-      this.traces = ['H', 'T'].map(gate => ({ gate, points: gateTrajectory(this.state, gate, 96) }));
+      this.traces = this.model.showPreviews === false ? [] :
+        ['H', 'T'].map(gate => ({ gate, points: gateTrajectory(this.state, gate, 96) }));
     }
     if (target !== this.model.target || epsilon !== this.model.epsilon) {
       this.boundary = this.model.target ? targetCap(this.model.target, this.model.epsilon, 96) : null;
@@ -71,14 +73,18 @@ export class BlochSphere {
         point = points.at(-1);
       }
     }
-    this.canvas.style.cursor = this.model.pickMode ? 'crosshair' : 'grab';
+    if (this.canvas.style) this.canvas.style.cursor = this.model.pickMode ? 'crosshair' : 'grab';
     this.render();
   }
 
-  resize() {
-    const rect = this.canvas.getBoundingClientRect(), ratio = Math.min(2, window.devicePixelRatio || 1);
-    this.width = Math.max(1, rect.width);
-    this.height = Math.max(1, rect.height);
+  resize(width, height, ratio = 1) {
+    if (width === undefined || height === undefined) {
+      const rect = this.canvas.getBoundingClientRect();
+      width = rect.width; height = rect.height;
+      ratio = Math.min(2, window.devicePixelRatio || 1);
+    }
+    this.width = Math.max(1, width);
+    this.height = Math.max(1, height);
     this.canvas.width = Math.round(this.width * ratio);
     this.canvas.height = Math.round(this.height * ratio);
     this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -292,7 +298,7 @@ export class BlochSphere {
     for (const { gate, points } of traces) this.preview(points, gate);
     if (target) this.circle(target, 3, 'target', true);
     this.circle(state, 5, 'state', true);
-    for (const [label, point] of [['|0⟩', [0, 0, 1.16]], ['|1⟩', [0, 0, -1.16]], ['|+⟩', [1.16, 0, 0]], ['y', [0, 1.16, 0]]]) {
+    if (this.model.showLabels !== false) for (const [label, point] of [['|0⟩', [0, 0, 1.16]], ['|1⟩', [0, 0, -1.16]], ['|+⟩', [1.16, 0, 0]], ['y', [0, 1.16, 0]]]) {
       const p = this.project(point);
       const offset = Math.hypot(p.x - this.cx, p.y - this.cy) < 18 ? (p.depth >= 0 ? -18 : 18) : 0;
       this.label(label, p, 'sphere', 0, offset);

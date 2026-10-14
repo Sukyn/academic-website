@@ -8,7 +8,8 @@ const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/level
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { dailyPuzzle, dailyBounds, dailyDate, DAILY_START, DAILY_TIME_ZONE } = await import(websiteFile('src/lib/quantum-golf/daily.js'));
 
-test('campaign, random and daily rounds: scoring, navigation, races and midnight rollover', async (context) => {
+test('campaign, random and daily rounds: scoring, replay, sharing, races and midnight rollover', async (context) => {
+  const downloads = [];
   class MockElement {
     constructor(tagName = 'DIV') {
       this.tagName = tagName;
@@ -31,25 +32,91 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
     }
     dispatch(name, extra = {}) {
       const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
-      const result = Promise.all((this.listeners.get(name) || []).map((callback) => callback(event)));
+      const path = [this];
+      if (name === 'click') {
+        for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
+      }
+      const callbacks = [];
+      for (const node of path) {
+        event.currentTarget = node;
+        for (const callback of node.listeners.get(name) || []) callbacks.push(callback(event));
+      }
+      const result = Promise.all(callbacks);
       if (name === 'cancel' && this.tagName === 'DIALOG' && !event.defaultPrevented) this.close();
       return result;
     }
+    closest(selector) {
+      assert.equal(selector, 'button[data-step]');
+      for (let node = this; node; node = node.parentElement) {
+        if (node.tagName === 'BUTTON' && node.getAttribute('data-step') !== null) return node;
+      }
+      return null;
+    }
     setAttribute(name, value) { this.attrs[name] = String(value); }
     getAttribute(name) { return this.attrs[name] ?? null; }
-    appendChild(child) { this.children.push(child); return child; }
-    replaceChildren(...children) { this._text = ''; this.children = children; }
+    removeAttribute(name) { delete this.attrs[name]; }
+    get lastElementChild() { return this.children.at(-1) ?? null; }
+    appendChild(child) {
+      if (child.tagName === '#DOCUMENT-FRAGMENT') {
+        for (const node of [...child.children]) this.appendChild(node);
+        child.children = [];
+      } else {
+        child.remove();
+        child.parentElement = this;
+        this.children.push(child);
+      }
+      return child;
+    }
+    append(...children) { for (const child of children) this.appendChild(child); }
+    remove() {
+      const siblings = this.parentElement?.children;
+      if (siblings) siblings.splice(siblings.indexOf(this), 1);
+      this.parentElement = null;
+    }
+    replaceChildren(...children) {
+      for (const child of this.children) child.parentElement = null;
+      this._text = '';
+      this.children = [];
+      for (const child of children) this.appendChild(child);
+    }
     get textContent() { return this._text + this.children.map((child) => child.textContent ?? child).join(''); }
     set textContent(value) { this._text = String(value); this.children = []; }
     showModal() { this.open = true; this.showCount++; }
     close() { if (this.open) { this.open = false; this.dispatch('close'); } }
     focus() {}
     reportValidity() { return true; }
-    querySelector() { return submitButton; }
+    querySelector(selector) {
+      if (selector.startsWith('.')) {
+        const descendants = [...this.children];
+        while (descendants.length) {
+          const node = descendants.shift();
+          if (node.classList.contains(selector.slice(1))) return node;
+          descendants.push(...node.children);
+        }
+        return null;
+      }
+      return submitButton;
+    }
+    click() {
+      if (this.tagName === 'A') downloads.push({ href: this.href, download: this.download });
+      return this.dispatch('click');
+    }
   }
 
-  // Use the real Astro markup so renamed or removed controls fail the test.
-  const html = await readFile(new URL('src/pages/games/quantum-golf.astro', website), 'utf8');
+  // Expand the actual shared Astro templates so renamed or removed controls
+  // still fail this controller test after presentation components are reused.
+  let html = await readFile(new URL('src/pages/games/quantum-golf.astro', website), 'utf8');
+  const component = async name => (await readFile(new URL(`src/components/games/${name}.astro`, website), 'utf8'))
+    .replace(/^---[\s\S]*?---/, '');
+  for (const name of ['GameModeMenu', 'GameToolbar', 'GameLeaderboard']) {
+    html = html.replace(new RegExp(`<${name}\\b[^>]*\\/>`), await component(name));
+  }
+  const dialogs = html.match(/<GameDialogs\b[^>]*>([\s\S]*?)<\/GameDialogs>/);
+  assert.ok(dialogs, 'Golf uses the shared result, rules and share overlays');
+  const rules = dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '';
+  const actions = dialogs[1].match(/<button slot="result-actions"[\s\S]*?<\/button>/)?.[0] ?? '';
+  html = html.replace(dialogs[0], (await component('GameDialogs'))
+    .replace('<slot name="rules" />', rules).replace('<slot name="result-actions" />', actions));
   const advancedMarkup = html.match(/(<details\b[^>]*\bid="advanced-features"[^>]*>)([\s\S]*?)<\/details>/);
   assert.ok(advancedMarkup, 'Advanced controls use a native disclosure');
   assert.doesNotMatch(advancedMarkup[1], /\sopen(?:[\s=>])/, 'Advanced controls start collapsed');
@@ -61,6 +128,12 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.ok(resultAdvancedMarkup, 'Result Replay uses a native disclosure');
   assert.doesNotMatch(resultAdvancedMarkup[1], /\sopen(?:[\s=>])/, 'Result advanced controls start collapsed');
   assert.match(resultAdvancedMarkup[2], /\bid="replay-result"/);
+  assert.match(advancedMarkup[2], /\bid="share-score"/);
+  assert.match(resultAdvancedMarkup[2], /\bid="share-result"/);
+  assert.match(html, /id="share-dialog"[^>]*aria-labelledby="share-title"/);
+  for (const id of ['share-score', 'share-result', 'replay-actions', 'result-replay-actions']) {
+    assert.equal([...html.matchAll(new RegExp(`\\bid="${id}"`, 'g'))].length, 1, `#${id} has a single instance`);
+  }
   assert.doesNotMatch(html, /\bid="undo-result"/, 'Undo remains on the game instead of the popup');
   const elements = new Map();
   for (const match of html.matchAll(/<([a-z]+)[^>]*\bid="([^"]+)"[^>]*>/g)) {
@@ -73,6 +146,23 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
     for (const attr of match[0].matchAll(/\b(aria-[\w-]+)="([^"]*)"/g)) element.setAttribute(attr[1], attr[2]);
     elements.set(match[2], element);
   }
+  // Retain ID-bearing parents so moving one group updates the real controls.
+  const ancestors = [];
+  for (const match of html.matchAll(/<(\/?)([a-z][\w-]*)\b([^>]*)>/gi)) {
+    const tag = match[2].toLowerCase();
+    if (match[1]) {
+      const index = ancestors.findLastIndex(parent => parent.tag === tag);
+      if (index >= 0) ancestors.length = index;
+      continue;
+    }
+    const parent = ancestors.at(-1)?.node;
+    const node = elements.get(match[3].match(/\bid="([^"]+)"/)?.[1]) ?? new MockElement(tag.toUpperCase());
+    node.className = match[3].match(/\bclass="([^"]*)"/)?.[1] ?? '';
+    if (parent) parent.appendChild(node);
+    if (!['input', 'img', 'br', 'hr', 'link', 'meta'].includes(tag)) {
+      ancestors.push({ tag, node });
+    }
+  }
   const get = (id) => {
     assert.ok(elements.has(id), `Real page must include #${id}`);
     return elements.get(id);
@@ -80,14 +170,70 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   const submitButton = new MockElement('BUTTON');
   const body = new MockElement('BODY');
   const doc = new MockElement('DOCUMENT');
+  doc.body = body;
+  doc.documentElement = new MockElement('HTML');
   doc.getElementById = get;
-  doc.createElement = (tag) => new MockElement(tag.toUpperCase());
+  doc.querySelector = selector => {
+    const [id, child] = selector.split(/\s+/);
+    const node = get(id.slice(1));
+    return child ? node.querySelector(child) : node;
+  };
+  let createdButtons = 0;
+  doc.createElement = (tag) => {
+    if (tag === 'button') createdButtons++;
+    return new MockElement(tag.toUpperCase());
+  };
+  doc.createDocumentFragment = () => new MockElement('#DOCUMENT-FRAGMENT');
   doc.visibilityState = 'visible';
   globalThis.document = doc;
   let reducedMotion = true;
   const browser = new MockElement('WINDOW');
   browser.matchMedia = () => ({ matches: reducedMotion });
   globalThis.window = browser;
+  let clipboardSupported = true, clipboardFailure = null, clipboardDelay = null;
+  const clipboardWrites = [];
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ClipboardItem');
+  const mockNavigator = { clipboard: { write: async items => {
+    clipboardWrites.push(items);
+    if (clipboardFailure) throw clipboardFailure;
+    if (clipboardDelay) await clipboardDelay;
+  } } };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: mockNavigator });
+  globalThis.ClipboardItem = class {
+    static supports(type) { return clipboardSupported && type === 'image/gif'; }
+    constructor(items) { this.items = items; }
+  };
+  browser.navigator = mockNavigator;
+  browser.ClipboardItem = globalThis.ClipboardItem;
+  browser.isSecureContext = true;
+  const originalComputedStyle = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = () => ({ getPropertyValue: name => ({
+    '--color-bg': '#18231e', '--color-text': '#ccd7ce', '--color-heading': '#edf4ee',
+  })[name] ?? '' });
+  const objectURLs = new Map(), revokedURLs = [];
+  const originalCreateURL = URL.createObjectURL, originalRevokeURL = URL.revokeObjectURL;
+  URL.createObjectURL = blob => {
+    assert.ok(blob instanceof Blob);
+    const url = `blob:quantum-golf-${objectURLs.size + 1}`;
+    objectURLs.set(url, blob);
+    return url;
+  };
+  URL.revokeObjectURL = url => revokedURLs.push(url);
+  const gifRequests = [];
+  globalThis.__createReplayGifMock = (...args) => new Promise((resolve, reject) => {
+    gifRequests.push({ args, resolve, reject });
+  });
+  context.after(() => {
+    if (navigatorDescriptor) Object.defineProperty(globalThis, 'navigator', navigatorDescriptor);
+    else delete globalThis.navigator;
+    if (clipboardDescriptor) Object.defineProperty(globalThis, 'ClipboardItem', clipboardDescriptor);
+    else delete globalThis.ClipboardItem;
+    URL.createObjectURL = originalCreateURL;
+    URL.revokeObjectURL = originalRevokeURL;
+    globalThis.getComputedStyle = originalComputedStyle;
+    delete globalThis.__createReplayGifMock;
+  });
   let monotonic = 0;
   const originalPerformance = globalThis.performance;
   globalThis.performance = { now: () => monotonic };
@@ -168,7 +314,9 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.doesNotMatch(original, /\breplay-start\b/, 'The removed Start control has no controller handler');
   const instrumented = original
     .replace("import { BlochSphere } from '../lib/quantum-golf/sphere.js';", 'const BlochSphere = globalThis.__BlochSphereMock;')
-    .replace(/from (['"])(\.\.\/lib\/quantum-golf\/[^'"]+)\1/g, (_, _quote, path) => `from '${new URL(path, scriptURL).href}'`)
+    .replace(/import\((['"])\.\.\/lib\/quantum-golf\/replay-gif\.js\1\)/g,
+      'Promise.resolve({ createReplayGif: globalThis.__createReplayGifMock })')
+    .replace(/from (['"])(\.\.\/lib\/(?:quantum-golf|games)\/[^'"]+)\1/g, (_, _quote, path) => `from '${new URL(path, scriptURL).href}'`)
     .replace(/new URL\((['"])(\.\/quantum-golf-worker\.js)\1, import\.meta\.url\)/g, (_, _quote, path) => `new URL('${new URL(path, scriptURL).href}')`);
   await import(`data:text/javascript;base64,${Buffer.from(`${instrumented}\n//# sourceURL=${fileURLToPath(scriptURL)}`).toString('base64')}`);
 
@@ -177,6 +325,22 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   const winning = () => get('status').textContent === 'In the hole!';
   const dialog = get('win-dialog');
   const rulesDialog = get('rules-dialog');
+  const shareDialog = get('share-dialog');
+  async function startShare(id = 'share-score') {
+    const before = gifRequests.length;
+    const completion = click(id);
+    await settle();
+    assert.equal(gifRequests.length, before + 1);
+    const request = gifRequests.at(-1);
+    request.completion = completion;
+    return request;
+  }
+  async function completeShare(request, blob = new Blob(['GIF89a'], { type: 'image/gif' })) {
+    request.resolve(blob);
+    await request.completion;
+    await settle();
+    return blob;
+  }
   const player = (rank, name = `Player ${rank}`, moves = 1) => ({ id: rank, name, moves, rank });
   const board = (entries = [], currentPlayer = null, total = entries.length) => ({ total, entries, currentPlayer });
   const displayedRanks = (id) => get(id).children.slice(1).map((row) => Number(row.children[0].textContent));
@@ -213,6 +377,14 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.equal(get('result-advanced-features').open, false);
   assert.equal(get('replay').textContent, 'See the replay');
   assert.equal(get('replay-result').textContent, 'See the replay');
+  assert.equal(get('replay-actions').parentElement.classList.contains('advanced-panel'), true);
+  assert.equal(get('result-replay-actions').parentElement, get('result-advanced-features'));
+  assert.equal(get('daily-replay-actions').hidden, true);
+  assert.equal(get('daily-result-actions').hidden, true);
+  assert.equal(get('share-score').hidden, true);
+  assert.equal(get('share-result').hidden, true);
+  await click('share-score');
+  assert.equal(gifRequests.length, 0, 'An unfinished circuit cannot be shared');
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true');
   assert.equal(get('mode-random').getAttribute('aria-pressed'), 'false');
   assert.equal(get('mode-daily').getAttribute('aria-pressed'), 'false');
@@ -300,6 +472,55 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.equal(get('win-results').hidden, true);
   assert.equal(get('show-results').hidden, false);
 
+  // Sharing is optional and local: it must not submit or mutate this attempt.
+  assert.equal(get('share-score').hidden, false);
+  assert.equal(get('share-result').hidden, false);
+  const beforeSharingRequests = requests.length;
+  const firstShare = await startShare('share-result');
+  const [firstSnapshot, firstExport] = firstShare.args;
+  assert.equal(firstSnapshot.label, 'Level : 1');
+  assert.equal(firstSnapshot.sequence, firstSolution);
+  assert.equal(firstSnapshot.optimalMoves, 1);
+  assert.deepEqual(firstSnapshot.target, LEVELS[0].target);
+  assert.notEqual(firstSnapshot.target, sphere.model.target, 'The exporter receives its own target snapshot');
+  assert.equal(firstSnapshot.epsilon, LEVELS[0].epsilon);
+  assert.equal(firstExport.signal.aborted, false);
+  assert.equal(shareDialog.open, true);
+  assert.equal(dialog.open, true, 'Closing sharing returns to the existing result popup');
+  const beforeRepeatedShare = gifRequests.length;
+  await click('share-score');
+  assert.equal(gifRequests.length, beforeRepeatedShare, 'A repeated action cannot start another encoder in the open share dialog');
+  assert.equal(get('copy-gif').disabled, true);
+  assert.equal(get('download-gif').hidden, true);
+  for (const key of ['h', 't', 'Backspace', 'r', 'n', 'ArrowLeft']) {
+    await doc.dispatch('keydown', { key, target: key === 'ArrowLeft' ? get('sphere') : get('close-share') });
+  }
+  assert.equal(strokes(), 1);
+  assert.equal(frames.size, 0);
+  const sharedBlob = await completeShare(firstShare);
+  assert.equal(get('share-status').textContent, '', 'A completed GIF has no extra helper text');
+  const firstGifURL = get('share-preview').src;
+  const firstGifFile = objectURLs.get(firstGifURL);
+  assert.equal(firstGifFile.type, 'image/gif');
+  assert.deepEqual(await firstGifFile.arrayBuffer(), await sharedBlob.arrayBuffer());
+  assert.equal(get('share-preview').hidden, false);
+  assert.equal(get('download-gif').href, firstGifURL);
+  assert.match(get('download-gif').download, /level-1.*\.gif$/);
+  assert.equal(get('download-gif').hidden, false);
+  assert.equal(get('copy-gif').disabled, false);
+  assert.equal(clipboardWrites.length, 0, 'GIF generation never writes the clipboard by itself');
+  await click('copy-gif');
+  assert.equal(clipboardWrites.length, 1);
+  assert.equal(clipboardWrites[0][0].items['image/gif'], firstGifFile, 'Copy uses the GIF itself');
+  assert.match(get('share-status').textContent, /copied/i);
+  assert.equal(requests.length, beforeSharingRequests, 'Sharing has no leaderboard side effect');
+  assert.equal(sphere.model.sequence, firstSolution);
+  samePoint(sphere.model.state, LEVELS[0].target);
+  click('close-share');
+  assert.equal(shareDialog.open, false);
+  assert.equal(dialog.open, true);
+  assert.ok(revokedURLs.includes(firstGifURL), 'Closing sharing releases its preview URL');
+
   // Modal keyboard input must leave the game behind it alone. Escape uses the
   // native dialog cancel event, keeping the completed round available.
   for (const key of ['h', 't', 'Backspace', 'r', 'n', 'ArrowLeft']) {
@@ -345,6 +566,21 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   await rejectedSubmission;
   assert.equal(get('score-status').textContent, 'Use a name of 1 to 24 characters.', 'Validation errors explain how to retry');
   assert.equal(get('submit-score').disabled, false);
+  for (const [status, message] of [
+    [408, 'Submission timed out. Try again.'],
+    [413, 'Submission is too large.'],
+    [415, 'Send a JSON submission.'],
+    [429, 'Too many submissions. Try again shortly.'],
+  ]) {
+    const limited = get('score-form').dispatch('submit');
+    await reply(requests.at(-1), { error: message }, status);
+    await limited;
+    assert.equal(get('score-status').textContent, message);
+    assert.equal(get('submit-score').disabled, false, `HTTP ${status} allows another attempt`);
+    assert.equal(get('score-form').hidden, false);
+    assert.equal(winning(), true);
+    assert.equal(strokes(), firstSolution.length, 'Submission failures preserve the complete result');
+  }
   const stalledSubmission = get('score-form').dispatch('submit');
   const stalledPost = requests.at(-1);
   const stalledTimer = [...timers.values()].at(-1);
@@ -564,6 +800,11 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.equal(sphere.model.animation, null, 'A completed gate clears its partial trace');
   assert.equal(winning(), true);
   assert.equal(dialog.open, true, 'Random wins offer replay and another attempt');
+  assert.equal(get('share-score').hidden, true);
+  assert.equal(get('share-result').hidden, true);
+  const beforeRandomShare = gifRequests.length;
+  await click('share-result');
+  assert.equal(gifRequests.length, beforeRandomShare, 'Unranked custom holes do not produce ranked score cards');
   assert.equal(get('score-form').hidden, true, 'Random rounds cannot submit ranked scores');
   assert.equal(get('win-practice').hidden, true, 'Random wins do not claim a closed daily leaderboard');
   click('close-win');
@@ -674,6 +915,36 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
     }
   }
 
+  // The first Daily request can fail before a server clock or archive exists.
+  const firstDailyLoad = click('mode-daily');
+  await reply(pendingDaily(), {}, 503);
+  await firstDailyLoad;
+  const cancelledRetry = [...timers.values()].find(timer => timer.delay === 60_000);
+  assert.ok(cancelledRetry, 'Initial outages schedule a retry without dailyInfo');
+  click('mode-random');
+  assert.equal(timers.has(cancelledRetry), false, 'Selecting another mode cancels delayed Daily navigation');
+  const firstDailyRetry = click('mode-daily');
+  await reply(pendingDaily(), {}, 503);
+  await firstDailyRetry;
+  const initialRetry = [...timers.values()].find(timer => timer.delay === 60_000);
+  timers.delete(initialRetry);
+  reducedMotion = false;
+  click('gate-t');
+  const beforeBusyRetry = requests.length;
+  initialRetry.callback();
+  assert.equal(requests.length, beforeBusyRetry, 'A scheduled Daily retry waits for an active gate');
+  const deferredRetry = [...timers.values()].find(timer => timer.delay === 1_000);
+  assert.ok(deferredRetry);
+  flushFrames();
+  reducedMotion = true;
+  timers.delete(deferredRetry);
+  const recovering = deferredRetry.callback();
+  assert.ok(pendingDaily(), 'The retry makes a request even before dailyInfo exists');
+  await reply(pendingDaily(), metadata('2026-10-14'));
+  await recovering;
+  assert.equal(get('mode-daily').getAttribute('aria-pressed'), 'true', 'Recovery selects the originally requested Daily puzzle');
+  click('mode-random');
+
   // A late daily response cannot override the user's newer menu choice.
   const randomSequence = sphere.model.sequence, randomTarget = [...sphere.model.target];
   const staleDailyLoad = click('mode-daily');
@@ -689,6 +960,11 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
 
   await loadPuzzle('2026-10-14', undefined, true);
   assert.equal(get('mode-daily').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('replay-actions').parentElement, get('daily-replay-actions'));
+  assert.equal(get('result-replay-actions').parentElement, get('daily-result-actions'));
+  assert.equal(get('daily-replay-actions').hidden, false, 'Daily replay controls are outside Advanced');
+  assert.equal(get('daily-result-actions').hidden, false);
+  assert.equal(get('result-advanced-features').hidden, true, 'Daily results do not have an empty Advanced disclosure');
   assert.equal(get('campaign-controls').hidden, true);
   assert.equal(get('daily-heading').hidden, false);
   assert.match(get('daily-title').textContent, /14 Oct 2026/);
@@ -720,6 +996,7 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   const archived = dailyPuzzle('2026-10-13');
   finishHole(archived);
   assert.equal(dialog.open, true);
+  assert.equal(get('share-result').hidden, false, 'Past daily attempts can be shared without entering their closed leaderboard');
   assert.equal(get('win-title').textContent, 'GG');
   assert.equal(get('win-practice').hidden, false);
   assert.equal(get('score-form').hidden, true);
@@ -740,6 +1017,41 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   Date.now = () => Date.parse('2036-01-01T12:00:00Z');
   const dailySolution = finishHole(dailyPuzzle(today));
   assert.equal(get('score-form').hidden, false, 'A wrong browser wall clock cannot close server-authorized scoring');
+  const nativeShares = [];
+  mockNavigator.canShare = ({ files }) => files.every(file => file.type === 'image/gif');
+  mockNavigator.share = async data => nativeShares.push(data);
+  clipboardSupported = false;
+  const dailyShare = await startShare('share-result');
+  assert.equal(dailyShare.args[0].label, 'Daily puzzle : 14 Oct 2026');
+  assert.equal(dailyShare.args[0].sequence, dailySolution);
+  assert.equal(dailyShare.args[0].optimalMoves, dailyPuzzle(today).optimalMoves);
+  dailyShare.args[1].onProgress(0.5);
+  assert.ok(get('share-status').textContent);
+  const dailyBlob = await completeShare(dailyShare);
+  assert.equal(get('share-status').textContent, '', 'An unsupported GIF clipboard also leaves the ready card without helper text');
+  assert.equal(get('copy-gif').disabled, true, 'Unsupported GIF clipboard formats are not substituted with a still image');
+  assert.equal(get('download-gif').hidden, false);
+  assert.match(get('download-gif').download, /2026-10-14.*\.gif$/);
+  const copiesBeforeUnsupported = clipboardWrites.length;
+  await click('copy-gif');
+  assert.equal(clipboardWrites.length, copiesBeforeUnsupported);
+  get('download-gif').click();
+  assert.equal(downloads.at(-1).href, get('share-preview').src);
+  assert.equal(get('native-share-gif').hidden, false);
+  const readyShareStatus = get('share-status').textContent;
+  mockNavigator.share = async () => { throw new DOMException('User cancelled', 'AbortError'); };
+  await click('native-share-gif');
+  assert.equal(get('share-status').textContent, readyShareStatus, 'Cancelling the mobile share sheet is not an export failure');
+  mockNavigator.share = async data => nativeShares.push(data);
+  await click('native-share-gif');
+  assert.equal(nativeShares.length, 1);
+  assert.equal(nativeShares[0].files[0].type, 'image/gif');
+  assert.equal(nativeShares[0].files[0].size, dailyBlob.size);
+  assert.match(nativeShares[0].files[0].name, /2026-10-14.*\.gif$/);
+  click('close-share');
+  clipboardSupported = true;
+  delete mockNavigator.canShare;
+  delete mockNavigator.share;
   get('player-name').value = 'Ada';
   const dailySubmission = get('score-form').dispatch('submit');
   const dailyPost = requests.at(-1);
@@ -809,6 +1121,8 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.equal(get('daily-date').value, '2026-10-16');
   click('mode-campaign');
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('result-replay-actions').parentElement, get('result-advanced-features'));
+  assert.equal(get('result-advanced-features').hidden, false);
   assert.equal(get('campaign-controls').hidden, false);
   assert.equal(get('level').value, String(LEVELS.length), 'Returning to Campaign restores its last selected level');
   const cancelledCampaignLoad = click('mode-daily');
@@ -825,6 +1139,21 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   assert.doesNotMatch(get('daily-status').textContent, /Internal details/);
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true');
   assert.equal(get('gate-h').disabled, false, 'Daily API outages leave the previous round playable');
+  const outageRetry = [...timers.values()].find(timer => timer.delay === 60_000);
+  click('mode-campaign');
+  assert.equal(timers.has(outageRetry), false);
+  get('daily-date').value = '2026-10-13';
+  const archivedOutage = get('daily-date').dispatch('change');
+  await reply(pendingDaily(), {}, 503);
+  await archivedOutage;
+  const archivedRetry = [...timers.values()].find(timer => timer.delay === 60_000);
+  timers.delete(archivedRetry);
+  const recoveringArchive = archivedRetry.callback();
+  assert.equal(new URL(pendingDaily().url, 'https://www.colin-blake.eu').searchParams.get('date'), '2026-10-13', 'Retries preserve the requested archive date');
+  await reply(pendingDaily(), metadata('2026-10-13', rolloverAt + 100));
+  await recoveringArchive;
+  assert.match(get('daily-title').textContent, /13 Oct 2026/);
+  assert.match(get('daily-note').textContent, /Practice.*closed/);
 
   // Reviewing and replaying a finished round never changes the circuit being
   // scored, even when the leaderboard returns an earlier, better personal score.
@@ -861,6 +1190,78 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   await reply(reviewedPost, board([previousBest], previousBest));
   await reviewedSubmission;
   assert.equal(get('win-summary').textContent, '9 moves : optimum+8', 'The summary describes this round, not the saved personal best');
+
+  // Sharing an inspected attempt exports its full circuit and this attempt's
+  // score, while leaving the sphere, review position and saved board intact.
+  click('close-win');
+  await gateButtons()[2].dispatch('click');
+  const inspectedPoint = [...sphere.model.state];
+  const inspectedBoard = get('result-leaderboard-body').textContent;
+  const reviewedShare = await startShare();
+  assert.equal(reviewedShare.args[0].label, 'Level : 2');
+  assert.equal(reviewedShare.args[0].sequence, reviewedWord);
+  assert.equal(reviewedShare.args[0].optimalMoves, 1);
+  assert.equal(dialog.open, false);
+  for (const key of ['h', 't', 'Backspace', 'r', 'n', 'ArrowLeft']) {
+    await doc.dispatch('keydown', { key, target: key === 'ArrowLeft' ? get('sphere') : get('close-share') });
+  }
+  assert.equal(frames.size, 0, 'Sharing blocks the game shortcuts even with the result popup closed');
+  assert.equal(sphere.model.sequence, reviewedWord.slice(0, 3));
+  samePoint(sphere.model.state, inspectedPoint);
+  await completeShare(reviewedShare);
+  clipboardFailure = new DOMException('Clipboard permission denied', 'NotAllowedError');
+  await click('copy-gif');
+  assert.doesNotMatch(get('share-status').textContent, /copied/i);
+  assert.match(get('share-status').textContent, /download/i, 'A rejected clipboard operation keeps a usable download');
+  assert.equal(get('download-gif').hidden, false);
+  clipboardFailure = null;
+  click('close-share');
+  assert.equal(get('result-leaderboard-body').textContent, inspectedBoard);
+  assert.equal(get('review-note').textContent, 'Step 3 / 9');
+  assert.equal(sphere.model.sequence, reviewedWord.slice(0, 3));
+  samePoint(sphere.model.state, inspectedPoint);
+
+  const failedShare = await startShare();
+  failedShare.reject(new Error('Encoder failed'));
+  await failedShare.completion;
+  assert.equal(get('copy-gif').disabled, true);
+  assert.equal(get('download-gif').hidden, true);
+  assert.match(get('share-status').textContent, /could|failed|unable|unavailable/i);
+  click('close-share');
+
+  const cancelledShare = await startShare();
+  click('close-share');
+  assert.equal(cancelledShare.args[1].signal.aborted, true);
+  const replacementShare = await startShare();
+  const replacementStatus = get('share-status').textContent;
+  cancelledShare.args[1].onProgress(0.9);
+  assert.equal(get('share-status').textContent, replacementStatus, 'Old progress cannot overwrite a later export');
+  const URLsBeforeStaleExport = objectURLs.size;
+  await completeShare(cancelledShare);
+  assert.equal(objectURLs.size, URLsBeforeStaleExport, 'Cancelled generation cannot allocate a stale preview');
+  assert.equal(get('copy-gif').disabled, true);
+  const replacementBlob = await completeShare(replacementShare);
+  assert.deepEqual(await objectURLs.get(get('share-preview').src).arrayBuffer(), await replacementBlob.arrayBuffer());
+  let finishPendingCopy;
+  clipboardDelay = new Promise(resolve => { finishPendingCopy = resolve; });
+  const pendingCopy = click('copy-gif');
+  click('close-share');
+  const laterShare = await startShare();
+  await completeShare(laterShare);
+  const laterStatus = get('share-status').textContent;
+  finishPendingCopy();
+  await pendingCopy;
+  clipboardDelay = null;
+  assert.equal(get('share-status').textContent, laterStatus, 'A previous clipboard completion cannot update another export');
+  click('close-share');
+  const escapedShare = await startShare();
+  const URLsBeforeEscape = objectURLs.size;
+  await shareDialog.dispatch('cancel');
+  assert.equal(shareDialog.open, false);
+  assert.equal(escapedShare.args[1].signal.aborted, true, 'The native Escape close aborts encoding too');
+  await completeShare(escapedShare);
+  assert.equal(objectURLs.size, URLsBeforeEscape);
+  click('show-results');
   const beforeReplayWin = dialog.showCount;
   get('advanced-features').open = false;
   click('replay-result');
@@ -1000,4 +1401,71 @@ test('campaign, random and daily rounds: scoring, navigation, races and midnight
   click('close-win');
   click('toggle-precision');
   assert.equal(get('toggle-precision').getAttribute('aria-pressed'), 'false');
+
+  // Reset and mode changes abort local encoding before a stale result can
+  // become the next round's preview or clipboard contents.
+  selectLevel(1);
+  finishLevel(0);
+  const resetShare = await startShare();
+  const URLsBeforeReset = objectURLs.size;
+  click('restart');
+  assert.equal(resetShare.args[1].signal.aborted, true);
+  assert.equal(shareDialog.open, false);
+  await completeShare(resetShare);
+  assert.equal(objectURLs.size, URLsBeforeReset);
+  assert.equal(strokes(), 0);
+  assert.equal(winning(), false);
+  finishLevel(0);
+  const modeShare = await startShare();
+  const URLsBeforeModeChange = objectURLs.size;
+  click('mode-random');
+  assert.equal(modeShare.args[1].signal.aborted, true);
+  assert.equal(shareDialog.open, false);
+  await completeShare(modeShare);
+  assert.equal(objectURLs.size, URLsBeforeModeChange);
+  assert.equal(get('mode-random').getAttribute('aria-pressed'), 'true');
+  assert.equal(winning(), false);
+
+  // Long rounds create one node per gate, preserve earlier controls, and undo
+  // only the final node. H pairs keep this campaign target outside the hole.
+  selectLevel(1);
+  const beforeLongRound = createdButtons;
+  click('gate-h');
+  flushFrames();
+  const firstGateButton = get('sequence').children[0];
+  for (let move = 1; move < 1358; move++) {
+    click('gate-h');
+    flushFrames();
+    assert.equal(get('sequence').children[0], firstGateButton, 'Appending a gate preserves existing controls');
+  }
+  assert.equal(strokes(), 1358);
+  assert.equal(createdButtons - beforeLongRound, 1358);
+  assert.equal(get('sequence').children.at(-1).getAttribute('data-step'), '1358');
+  assert.equal(get('sequence').children.at(-1).getAttribute('aria-label'), 'Step 1358: H');
+  assert.equal(get('sequence').listeners.get('click').length, 1, 'A single listener handles the whole gate sequence');
+  assert.ok(get('sequence').children.every(button => !button.listeners.has('click')), 'Long circuits do not allocate a listener per gate');
+  await get('sequence').dispatch('click');
+  firstGateButton.disabled = true;
+  await firstGateButton.dispatch('click');
+  assert.equal(get('review-controls').hidden, true, 'Background and disabled-button clicks do not inspect a step');
+  firstGateButton.disabled = false;
+  const nested = new MockElement('BUTTON'), wrapper = new MockElement('DIV');
+  nested.setAttribute('data-step', '1');
+  wrapper.appendChild(nested);
+  get('sequence').appendChild(wrapper);
+  await nested.dispatch('click');
+  assert.equal(get('review-controls').hidden, true, 'Nested unrelated buttons are not gate controls');
+  wrapper.remove();
+  const decoration = new MockElement('SPAN');
+  firstGateButton.appendChild(decoration);
+  await decoration.dispatch('click');
+  assert.equal(get('review-note').textContent, 'Step 1 / 1358', 'Clicks on button contents inspect the owning gate');
+  samePoint(sphere.model.state, applyGate(START_STATE, 'H'));
+  decoration.remove();
+  click('resume-round');
+  click('undo');
+  assert.equal(get('sequence').children.length, 1357);
+  assert.equal(get('sequence').children[0], firstGateButton);
+  click('restart');
+  assert.equal(get('sequence').children.length, 0);
 });

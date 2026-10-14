@@ -1,0 +1,54 @@
+---
+interface Props { gameTitle: string; unit?: string; filename?: string }
+const { gameTitle, unit = 'Moves', filename = 'circuit-reduction.gif' } = Astro.props;
+---
+
+<dialog class="game-dialog rules-dialog" id="rules-dialog" aria-labelledby="rules-title">
+  <button class="close-dialog" id="close-rules" type="button" aria-label="Close rules">×</button>
+  <h2 id="rules-title">Rules</h2>
+  <slot name="rules" />
+</dialog>
+
+<dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
+  <button class="close-dialog" id="close-win" type="button" aria-label="Close popup">×</button>
+  <h2 id="win-title">GG</h2>
+  <p id="win-summary" role="status"></p>
+  <p id="win-practice" hidden>Practice completed.</p>
+  <form class="score-form" id="score-form">
+    <label for="player-name">Name or nickname</label>
+    <input id="player-name" name="name" type="text" maxlength="48" pattern=".{1,24}" required autocomplete="nickname" autofocus />
+    <button class="button" id="submit-score" type="submit">Validate</button>
+  </form>
+  <div id="win-results" hidden>
+    <p id="player-rank" role="status"></p>
+    <div class="ranking" tabindex="0" role="region" aria-label="Your leaderboard position">
+      <table><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">{unit}</th></tr></thead><tbody id="result-leaderboard-body"></tbody></table>
+    </div>
+  </div>
+  <div class="result-actions" id="result-actions" hidden>
+    <button class="button ghost" id="try-again" type="button">Try again</button>
+    <button class="button" id="result-next" type="button">Next level</button>
+    <slot name="result-actions" />
+  </div>
+  <div id="daily-result-actions" class="daily-replay-actions" hidden></div>
+  <details class="advanced-features" id="result-advanced-features">
+    <summary>Advanced</summary>
+    <div class="replay-actions" id="result-replay-actions">
+      <button class="button ghost" id="replay-result" type="button">See the replay</button>
+      <button class="button ghost" id="share-result" type="button" hidden>Share your score</button>
+    </div>
+  </details>
+  <p class="message" id="score-status" role="status" aria-live="polite"></p>
+</dialog>
+
+<dialog class="game-dialog share-dialog" id="share-dialog" aria-labelledby="share-title">
+  <button class="close-dialog" id="close-share" type="button" aria-label="Close sharing">×</button>
+  <h2 id="share-title">Share your score</h2>
+  <p class="message" id="share-status" role="status"></p>
+  <img id="share-preview" hidden alt={`Replay of your ${gameTitle.toLowerCase()} score`} />
+  <div class="share-actions">
+    <button class="button" id="copy-gif" type="button" disabled>Copy the GIF</button>
+    <button class="button ghost" id="native-share-gif" type="button" hidden>Share GIF</button>
+    <a class="button ghost" id="download-gif" download={filename} hidden>Download GIF</a>
+  </div>
+</dialog>

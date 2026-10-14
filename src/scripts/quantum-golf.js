@@ -1,73 +1,106 @@
+import { ScoreError, fetchJson } from '../lib/games/http.js';
+import { renderLeaderboard } from '../lib/games/leaderboard.js';
+import { formatPuzzleDate as dateLabel, populateDailyArchive } from '../lib/games/daily-ui.js';
+import { createReplayShare } from '../lib/games/replay-share.js';
 import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const LEADERBOARD_API = '/api/leaderboard';
 const VIEW_STEPS = { ArrowLeft: [-30, 0], ArrowRight: [30, 0], ArrowUp: [0, -30], ArrowDown: [0, 30] };
-class ScoreError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
-}
-
 const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);
 const dialog = get('win-dialog'), rulesDialog = get('rules-dialog');
+const shareDialog = get('share-dialog');
+const replayGroups = [
+  [get('replay-actions'), get('daily-replay-actions'), document.querySelector('#advanced-features .advanced-panel')],
+  [get('result-replay-actions'), get('daily-result-actions'), get('result-advanced-features')],
+];
 let level = LEVELS[0], campaignLevel = level, freeEpsilon = Number(get('epsilon').value);
 let state = START_STATE, target = level.target, sequence = '';
 let busy = false, picking = false, won = false;
 let following = true, precision = false, optimalMoves = null;
-let reviewStep = null, stopReplay, renderedSequence;
+let reviewStep = null, stopReplay, renderedSequence = '', sequenceLocked = false, reviewedButton;
 let boardAbort, scoreAbort, worker, currentPlayer = null;
 let dailyAbort, dailyInfo, dailyReceived, dailyTimer, archiveRange, loadingDaily = false;
 const epsilon = () => level ? level.epsilon : freeEpsilon;
-const circuitAt = (step = sequence.length) => [...sequence.slice(0, step)].reduce(applyGate, START_STATE);
+const circuitAt = (step = sequence.length) => {
+  let point = START_STATE;
+  for (let index = 0; index < step; index++) point = applyGate(point, sequence[index]);
+  return point;
+};
 const campaign = () => Boolean(level && !level.date);
 const mode = () => level?.date ? 'daily' : level ? 'campaign' : 'random';
 const serverTime = () => dailyInfo ? dailyInfo.serverNow + performance.now() - dailyReceived : Date.now();
 const canScore = () => Boolean(level && (!level.date ||
   (level.acceptingScores && serverTime() >= level.opensAt && serverTime() < level.closesAt)));
 const scoreSelector = () => level.date ? { date: level.date } : { level: level.id };
-const dateFormat = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric',
-});
-const dateLabel = date => dateFormat.format(new Date(`${date}T12:00:00Z`));
 const sphere = new BlochSphere(get('sphere'), { onPick: setTarget });
+const sharing = createReplayShare({ get, createGif: async (...args) => {
+  const { createReplayGif } = await import('../lib/quantum-golf/replay-gif.js');
+  return createReplayGif(...args);
+} });
 
 function update(visibleState) {
   const wasWon = won;
   const locked = busy || loadingDaily;
   const holeSize = epsilon(), currentMode = mode(), isCampaign = currentMode === 'campaign';
+  const isDaily = currentMode === 'daily';
   const scorable = canScore(), hasPlayer = Boolean(currentPlayer), showForm = scorable && !hasPlayer;
   const fixed = Boolean(level);
   won = traceDistance(state, target) <= holeSize + 1e-12;
   get('epsilon').value = holeSize;
   get('epsilon-value').textContent = `ε = ${holeSize.toFixed(3)}`;
+  const gateButtons = get('sequence');
   if (renderedSequence !== sequence) {
-    renderedSequence = sequence;
-    get('sequence').replaceChildren(...[...sequence].map((gate, index) => {
+    let shared = 0;
+    while (shared < Math.min(renderedSequence.length, sequence.length) && renderedSequence[shared] === sequence[shared]) shared++;
+    while (gateButtons.children.length > shared) gateButtons.lastElementChild.remove();
+    const added = document.createDocumentFragment();
+    for (let index = shared; index < sequence.length; index++) {
+      const gate = sequence[index];
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = gate;
+      button.disabled = locked;
       button.setAttribute('data-step', String(index + 1));
       button.setAttribute('aria-label', `Step ${index + 1}: ${gate}`);
-      button.addEventListener('click', () => inspectStep(index + 1));
-      return button;
-    }));
+      button.setAttribute('aria-current', 'false');
+      added.appendChild(button);
+    }
+    gateButtons.appendChild(added);
+    renderedSequence = sequence;
   }
-  for (const button of get('sequence').children) {
-    const active = Number(button.getAttribute('data-step')) === reviewStep;
-    button.disabled = locked;
-    button.setAttribute('aria-current', active ? 'step' : 'false');
+  if (sequenceLocked !== locked) {
+    for (const button of gateButtons.children) button.disabled = locked;
+    sequenceLocked = locked;
+  }
+  const active = reviewStep === null ? null : gateButtons.children[reviewStep - 1];
+  if (reviewedButton !== active) {
+    reviewedButton?.setAttribute('aria-current', 'false');
+    active?.setAttribute('aria-current', 'step');
+    reviewedButton = active;
   }
   get('review-controls').hidden = reviewStep === null;
   get('review-note').textContent = reviewStep === null ? '' : `Step ${reviewStep} / ${sequence.length}`;
   get('replay').hidden = !sequence;
   for (const id of ['replay', 'replay-result']) get(id).disabled = locked || !sequence || Boolean(stopReplay);
+  for (const [actions, regular, advanced] of replayGroups) {
+    const destination = isDaily ? regular : advanced;
+    if (actions.parentElement !== destination) destination.appendChild(actions);
+    regular.hidden = !isDaily;
+  }
+  get('result-advanced-features').hidden = isDaily;
+  for (const id of ['share-score', 'share-result']) {
+    get(id).hidden = !level || !won || !sequence;
+    get(id).disabled = locked || Boolean(scoreAbort);
+  }
   get('status').textContent = picking ? 'Click the sphere' : won ? 'In the hole!' : '';
   get('pick-target').setAttribute('aria-pressed', String(picking));
   if (isCampaign) get('level').value = String(level.id);
   get('level').disabled = locked;
   get('campaign-controls').hidden = !isCampaign;
-  get('daily-heading').hidden = !level?.date;
-  if (level?.date) {
+  get('daily-heading').hidden = !isDaily;
+  if (isDaily) {
     get('daily-title').textContent = `Daily puzzle · ${dateLabel(level.date)}`;
     get('daily-note').textContent = scorable ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
   }
@@ -124,6 +157,7 @@ function openWin() {
 }
 
 function resetScores() {
+  sharing.close();
   scoreAbort?.abort();
   scoreAbort = null;
   // A saved result may have a personalized refresh pending.
@@ -203,6 +237,7 @@ function selectLevel(value) {
 function cancelDaily() {
   dailyAbort?.abort();
   dailyAbort = null;
+  clearTimeout(dailyTimer);
   loadingDaily = false;
   get('daily-status').textContent = '';
 }
@@ -211,16 +246,7 @@ function dailyArchive() {
   const range = `${dailyInfo.startDate}/${dailyInfo.today}`;
   if (archiveRange !== range) {
     archiveRange = range;
-    const options = [];
-    for (let day = Date.parse(`${dailyInfo.today}T00:00:00Z`), first = Date.parse(`${dailyInfo.startDate}T00:00:00Z`);
-      day >= first; day -= 86_400_000) {
-      const date = new Date(day).toISOString().slice(0, 10);
-      const option = document.createElement('option');
-      option.value = date;
-      option.textContent = date === dailyInfo.today ? 'Today' : dateLabel(date);
-      options.push(option);
-    }
-    get('daily-date').replaceChildren(...options);
+    populateDailyArchive(get('daily-date'), dailyInfo);
   }
   get('daily-date').value = level?.date ?? dailyInfo.today;
 }
@@ -252,9 +278,13 @@ async function loadDaily(date, select = true) {
   } catch (error) {
     if (dailyAbort === request) {
       get('daily-status').textContent = error instanceof ScoreError ? error.message : 'Daily puzzle unavailable. Try again.';
-      // A temporary outage must not stop rollover checks for an open tab.
+      // Retry the requested puzzle, including the first load before dailyInfo exists.
       clearTimeout(dailyTimer);
-      dailyTimer = setTimeout(refreshDaily, 60_000);
+      const retry = () => {
+        if (select && busy) dailyTimer = setTimeout(retry, 1_000);
+        else return loadDaily(date, select);
+      };
+      dailyTimer = setTimeout(retry, 60_000);
     }
   } finally {
     if (dailyAbort === request) { dailyAbort = null; loadingDaily = false; update(); }
@@ -268,40 +298,8 @@ function refreshDaily() {
   loadDaily(level?.date, false);
 }
 
-function leaderboard({ entries = [], currentPlayer: player = null, total = 0 } = {}) {
-  // The server validates scores and returns them in rank order.
-  currentPlayer = player;
-  get('player-rank').textContent = player
-    ? `Your rank: ${player.rank} / ${total} · Best: ${player.moves} ${player.moves === 1 ? 'stroke' : 'strokes'}` : '';
-  const ranked = [{ rank: '—', name: 'Optimal', moves: level.optimalMoves }, ...entries];
-  for (const id of ['leaderboard-body', 'result-leaderboard-body']) {
-    get(id).replaceChildren(...ranked.map((entry, index) => {
-      const row = document.createElement('tr');
-      const own = index > 0 && entry.id === player?.id;
-      row.className = index === 0 ? 'benchmark' : own ? 'current-player' : '';
-      for (const value of [entry.rank, entry.name + (own ? ' (you)' : ''), entry.moves]) {
-        const cell = document.createElement('td');
-        cell.textContent = value;
-        row.appendChild(cell);
-      }
-      return row;
-    }));
-  }
-}
-
-async function fetchJson(url, request, options = {}) {
-  const timeout = setTimeout(() => request.abort(), 15_000);
-  try {
-    const response = await fetch(url, { ...options, signal: request.signal });
-    const data = await response.json();
-    if ([400, 409].includes(response.status) && typeof data?.error === 'string' && data.error.length <= 160) {
-      throw new ScoreError(data.error, response.status);
-    }
-    if (!response.ok) throw new Error('Scores unavailable');
-    return data;
-  } finally {
-    clearTimeout(timeout);
-  }
+function leaderboard(data = {}) {
+  currentPlayer = renderLeaderboard(data, { optimalMoves: level.optimalMoves, unit: 'stroke', get });
 }
 
 async function loadLeaderboard() {
@@ -366,6 +364,20 @@ async function submitScore(event) {
   }
 }
 
+async function shareScore(source) {
+  if (busy || loadingDaily || !won || !level || !sequence || shareDialog.open) return;
+  const styles = typeof getComputedStyle === 'function' ? getComputedStyle(get('sphere')) : null;
+  const round = {
+    label: level.date ? `Daily puzzle : ${dateLabel(level.date)}` : `Level : ${level.id}`,
+    sequence, target: [...target], epsilon: epsilon(), optimalMoves: level.optimalMoves,
+    background: styles?.getPropertyValue('--color-bg').trim() || '#18231e',
+    textColor: styles?.getPropertyValue('--color-text').trim() || '#dde3d7',
+    headingColor: styles?.getPropertyValue('--color-heading').trim() || '#fff3cf',
+  };
+  const filename = `quantum-golf-${level.date ?? `level-${level.id}`}.gif`;
+  await sharing.open(source, round, filename);
+}
+
 function animateGate(from, gate, done) {
   const rotate = gateRotation(from, gate);
   const moveCamera = following ? sphere.cameraTo(rotate(1)) : () => {};
@@ -408,7 +420,7 @@ function inspectStep(step) {
   reviewStep = step;
   picking = false;
   dialog.close();
-  get('advanced-features').open = true;
+  if (!level?.date) get('advanced-features').open = true;
   const point = circuitAt(step);
   update(point);
   if (following) sphere.focus(point);
@@ -456,6 +468,11 @@ function nextLevel() {
 }
 
 get('level').addEventListener('change', () => selectLevel(get('level').value));
+get('sequence').addEventListener('click', event => {
+  const button = event.target.closest('button[data-step]');
+  const step = Number(button?.getAttribute('data-step'));
+  if (button?.parentElement === event.currentTarget && !button.disabled && Number.isInteger(step) && step > 0 && step <= sequence.length) inspectStep(step);
+});
 onClick('previous-level', () => {
   if (!busy && campaign() && level.id > 1) selectLevel(level.id - 1);
 });
@@ -490,6 +507,7 @@ onClick('gate-h', () => apply('H'));
 onClick('gate-t', () => apply('T'));
 onClick('undo', undo);
 for (const id of ['replay', 'replay-result']) onClick(id, replaySolution);
+for (const id of ['share-score', 'share-result']) onClick(id, () => shareScore(get(id)));
 onClick('resume-round', () => { clearReview(); update(); if (following) sphere.focus(state); });
 onClick('toggle-precision', () => {
   if (busy || loadingDaily || level) return;
@@ -535,7 +553,7 @@ get('coordinate-form').addEventListener('submit', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (dialog.open || rulesDialog.open || loadingDaily) return;
+  if (dialog.open || rulesDialog.open || shareDialog.open || loadingDaily) return;
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName) || event.target.isContentEditable) return;
   const key = event.key.toLowerCase();

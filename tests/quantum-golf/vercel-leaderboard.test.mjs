@@ -17,9 +17,9 @@ const source = await readFile(websiteFile('api/leaderboard.ts'), 'utf8');
 // parameterized ranking SQL still run unchanged against real PostgreSQL.
 const transportSource = source.replace(/import\s*\{\s*neon\s*\}\s*from\s*(['"])@neondatabase\/serverless\1;/,
   'const neon = (url, options) => { globalThis.__quantumGolfDatabaseOptions = options; return globalThis.__quantumGolfPostgres; };');
-const fixture = transportSource
-  .replace(/from\s*(['"])\.\.\/src\/lib\/quantum-golf\/leaderboard(?:\.[tj]s)?\1/,
-    `from '${websiteFile('src/lib/quantum-golf/leaderboard.ts').href}'`);
+const absoluteImports = value => value.replace(/from\s*(['"])\.\.\/(src\/lib\/[^'"]+)\1/g,
+  (_, _quote, path) => `from '${websiteFile(path.replace(/\/leaderboard\.js$/, '/leaderboard.ts')).href}'`);
+const fixture = absoluteImports(transportSource);
 assert.notEqual(transportSource, source, 'The Neon transport must be replaced in the test fixture');
 const transpile = value => ts.transpileModule(value, {
   compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
@@ -27,8 +27,7 @@ const transpile = value => ts.transpileModule(value, {
 const outputText = transpile(fixture);
 const { default: route } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 const dailySource = await readFile(websiteFile('api/daily.ts'), 'utf8');
-const dailyFixture = dailySource.replace(/from\s*(['"])\.\.\/src\/lib\/quantum-golf\/daily\.js\1/,
-  `from '${websiteFile('src/lib/quantum-golf/daily.js').href}'`);
+const dailyFixture = absoluteImports(dailySource);
 const { default: dailyRoute } = await import(`data:text/javascript;base64,${Buffer.from(transpile(dailyFixture)).toString('base64')}`);
 
 const endpoint = 'https://www.colin-blake.eu/api/leaderboard';
@@ -44,7 +43,7 @@ const post = (payload, site = origin, address = endpoint) => route.fetch(new Req
 }));
 const ranks = board => board.entries.map(entry => entry.rank);
 
-test('compiled Vercel ESM imports resolve the emitted validator JavaScript', async () => {
+test('compiled Vercel ESM resolves the emitted Golf validator JavaScript', async () => {
   const tempBase = tmpdir();
   const directory = await mkdtemp(resolve(tempBase, 'vercel-esm-'));
   const compiledRoot = pathToFileURL(`${directory}/`);
@@ -52,6 +51,7 @@ test('compiled Vercel ESM imports resolve the emitted validator JavaScript', asy
     await writeFile(new URL('package.json', compiledRoot), '{"type":"module"}\n');
     await mkdir(new URL('api/', compiledRoot), { recursive: true });
     await mkdir(new URL('src/lib/quantum-golf/', compiledRoot), { recursive: true });
+    await mkdir(new URL('src/lib/games/', compiledRoot), { recursive: true });
     await writeFile(new URL('api/leaderboard.js', compiledRoot), transpile(transportSource));
     await writeFile(new URL('src/lib/quantum-golf/leaderboard.js', compiledRoot),
       transpile(await readFile(websiteFile('src/lib/quantum-golf/leaderboard.ts'), 'utf8')));
@@ -59,6 +59,9 @@ test('compiled Vercel ESM imports resolve the emitted validator JavaScript', asy
     for (const name of ['quantum.js', 'campaign.json', 'daily.js', 'solver.js']) {
       await writeFile(new URL(`src/lib/quantum-golf/${name}`, compiledRoot),
         await readFile(websiteFile(`src/lib/quantum-golf/${name}`)));
+    }
+    for (const path of ['games/daily-calendar.js', 'games/submission.js']) {
+      await writeFile(new URL(`src/lib/${path}`, compiledRoot), await readFile(websiteFile(`src/lib/${path}`)));
     }
     // Keep the API's relative import intact. A .ts runtime import must fail here
     // because Vercel emits only .js files into the function's package.
@@ -68,6 +71,26 @@ test('compiled Vercel ESM imports resolve the emitted validator JavaScript', asy
     assert.deepEqual(await response.json(), { error: `Choose a campaign level from 1 to ${LEVELS.length}.` });
     const { default: compiledDaily } = await import(new URL('api/daily.js', compiledRoot));
     assert.equal((await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?date=invalid`))).status, 400);
+    assert.equal((await compiled.fetch(new Request(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid({ sequence: 'H' })),
+    }))).status, 400, 'Golf validates submitted circuits without optional game modules');
+    const selectedGolf = await compiled.fetch(new Request(`${endpoint}?game=quantum-golf&level=unknown`));
+    assert.deepEqual(await selectedGolf.json(), { error: `Choose a campaign level from 1 to ${LEVELS.length}.` });
+    const unsupportedGame = await compiled.fetch(new Request(`${endpoint}?game=unknown&level=1`));
+    assert.equal(unsupportedGame.status, 400);
+    assert.deepEqual(await unsupportedGame.json(), { error: 'Choose a supported game.' });
+    const bodyGame = await compiled.fetch(new Request(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(valid({ game: 'unknown' })),
+    }));
+    assert.equal(bodyGame.status, 400);
+    assert.deepEqual(await bodyGame.json(), { error: 'Choose a supported game.' });
+    const selectedDaily = await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=quantum-golf&date=invalid`));
+    assert.equal(selectedDaily.status, 400);
+    assert.deepEqual(await selectedDaily.json(), { error: 'Choose an available daily puzzle.' });
+    const unsupportedDaily = await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=unknown`));
+    assert.equal(unsupportedDaily.status, 400);
+    assert.deepEqual(await unsupportedDaily.json(), { error: 'Choose a supported game.' });
   } finally {
     assert.equal(dirname(resolve(directory)), resolve(tempBase));
     assert.ok(basename(directory).startsWith('vercel-esm-'));
@@ -108,6 +131,52 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
     assert.equal((await post(valid({ level: 11, sequence: null, moves: 1358 }))).status, 400,
       'The public API still requires a winning circuit, including when a move count is supplied');
     assert.equal((await post(valid({ name: 'Ada\u202e' }))).status, 400);
+    for (const payload of [null, [], true, 3, {},
+      valid({ sequence: true }), valid({ sequence: 1 }), valid({ sequence: ['T'] }),
+      valid({ sequence: { 0: 'T', length: 1 } }), valid({ sequence: 'Ｔ' }),
+      { level: 11, name: 'Colin', moves: 1, target: [1, 0, 0], epsilon: 1 },
+      valid({ level: 11, moves: 1, target: [1, 0, 0], epsilon: 1, optimalMoves: 0 }),
+    ]) {
+      assert.equal((await post(payload)).status, 400, 'Malformed or forged score data cannot write a row');
+    }
+    for (const body of [
+      '{"level":1,"name":"Ada","sequence":"T","sequence":null}',
+      '{"level":1,"name":"Ada","sequence":"T","level":11}',
+      '{"__proto__":{"level":1,"name":"Ada","sequence":"T"}}',
+    ]) {
+      assert.equal((await route.fetch(new Request(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      }))).status, 400);
+    }
+    const formLike = await route.fetch(new Request(endpoint, {
+      method: 'POST', headers: { Origin: origin, 'Content-Type': 'text/plain' }, body: JSON.stringify(valid()),
+    }));
+    assert.equal(formLike.status, 415, 'Simple cross-site form content cannot submit even a valid winning score');
+    assert.equal((await route.fetch(new Request(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'cross-site' },
+      body: JSON.stringify(valid()),
+    }))).status, 403, 'Cross-site browser requests are rejected even without an Origin header');
+    const badUnicode = Uint8Array.from([
+      ...new TextEncoder().encode('{"level":1,"name":"Ada'), 0xc0, 0xaf,
+      ...new TextEncoder().encode('","sequence":"T"}'),
+    ]);
+    assert.equal((await route.fetch(new Request(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: badUnicode,
+    }))).status, 400, 'Malformed UTF-8 cannot silently change a submitted identity');
+    for (const alreadyCancelled of [true, false]) {
+      const controller = new AbortController();
+      let cancelled = false;
+      const request = new Request(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+        body: new ReadableStream({ cancel() { cancelled = true; } }), duplex: 'half',
+      });
+      if (alreadyCancelled) controller.abort();
+      const pending = route.fetch(request);
+      if (!alreadyCancelled) controller.abort();
+      assert.equal((await pending).status, 408, 'Cancelled score bodies cannot leave a pending write');
+      assert.equal(cancelled, true);
+      assert.equal(request.body.locked, false);
+    }
     for (const [body, status] of [['{bad', 400], ['🦊'.repeat(600), 400], ['T'.repeat(MAX_SUBMISSION_BYTES + 1), 413]]) {
       const rejected = await route.fetch(new Request(endpoint, {
         method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body,
@@ -241,6 +310,23 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
     assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 29, 30, 31]);
     assert.equal((await (await get(1, 999999)).json()).currentPlayer, null);
 
+    const thirdHole = LEVELS.find(level => level.id === 3);
+    const thirdSolution = solveShortest(thirdHole.target, thirdHole.epsilon, { maxDepth: thirdHole.optimalMoves });
+    const sqlNickname = "Ada'); DROP TABLE x;--";
+    const literal = await route.fetch(new Request(endpoint, {
+      method: 'POST', headers: { Origin: origin, 'Content-Type': 'Application/JSON; charset=UTF-8' },
+      body: JSON.stringify(valid({ level: 3, name: sqlNickname, sequence: thirdSolution.sequence,
+        moves: 0, campaign: 'other', created_at: 0, id: 1 })),
+    }));
+    assert.equal(literal.status, 201, 'JSON media type parameters are supported');
+    const literalBoard = await literal.json();
+    assert.equal(literalBoard.currentPlayer.name, sqlNickname, 'A SQL-looking nickname is stored as literal text');
+    assert.equal(literalBoard.currentPlayer.moves, thirdHole.optimalMoves);
+    const savedLiteral = (await database.query('SELECT * FROM scores WHERE id = $1', [literalBoard.currentPlayer.id])).rows[0];
+    assert.equal(savedLiteral.campaign, 'quantum-golf-v2-plus');
+    assert.notEqual(Number(savedLiteral.created_at), 0, 'Clients cannot choose their tie-breaking timestamp');
+    assert.equal((await (await get(3)).json()).total, 1);
+
     const beforeFailure = await count();
     delete process.env.DATABASE_URL;
     for (const unavailable of [await get(), await post(valid({ name: 'No database' }))]) {
@@ -352,7 +438,7 @@ test('database waits stop on request cancellation or timeout and errors never ex
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { error: 'Scores are temporarily unavailable. Try again.' });
     assert.equal(JSON.stringify(logs).includes('Sensitive'), false, 'Logs omit database error text and request data');
-    assert.deepEqual(logs.at(-1), ['Quantum golf leaderboard failed.', {
+    assert.deepEqual(logs.at(-1), ['Game leaderboard failed.', {
       configured: true, error: 'TimeoutError', code: undefined,
     }]);
   } finally {

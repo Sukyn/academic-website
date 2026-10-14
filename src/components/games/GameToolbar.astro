@@ -1,0 +1,20 @@
+---
+interface Props { levels: { id: number; title: string }[] }
+const { levels } = Astro.props;
+---
+
+<div class="game-toolbar">
+  <div class="level-bar" id="campaign-controls">
+    <button class="button ghost" id="previous-level" type="button" aria-label="Previous level" disabled>←</button>
+    <label class="sr-only" for="level">Level</label>
+    <select id="level">
+      {levels.map(item => <option value={item.id}>{item.id} · {item.title}</option>)}
+    </select>
+    <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
+  </div>
+  <button class="button ghost" id="show-rules" type="button" aria-haspopup="dialog">Rules</button>
+</div>
+<div class="daily-heading" id="daily-heading" hidden>
+  <p id="daily-title"></p>
+  <p class="message" id="daily-note"></p>
+</div>

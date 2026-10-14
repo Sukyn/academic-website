@@ -1,18 +1,10 @@
 import campaign from "./campaign.json" with { type: "json" };
 import { START_STATE, applyGate, traceDistance } from "./quantum.js";
 import { DAILY_VERSION, dailyBounds, dailyDate, dailyPuzzle, validDailyDate } from "./daily.js";
+import { SubmissionError, scoreName } from "../games/submission.js";
+export { MAX_SUBMISSION_BYTES, SubmissionError, readSubmission } from "../games/submission.js";
 
 export const CAMPAIGN = campaign.version;
-export const MAX_SUBMISSION_BYTES = 4_500_000;
-
-export class SubmissionError extends Error {
-  status: number;
-  constructor(message: string, status = 400) {
-    super(message);
-    this.status = status;
-  }
-}
-
 export function getLevel(id: unknown) {
   const value = typeof id === "string" ? Number(id) : id;
   const level = campaign.levels.find(item => item.id === value);
@@ -44,10 +36,7 @@ export function validateSubmission(input: unknown, now = Date.now()) {
     throw new SubmissionError("This puzzle's leaderboard is closed.", 409);
   }
   const level = board.hole;
-  const name = typeof payload.name === "string" ? payload.name.trim().replace(/\s+/gu, " ") : "";
-  if (!name || Array.from(name).length > 24 || /\p{C}/u.test(name)) {
-    throw new SubmissionError("Use a name of 1 to 24 characters.");
-  }
+  const name = scoreName(payload.name);
   const sequence = payload.sequence;
   if (typeof sequence !== "string" || !sequence.length || /[^HT]/.test(sequence)) {
     throw new SubmissionError("Use one or more H/T gates.");
@@ -64,24 +53,4 @@ export function validateSubmission(input: unknown, now = Date.now()) {
     campaign: board.campaign, level: board.level, name, moves: sequence.length,
     ...("date" in board ? { date: board.date, opensAt: board.opensAt, closesAt: board.closesAt } : {}),
   };
-}
-
-export async function readSubmission(request: Request) {
-  const reader = request.body?.getReader();
-  if (!reader) throw new SubmissionError("Expected a JSON submission.");
-  let size = 0, body = "";
-  const decoder = new TextDecoder();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_SUBMISSION_BYTES) {
-      await reader.cancel();
-      throw new SubmissionError("Submission is too large.", 413);
-    }
-    body += decoder.decode(value, { stream: true });
-  }
-  body += decoder.decode();
-  try { return JSON.parse(body); }
-  catch { throw new SubmissionError("Expected a JSON submission."); }
 }

@@ -76,6 +76,18 @@ test('score validation rejects malformed or nonwinning circuits without a gate-c
   assert.equal(validateSubmission(valid({ level: 2, sequence: 'H' + 'T'.repeat(10_000) })).moves, 10_001);
 });
 
+test('forged score fields cannot replace a winning circuit or change its board and move count', () => {
+  const forged = { moves: 0, id: 1, rank: 1, campaign: 'other', created_at: 0,
+    epsilon: 1, optimalMoves: 0, target: [0, 0, 1], state: [0, 0, 1] };
+  const score = validateSubmission(valid(forged));
+  assert.deepEqual(score, { campaign: CAMPAIGN, level: 1, name: 'Ada', moves: 1 });
+  for (const sequence of [null, true, 1, ['T'], { 0: 'T', length: 1 }, 'Ｔ', 'T\u0000']) {
+    rejectsSubmission(valid({ ...forged, sequence }));
+  }
+  rejectsSubmission({ ...forged, level: 11, name: 'Colin' });
+  rejectsSubmission(valid({ ...forged, level: 11 }));
+});
+
 test('streamed JSON score requests enforce a byte limit and preserve split UTF-8 names', async () => {
   const bytes = new TextEncoder().encode(JSON.stringify(valid({ name: 'Zoë 🦊' })));
   const stream = new ReadableStream({
@@ -106,6 +118,69 @@ test('streamed JSON score requests enforce a byte limit and preserve split UTF-8
   assert.deepEqual(await readSubmission(new Request('https://example.test', {
     method: 'POST', body: JSON.stringify(long),
   })), long, 'Circuits exceeding the old 2KB request limit are read intact');
+});
+
+test('invalid UTF-8 and duplicate JSON fields cannot disguise a score submission', async () => {
+  const prefix = new TextEncoder().encode('{"level":1,"name":"Ada');
+  const suffix = new TextEncoder().encode('","sequence":"T"}');
+  for (const malformed of [[0xc0, 0xaf], [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xe2, 0x82]]) {
+    const bytes = Uint8Array.from([...prefix, ...malformed, ...suffix]);
+    const stream = new ReadableStream({ start(controller) {
+      for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+      controller.close();
+    } });
+    await assert.rejects(() => readSubmission(new Request('https://example.test', {
+      method: 'POST', body: stream, duplex: 'half',
+    })), error => error instanceof SubmissionError && error.status === 400,
+    'Malformed Unicode must be rejected rather than silently replacing the nickname');
+  }
+  for (const body of [
+    '{"level":1,"name":"Ada","sequence":"T","sequence":null}',
+    '{"level":1,"name":"Ada","sequence":"T","level":11}',
+    '{"__proto__":{"level":1,"name":"Ada","sequence":"T"}}',
+  ]) {
+    const payload = await readSubmission(new Request('https://example.test', { method: 'POST', body }));
+    rejectsSubmission(payload);
+  }
+  let cancelled = false;
+  const oversized = new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(MAX_SUBMISSION_BYTES + 1)); },
+    cancel() { cancelled = true; },
+  });
+  await assert.rejects(() => readSubmission(new Request('https://example.test', {
+    method: 'POST', body: oversized, duplex: 'half', headers: { 'Content-Length': '1' },
+  })), error => error instanceof SubmissionError && error.status === 413);
+  assert.equal(cancelled, true, 'Oversized input is cancelled even when Content-Length is forged');
+});
+
+test('cancelled or stalled body reads stop promptly and release the stream', async () => {
+  for (const alreadyCancelled of [true, false]) {
+    const controller = new AbortController();
+    let cancelled = false;
+    const body = new ReadableStream({ cancel() { cancelled = true; } });
+    const request = new Request('https://example.test', {
+      method: 'POST', body, duplex: 'half', signal: controller.signal,
+    });
+    if (alreadyCancelled) controller.abort();
+    const pending = readSubmission(request);
+    if (!alreadyCancelled) controller.abort();
+    await assert.rejects(pending, error => error instanceof SubmissionError && error.status === 408);
+    assert.equal(cancelled, true, 'Aborted requests cancel their pending body');
+    assert.equal(request.body.locked, false, 'The reader is released after cancellation');
+  }
+  const originalTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = duration => {
+    assert.equal(duration, 10_000);
+    return AbortSignal.abort(new DOMException('Body read deadline', 'TimeoutError'));
+  };
+  try {
+    const request = new Request('https://example.test', {
+      method: 'POST', body: new ReadableStream(), duplex: 'half',
+    });
+    await assert.rejects(() => readSubmission(request),
+      error => error instanceof SubmissionError && error.status === 408);
+    assert.equal(request.body.locked, false, 'Timed-out readers are released');
+  } finally { AbortSignal.timeout = originalTimeout; }
 });
 
 test('server campaign metadata agrees with playable holes and contains no solutions', async () => {
