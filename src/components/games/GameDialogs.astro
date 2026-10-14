@@ -47,8 +47,7 @@ const { gameTitle, unit = 'Moves', filename = 'circuit-reduction.gif' } = Astro.
   <p class="message" id="share-status" role="status"></p>
   <img id="share-preview" hidden alt={`Replay of your ${gameTitle.toLowerCase()} score`} />
   <div class="share-actions">
-    <button class="button" id="copy-gif" type="button" disabled>Copy the GIF</button>
-    <button class="button ghost" id="native-share-gif" type="button" hidden>Share GIF</button>
+    <button class="button" id="copy-gif" type="button" disabled>Copy image</button>
     <a class="button ghost" id="download-gif" download={filename} hidden>Download GIF</a>
   </div>
 </dialog>

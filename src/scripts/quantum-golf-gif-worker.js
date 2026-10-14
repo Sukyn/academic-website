@@ -6,7 +6,7 @@ import { START_STATE, applyGate, gateRotation } from '../lib/quantum-golf/quantu
 const { GIFEncoder, quantize, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
 const WIDTH = 480, HEIGHT = 560, HEADER = 128;
 
-export function encodeReplay(round, onProgress) {
+export function encodeReplay(round, onProgress, onFinalFrame) {
   if (typeof OffscreenCanvas !== 'function') {
     throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
   }
@@ -90,14 +90,17 @@ export function encodeReplay(round, onProgress) {
     onProgress?.(i / samples);
   }
   gif.finish();
+  onFinalFrame?.(canvas);
   return gif.bytesView();
 }
 
 if (typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope) {
-  globalThis.onmessage = ({ data }) => {
+  globalThis.onmessage = async ({ data }) => {
     try {
-      const bytes = encodeReplay(data, progress => globalThis.postMessage({ progress }));
-      globalThis.postMessage({ bytes }, [bytes.buffer]);
+      let canvas, image;
+      const bytes = encodeReplay(data, progress => globalThis.postMessage({ progress }), finalFrame => { canvas = finalFrame; });
+      try { image = await canvas.convertToBlob({ type: 'image/png' }); } catch {}
+      globalThis.postMessage({ bytes, image }, [bytes.buffer]);
     } catch (error) {
       globalThis.postMessage({ error: error.message || 'Could not create the GIF. Please try again.', name: error.name });
     }

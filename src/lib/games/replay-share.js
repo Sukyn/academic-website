@@ -1,20 +1,21 @@
 /** Own the shared share dialog and its abortable export job, independent of gameplay. */
 export function createReplayShare({ createGif, get = id => document.getElementById(id) }) {
   const dialog = get('share-dialog');
-  let request, file, url, source;
+  let request, image, copyBlob, url, previewUrl, source;
 
   function dispose() {
     request?.abort();
     request = null;
-    file = null;
+    image = copyBlob = null;
+    if (previewUrl && previewUrl !== url) URL.revokeObjectURL(previewUrl);
     if (url) URL.revokeObjectURL(url);
-    url = null;
+    url = previewUrl = null;
     get('share-preview').removeAttribute('src');
     get('share-preview').hidden = true;
     get('download-gif').removeAttribute('href');
     get('download-gif').hidden = true;
     get('copy-gif').disabled = true;
-    get('native-share-gif').hidden = true;
+    get('copy-gif').textContent = 'Copy image';
     get('share-status').textContent = '';
   }
 
@@ -29,23 +30,28 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     dialog.showModal();
     get('close-share').focus();
     try {
-      const blob = await createGif(round, { signal: job.signal, onProgress: progress => {
-        if (request === job) get('share-status').textContent = `Making your GIF… ${Math.round(progress * 100)}%`;
-      } });
+      const blob = await createGif(round, {
+        signal: job.signal,
+        onImage: png => { if (request === job) image = png; },
+        onProgress: progress => {
+          if (request === job) get('share-status').textContent = `Making your GIF… ${Math.round(progress * 100)}%`;
+        },
+      });
       if (request !== job) return;
-      file = new File([blob], filename, { type: 'image/gif' });
+      const file = new File([blob], filename, { type: 'image/gif' });
       url = URL.createObjectURL(file);
-      get('share-preview').src = url;
-      get('share-preview').hidden = false;
       get('download-gif').href = url;
       get('download-gif').download = filename;
       get('download-gif').hidden = false;
-      const canCopy = Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined' &&
-        (typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports('image/gif')));
-      get('copy-gif').disabled = !canCopy;
-      let nativeShare = false;
-      try { nativeShare = Boolean(navigator.share && navigator.canShare?.({ files: [file] })); } catch {}
-      get('native-share-gif').hidden = !nativeShare;
+      const canCopy = Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined');
+      const copyGif = canCopy && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('image/gif');
+      const copyImage = canCopy && (typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports('image/png'));
+      copyBlob = copyGif ? file : copyImage ? image : null;
+      previewUrl = copyBlob?.type === 'image/png' ? URL.createObjectURL(copyBlob) : url;
+      get('share-preview').src = previewUrl;
+      get('share-preview').hidden = false;
+      get('copy-gif').textContent = copyGif ? 'Copy the GIF' : 'Copy image';
+      get('copy-gif').disabled = !canCopy || !copyBlob;
       get('share-status').textContent = '';
     } catch (error) {
       if (request === job) get('share-status').textContent = error.name === 'NotSupportedError'
@@ -55,28 +61,18 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
   }
 
   async function copy() {
-    const ready = file;
+    const ready = copyBlob;
     if (!ready || get('copy-gif').disabled) return;
     try {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/gif': ready })]);
-      if (file === ready) get('share-status').textContent = 'GIF copied.';
+      await navigator.clipboard.write([new ClipboardItem({ [ready.type]: ready })]);
+      if (copyBlob === ready) get('share-status').textContent = ready.type === 'image/gif' ? 'GIF copied.' : 'Image copied.';
     } catch {
-      if (file === ready) get('share-status').textContent = 'Could not copy the GIF. Use Download GIF instead.';
-    }
-  }
-
-  async function nativeShare() {
-    const ready = file;
-    if (!ready) return;
-    try { await navigator.share({ files: [ready] }); }
-    catch (error) {
-      if (file === ready && error.name !== 'AbortError') get('share-status').textContent = 'Could not share the GIF. Use Download GIF instead.';
+      if (copyBlob === ready) get('share-status').textContent = 'Could not copy. Use Download GIF instead.';
     }
   }
 
   get('close-share').addEventListener('click', close);
   get('copy-gif').addEventListener('click', copy);
-  get('native-share-gif').addEventListener('click', nativeShare);
   dialog.addEventListener('close', () => {
     if (!dialog.open) { dispose(); source?.focus(); }
   });

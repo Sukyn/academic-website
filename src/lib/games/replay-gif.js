@@ -1,7 +1,7 @@
 const unavailable = 'Your browser cannot create GIFs. Try an up-to-date browser.';
 const failed = 'Could not create the GIF. Please try again.';
 
-export function createWorkerReplayGif(round, createWorker, { signal, onProgress } = {}) {
+export function createWorkerReplayGif(round, createWorker, { signal, onProgress, onImage } = {}) {
   return new Promise((resolve, reject) => {
     let worker, settled = false;
     const finish = (error, bytes) => {
@@ -27,7 +27,10 @@ export function createWorkerReplayGif(round, createWorker, { signal, onProgress 
           error.name = data.name || 'Error';
           finish(error);
         }
-        else if (data.bytes) finish(null, data.bytes);
+        else if (data.bytes) {
+          if (data.image instanceof Blob && data.image.type === 'image/png') onImage?.(data.image);
+          finish(null, data.bytes);
+        }
         else if (Number.isFinite(data.progress)) onProgress?.(Math.max(0, Math.min(1, data.progress)));
       };
       worker.onerror = event => {

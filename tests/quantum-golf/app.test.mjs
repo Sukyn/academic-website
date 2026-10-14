@@ -131,6 +131,9 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.match(advancedMarkup[2], /\bid="share-score"/);
   assert.match(resultAdvancedMarkup[2], /\bid="share-result"/);
   assert.match(html, /id="share-dialog"[^>]*aria-labelledby="share-title"/);
+  assert.doesNotMatch(html, /\bid="native-share-gif"/, 'The unused native share control is removed');
+  const shareSource = await readFile(new URL('src/lib/games/replay-share.js', website), 'utf8');
+  assert.doesNotMatch(shareSource, /navigator\.(?:share|canShare)\b/, 'Sharing does not invoke the native share API');
   for (const id of ['share-score', 'share-result', 'replay-actions', 'result-replay-actions']) {
     assert.equal([...html.matchAll(new RegExp(`\\bid="${id}"`, 'g'))].length, 1, `#${id} has a single instance`);
   }
@@ -190,7 +193,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const browser = new MockElement('WINDOW');
   browser.matchMedia = () => ({ matches: reducedMotion });
   globalThis.window = browser;
-  let clipboardSupported = true, clipboardFailure = null, clipboardDelay = null;
+  let clipboardSupported = true, pngClipboardSupported = true, clipboardFailure = null, clipboardDelay = null;
   const clipboardWrites = [];
   const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   const clipboardDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ClipboardItem');
@@ -201,7 +204,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   } } };
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: mockNavigator });
   globalThis.ClipboardItem = class {
-    static supports(type) { return clipboardSupported && type === 'image/gif'; }
+    static supports(type) { return type === 'image/gif' ? clipboardSupported : type === 'image/png' && pngClipboardSupported; }
     constructor(items) { this.items = items; }
   };
   browser.navigator = mockNavigator;
@@ -336,6 +339,9 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
     return request;
   }
   async function completeShare(request, blob = new Blob(['GIF89a'], { type: 'image/gif' })) {
+    request.imageBlob = new Blob([`Final image ${gifRequests.indexOf(request)}: ${request.args[0].label}; ${request.args[0].sequence}`], { type: 'image/png' });
+    assert.equal(typeof request.args[1].onImage, 'function', 'The exporter supplies the final traced state for image copying');
+    request.args[1].onImage(request.imageBlob);
     request.resolve(blob);
     await request.completion;
     await settle();
@@ -508,11 +514,13 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.match(get('download-gif').download, /level-1.*\.gif$/);
   assert.equal(get('download-gif').hidden, false);
   assert.equal(get('copy-gif').disabled, false);
+  assert.equal(get('copy-gif').textContent, 'Copy the GIF', 'GIF-capable browsers keep the animated copy action');
   assert.equal(clipboardWrites.length, 0, 'GIF generation never writes the clipboard by itself');
-  await click('copy-gif');
+  const firstCopy = click('copy-gif');
   assert.equal(clipboardWrites.length, 1);
+  await firstCopy;
   assert.equal(clipboardWrites[0][0].items['image/gif'], firstGifFile, 'Copy uses the GIF itself');
-  assert.match(get('share-status').textContent, /copied/i);
+  assert.equal(get('share-status').textContent, 'GIF copied.');
   assert.equal(requests.length, beforeSharingRequests, 'Sharing has no leaderboard side effect');
   assert.equal(sphere.model.sequence, firstSolution);
   samePoint(sphere.model.state, LEVELS[0].target);
@@ -1017,9 +1025,6 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   Date.now = () => Date.parse('2036-01-01T12:00:00Z');
   const dailySolution = finishHole(dailyPuzzle(today));
   assert.equal(get('score-form').hidden, false, 'A wrong browser wall clock cannot close server-authorized scoring');
-  const nativeShares = [];
-  mockNavigator.canShare = ({ files }) => files.every(file => file.type === 'image/gif');
-  mockNavigator.share = async data => nativeShares.push(data);
   clipboardSupported = false;
   const dailyShare = await startShare('share-result');
   assert.equal(dailyShare.args[0].label, 'Daily puzzle : 14 Oct 2026');
@@ -1029,29 +1034,81 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.ok(get('share-status').textContent);
   const dailyBlob = await completeShare(dailyShare);
   assert.equal(get('share-status').textContent, '', 'An unsupported GIF clipboard also leaves the ready card without helper text');
-  assert.equal(get('copy-gif').disabled, true, 'Unsupported GIF clipboard formats are not substituted with a still image');
+  assert.equal(get('copy-gif').disabled, false, 'Browsers without GIF clipboard support can copy the final traced image');
+  assert.equal(get('copy-gif').textContent, 'Copy image');
   assert.equal(get('download-gif').hidden, false);
   assert.match(get('download-gif').download, /2026-10-14.*\.gif$/);
   const copiesBeforeUnsupported = clipboardWrites.length;
+  const finalImageCopy = click('copy-gif');
+  assert.equal(clipboardWrites.length, copiesBeforeUnsupported + 1, 'The clipboard write begins within the button gesture');
+  await finalImageCopy;
+  const dailyImage = clipboardWrites.at(-1)[0].items['image/png'];
+  assert.equal(dailyImage, dailyShare.imageBlob, 'Copy image uses the exporter’s final-state PNG');
+  assert.deepEqual(await dailyImage.arrayBuffer(), await dailyShare.imageBlob.arrayBuffer());
+  assert.equal(clipboardWrites.at(-1)[0].items['image/gif'], undefined);
+  assert.equal(get('share-status').textContent, 'Image copied.');
+  clipboardFailure = new DOMException('Image clipboard permission denied', 'NotAllowedError');
   await click('copy-gif');
-  assert.equal(clipboardWrites.length, copiesBeforeUnsupported);
+  assert.doesNotMatch(get('share-status').textContent, /copied/i);
+  assert.match(get('share-status').textContent, /download/i, 'Image clipboard failure leaves the animation downloadable');
+  clipboardFailure = null;
+  const dailyPreviewURL = get('share-preview').src, dailyGifURL = get('download-gif').href;
+  assert.notEqual(dailyPreviewURL, dailyGifURL, 'Image-copy previews show the final state while the download remains animated');
+  assert.equal(objectURLs.get(dailyPreviewURL), dailyShare.imageBlob, 'The preview displays exactly the image being copied');
+  const dailyGifFile = objectURLs.get(dailyGifURL);
+  assert.equal(dailyGifFile.type, 'image/gif', 'The downloadable animation remains a GIF when copying uses PNG');
+  assert.deepEqual(await dailyGifFile.arrayBuffer(), await dailyBlob.arrayBuffer());
   get('download-gif').click();
-  assert.equal(downloads.at(-1).href, get('share-preview').src);
-  assert.equal(get('native-share-gif').hidden, false);
-  const readyShareStatus = get('share-status').textContent;
-  mockNavigator.share = async () => { throw new DOMException('User cancelled', 'AbortError'); };
-  await click('native-share-gif');
-  assert.equal(get('share-status').textContent, readyShareStatus, 'Cancelling the mobile share sheet is not an export failure');
-  mockNavigator.share = async data => nativeShares.push(data);
-  await click('native-share-gif');
-  assert.equal(nativeShares.length, 1);
-  assert.equal(nativeShares[0].files[0].type, 'image/gif');
-  assert.equal(nativeShares[0].files[0].size, dailyBlob.size);
-  assert.match(nativeShares[0].files[0].name, /2026-10-14.*\.gif$/);
+  assert.equal(downloads.at(-1).href, dailyGifURL);
   click('close-share');
+  assert.ok(revokedURLs.includes(dailyPreviewURL) && revokedURLs.includes(dailyGifURL), 'Closing releases the separate PNG preview and GIF download');
+
+  // Engines without the optional MIME capability probe use PNG, the standard
+  // image clipboard format, and do not assume that animated GIFs are accepted.
+  const supports = ClipboardItem.supports;
+  delete ClipboardItem.supports;
+  const unprobedShare = await startShare('share-result');
+  await completeShare(unprobedShare);
+  assert.equal(get('copy-gif').textContent, 'Copy image');
+  assert.equal(get('copy-gif').disabled, false);
+  await click('copy-gif');
+  assert.equal(clipboardWrites.at(-1)[0].items['image/png'], unprobedShare.imageBlob);
+  click('close-share');
+  ClipboardItem.supports = supports;
+
+  pngClipboardSupported = false;
+  const noImageClipboardShare = await startShare('share-result');
+  await completeShare(noImageClipboardShare);
+  assert.equal(get('copy-gif').disabled, true, 'Unsupported image formats leave the GIF download available');
+  const copiesBeforeNoImage = clipboardWrites.length;
+  await click('copy-gif');
+  assert.equal(clipboardWrites.length, copiesBeforeNoImage);
+  assert.equal(get('download-gif').hidden, false);
+  click('close-share');
+  pngClipboardSupported = true;
+
+  const clipboard = mockNavigator.clipboard;
+  delete mockNavigator.clipboard;
+  const noClipboardShare = await startShare('share-result');
+  await completeShare(noClipboardShare);
+  assert.equal(get('copy-gif').disabled, true, 'Clipboard API absence does not create a broken copy action');
+  await click('copy-gif');
+  assert.equal(clipboardWrites.length, copiesBeforeNoImage);
+  assert.equal(get('download-gif').hidden, false);
+  click('close-share');
+  mockNavigator.clipboard = clipboard;
+
+  delete globalThis.ClipboardItem;
+  const noClipboardItemShare = await startShare('share-result');
+  await completeShare(noClipboardItemShare);
+  assert.equal(get('copy-gif').disabled, true, 'Missing ClipboardItem also disables copying without breaking the export');
+  await click('copy-gif');
+  assert.equal(clipboardWrites.length, copiesBeforeNoImage);
+  assert.equal(get('download-gif').hidden, false);
+  click('close-share');
+  globalThis.ClipboardItem = browser.ClipboardItem;
+
   clipboardSupported = true;
-  delete mockNavigator.canShare;
-  delete mockNavigator.share;
   get('player-name').value = 'Ada';
   const dailySubmission = get('score-form').dispatch('submit');
   const dailyPost = requests.at(-1);
@@ -1232,6 +1289,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const cancelledShare = await startShare();
   click('close-share');
   assert.equal(cancelledShare.args[1].signal.aborted, true);
+  clipboardSupported = false;
   const replacementShare = await startShare();
   const replacementStatus = get('share-status').textContent;
   cancelledShare.args[1].onProgress(0.9);
@@ -1241,10 +1299,13 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(objectURLs.size, URLsBeforeStaleExport, 'Cancelled generation cannot allocate a stale preview');
   assert.equal(get('copy-gif').disabled, true);
   const replacementBlob = await completeShare(replacementShare);
-  assert.deepEqual(await objectURLs.get(get('share-preview').src).arrayBuffer(), await replacementBlob.arrayBuffer());
+  assert.equal(objectURLs.get(get('share-preview').src), replacementShare.imageBlob);
+  assert.deepEqual(await objectURLs.get(get('download-gif').href).arrayBuffer(), await replacementBlob.arrayBuffer());
+  cancelledShare.args[1].onImage(cancelledShare.imageBlob);
   let finishPendingCopy;
   clipboardDelay = new Promise(resolve => { finishPendingCopy = resolve; });
   const pendingCopy = click('copy-gif');
+  assert.equal(clipboardWrites.at(-1)[0].items['image/png'], replacementShare.imageBlob, 'A late image from a cancelled worker cannot replace the current snapshot');
   click('close-share');
   const laterShare = await startShare();
   await completeShare(laterShare);
@@ -1254,6 +1315,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   clipboardDelay = null;
   assert.equal(get('share-status').textContent, laterStatus, 'A previous clipboard completion cannot update another export');
   click('close-share');
+  clipboardSupported = true;
   const escapedShare = await startShare();
   const URLsBeforeEscape = objectURLs.size;
   await shareDialog.dispatch('cancel');
@@ -1405,6 +1467,16 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   // Reset and mode changes abort local encoding before a stale result can
   // become the next round's preview or clipboard contents.
   selectLevel(1);
+  finishLevel(0);
+  clipboardSupported = false;
+  const readyResetShare = await startShare();
+  await completeShare(readyResetShare);
+  const resetPreviewURL = get('share-preview').src, resetGifURL = get('download-gif').href;
+  assert.notEqual(resetPreviewURL, resetGifURL);
+  click('restart');
+  assert.equal(shareDialog.open, false);
+  assert.ok(revokedURLs.includes(resetPreviewURL) && revokedURLs.includes(resetGifURL), 'Reset releases both completed export URLs');
+  clipboardSupported = true;
   finishLevel(0);
   const resetShare = await startShare();
   const URLsBeforeReset = objectURLs.size;

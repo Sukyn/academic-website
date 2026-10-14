@@ -123,7 +123,7 @@ function decodeLzw(data, depth, length) {
 }
 
 test('daily GIF contains only the three requested labels and a smooth, looping replay', context => {
-  let instance, followed = 0, fractional = 0;
+  let instance, followed = 0, fractional = 0, finalFrame;
   const surfaces = canvases(context, () => {
     const point = instance.project(instance.state);
     assert.ok(Math.abs(point.x - instance.cx) < 1e-9 && Math.abs(point.y - instance.cy) < 1e-9 && point.depth > 0.999,
@@ -139,8 +139,19 @@ test('daily GIF contains only the three requested labels and a smooth, looping r
   replace(context, BlochSphere.prototype, 'setState', function (next) {
     original.call(this, next); instance = this;
   });
-  const bytes = encodeReplay(round, value => progress.push(value));
+  const bytes = encodeReplay(round, value => progress.push(value), canvas => {
+    finalFrame = canvas;
+    assert.deepEqual(instance.state, round.target, 'The still image uses the completed winning state');
+    assert.equal(instance.model.animation, null);
+    assert.equal(instance.model.sequence, sequence);
+    assert.equal(instance.history.length, sequence.length, 'The still includes every gate in its trace');
+    const point = instance.project(instance.state);
+    assert.ok(Math.abs(point.x - instance.cx) < 1e-9 && Math.abs(point.y - instance.cy) < 1e-9 && point.depth > 0.999);
+  });
   const frames = gifFrames(bytes), output = surfaces[0];
+  assert.equal(finalFrame, output, 'PNG reuses the final opaque frame, without rerendering');
+  assert.equal(finalFrame.width, 480);
+  assert.equal(finalFrame.height, 560);
   assert.equal(surfaces.length, 2, 'One frame and one sphere canvas stream the replay');
   assert.deepEqual(output.context.texts, [round.label, 'Optimal : 10', 'My score : 10']);
   assert.equal(output.context.images.length, frames.length + 1, 'The final palette sample is rendered once before encoding');
@@ -185,7 +196,10 @@ test('1358-gate replay follows the point and reprojects the complete world-space
     original.call(this, next); instance = this;
   });
   const target = destination(word);
-  const frames = gifFrames(encodeReplay({ ...round, label: 'Level : 11', sequence: word, target, optimalMoves: 16 }));
+  let finalFrame;
+  const frames = gifFrames(encodeReplay({ ...round, label: 'Level : 11', sequence: word, target, optimalMoves: 16 }, null,
+    canvas => { finalFrame = canvas; assert.equal(instance.history.length, word.length); }));
+  assert.equal(finalFrame, surfaces[0]);
   assert.equal(frames.length, 97);
   assert.equal(followed, frames.length + 1, 'Palette sampling and every GIF frame center the moving point');
   assert.ok(frames.reduce((total, frame) => total + frame.delay, 0) <= 13000);
@@ -256,8 +270,9 @@ function workers(context) {
 }
 
 test('worker wrapper forwards progress, transfers a GIF blob and releases its worker', async context => {
-  const created = workers(context), progress = [], abort = new AbortController();
-  const promise = createReplayGif(round, { signal: abort.signal, onProgress: value => progress.push(value) });
+  const created = workers(context), progress = [], images = [], abort = new AbortController();
+  const promise = createReplayGif(round, { signal: abort.signal, onProgress: value => progress.push(value),
+    onImage: image => images.push(image) });
   const worker = created[0];
   assert.ok(worker.url.pathname.endsWith('/src/scripts/quantum-golf-gif-worker.js'));
   assert.deepEqual(worker.options, { type: 'module' });
@@ -265,28 +280,92 @@ test('worker wrapper forwards progress, transfers a GIF blob and releases its wo
   const message = worker.onmessage;
   message({ data: { progress: 0.25 } });
   message({ data: { progress: 2 } });
-  message({ data: { bytes: new Uint8Array([71, 73, 70]) } });
+  const image = new Blob(['final frame'], { type: 'image/png' });
+  message({ data: { bytes: new Uint8Array([71, 73, 70]), image } });
   const blob = await promise;
   assert.equal(blob.type, 'image/gif');
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), new Uint8Array([71, 73, 70]));
   assert.deepEqual(progress, [0.25, 1]);
+  assert.deepEqual(images, [image]);
   assert.equal(worker.terminations, 1);
   assert.equal(worker.onmessage, null);
   abort.abort();
   message({ data: { progress: 0.5 } });
+  message({ data: { bytes: new Uint8Array([71]), image } });
   assert.equal(worker.terminations, 1);
   assert.deepEqual(progress, [0.25, 1], 'Completed work cannot report stale progress');
+  assert.deepEqual(images, [image], 'Completed work cannot replace the still image');
 });
 
 test('cancel stops encoding immediately, including a signal cancelled before launch', async context => {
-  const created = workers(context), abort = new AbortController();
-  const promise = createReplayGif(round, { signal: abort.signal });
+  const created = workers(context), abort = new AbortController(), images = [];
+  const promise = createReplayGif(round, { signal: abort.signal, onImage: image => images.push(image) });
+  const message = created[0].onmessage;
   abort.abort();
   await assert.rejects(promise, { name: 'AbortError' });
   assert.equal(created[0].terminations, 1);
   assert.equal(created[0].onmessage, null);
+  message({ data: { bytes: new Uint8Array([71]), image: new Blob(['stale'], { type: 'image/png' }) } });
+  assert.deepEqual(images, [], 'A cancelled worker cannot deliver its final image');
   await assert.rejects(createReplayGif(round, { signal: abort.signal }), { name: 'AbortError' });
   assert.equal(created.length, 1, 'An already cancelled job creates no worker');
+});
+
+test('GIF download remains available when no final PNG is returned', async context => {
+  const created = workers(context), images = [];
+  for (const image of [undefined, new Blob(['wrong type'], { type: 'image/gif' })]) {
+    const promise = createReplayGif(round, { onImage: value => images.push(value) });
+    created.at(-1).onmessage({ data: { bytes: new Uint8Array([71, 73, 70]), image } });
+    assert.equal((await promise).type, 'image/gif');
+  }
+  assert.deepEqual(images, []);
+});
+
+test('worker converts the completed frame to PNG and retains GIF bytes if conversion fails', async context => {
+  replace(context, globalThis, 'WorkerGlobalScope', class {
+    static [Symbol.hasInstance](value) { return value === globalThis; }
+  });
+  replace(context, globalThis, 'onmessage', null);
+  const messages = [];
+  replace(context, globalThis, 'postMessage', (data, transfer) => messages.push({ data, transfer }));
+  const surfaces = canvases(context);
+  let instance, conversions = 0, finishConversion;
+  const original = BlochSphere.prototype.setState;
+  replace(context, BlochSphere.prototype, 'setState', function (next) {
+    original.call(this, next); instance = this;
+  });
+  globalThis.OffscreenCanvas.prototype.convertToBlob = function (options) {
+    conversions++;
+    assert.deepEqual(options, { type: 'image/png' });
+    assert.equal(this, surfaces[0]);
+    assert.deepEqual(this.context.texts, [round.label, 'Optimal : 10', 'My score : 10']);
+    assert.deepEqual(instance.state, round.target);
+    assert.equal(instance.model.sequence, sequence);
+    assert.equal(instance.history.length, sequence.length);
+    assert.equal(instance.model.animation, null);
+    return new Promise(resolve => { finishConversion = resolve; });
+  };
+  await import(`${websiteFile('src/scripts/quantum-golf-gif-worker.js').href}?png-worker-test`);
+  const encoding = globalThis.onmessage({ data: round });
+  assert.equal(conversions, 1);
+  assert.equal(messages.at(-1).data.progress, 1, 'GIF completion waits for the PNG conversion');
+  const image = new Blob(['png'], { type: 'image/png' });
+  finishConversion(image);
+  await encoding;
+  const completed = messages.at(-1);
+  assert.equal(completed.data.image, image);
+  assert.equal(gifFrames(completed.data.bytes).length, sequence.length * 6 + 1);
+  assert.deepEqual(completed.transfer, [completed.data.bytes.buffer]);
+
+  globalThis.OffscreenCanvas.prototype.convertToBlob = async () => { throw new Error('PNG unavailable'); };
+  await globalThis.onmessage({ data: round });
+  assert.equal(messages.at(-1).data.image, undefined);
+  assert.equal(gifFrames(messages.at(-1).data.bytes).length, sequence.length * 6 + 1);
+
+  delete globalThis.OffscreenCanvas.prototype.convertToBlob;
+  await globalThis.onmessage({ data: round });
+  assert.equal(messages.at(-1).data.image, undefined);
+  assert.equal(gifFrames(messages.at(-1).data.bytes).length, sequence.length * 6 + 1);
 });
 
 test('worker failure, message failure and unsupported canvas all reject without leaking workers', async context => {
