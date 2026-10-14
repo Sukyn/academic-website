@@ -1,0 +1,23 @@
+// Precomputed benchmarks; verified witnesses live in tools/circuit-reduction/paper-witnesses.js.
+export const PAPER_CERTIFICATES = {
+  "1": {"optimalMoves":2},
+  "2": {"optimalMoves":4},
+  "3": {"optimalMoves":5},
+  "4": {"optimalMoves":7},
+  "5": {"optimalMoves":5},
+  "6": {"optimalMoves":5},
+  "7": {"optimalMoves":8},
+  "8": {"optimalMoves":6},
+  "9": {"optimalMoves":7},
+  "10": {"optimalMoves":4},
+  "11": {"optimalMoves":3},
+  "12": {"optimalMoves":7},
+  "13": {"optimalMoves":4},
+  "14": {"optimalMoves":8},
+  "15": {"optimalMoves":null,"parMoves":15},
+  "16": {"optimalMoves":null,"parMoves":19},
+  "intro-phase": {"optimalMoves":3},
+  "intro-order": {"optimalMoves":3},
+  "intro-stabilizer": {"optimalMoves":4},
+  "4-upper": {"optimalMoves":5},
+};

@@ -25,4 +25,5 @@ npm run build
 - `public/`: PDFs, fonts, and other assets
 
 [Quantum golf](tools/quantum-golf/README.md) is at `/games/quantum-golf/`.
+[Circuit reduction](tools/circuit-reduction/README.md) is at `/games/circuit-reduction/`.
 The unlisted circuit tool is at `/circuits/`; check it with `npm run test:circuits`.

@@ -1,14 +1,6 @@
 import { neon } from "@neondatabase/serverless";
-import {
-  getBoard, validateSubmission,
-} from "../src/lib/quantum-golf/leaderboard.js";
+import { getGame } from "../src/lib/games/server.js";
 import { readSubmission, SubmissionError } from "../src/lib/games/submission.js";
-
-function checkGame(value: unknown = "quantum-golf") {
-  if (value !== "quantum-golf") {
-    throw new SubmissionError("Choose a supported game.");
-  }
-}
 
 function getSql(request: Request) {
   const url = process.env.DATABASE_URL;
@@ -71,9 +63,9 @@ export default {
     try {
       checkOrigin(request);
       const params = new URL(request.url).searchParams;
-      checkGame(params.get("game") ?? undefined);
+      const game = getGame(params.get("game") ?? undefined);
       if (request.method === "GET") {
-        const selected = getBoard({
+        const selected = game.getBoard({
           ...(params.has("level") ? { level: params.get("level") } : {}),
           ...(params.has("date") ? { date: params.get("date") } : {}),
         });
@@ -86,9 +78,16 @@ export default {
           headers: { "Cache-Control": id === undefined ? "public, max-age=15" : "no-store" },
         });
       }
-      const input = await readSubmission(request);
-      if (input && typeof input === "object" && Object.hasOwn(input, "game")) checkGame(input.game);
-      const score = validateSubmission(input);
+      let submissionBytes = 0;
+      const input = await readSubmission(request, game.maxBytes,
+        size => { submissionBytes = size; });
+      const payloadGame = input && typeof input === "object" && Object.hasOwn(input, "game")
+        ? getGame(input.game) : game;
+      if (params.has("game") && payloadGame !== game) throw new SubmissionError("Choose one game for this score.");
+      if (submissionBytes > payloadGame.maxBytes) {
+        throw new SubmissionError("Submission is too large.", 413);
+      }
+      const score = payloadGame.validateSubmission(input);
       const sql = getSql(request);
       if ("date" in score) {
         // Use the database clock in the write itself: a request that waits across

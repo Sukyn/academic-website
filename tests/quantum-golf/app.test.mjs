@@ -458,7 +458,23 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   samePoint(sphere.model.target, LEVELS[0].target);
   assert.equal(strokes(), 0);
   assert.ok(requests.length > 0, 'Campaign opens its shared score list');
-  await reply(requests[0], board([player(1, '<b>Ada</b>', 2)]));
+  // Reset and Undo must replace a cancelled public ranking request, even if
+  // the first response has not arrived and the player has never submitted.
+  const initialBoard = requests[0];
+  click('restart');
+  const resetBoard = requests.at(-1);
+  assert.notEqual(resetBoard, initialBoard);
+  assert.equal(initialBoard.options.signal.aborted, true);
+  click('gate-h'); flushFrames(); click('undo');
+  const undoBoard = requests.at(-1);
+  assert.notEqual(undoBoard, resetBoard);
+  assert.equal(resetBoard.options.signal.aborted, true);
+  await reply(initialBoard, board([player(1, 'Old initial ranks', 2)]));
+  await reply(resetBoard, board([player(1, 'Old reset ranks', 2)]));
+  assert.equal(get('leaderboard-body').children.length, 1, 'Late public ranks cannot replace the current request');
+  assert.equal(strokes(), 0);
+  samePoint(sphere.model.state, START_STATE);
+  await reply(undoBoard, board([player(1, '<b>Ada</b>', 2)]));
   const rows = get('leaderboard-body').children;
   assert.ok(rows.length >= 2);
   assert.equal(rows[0].children[0].textContent, '—', 'The optimum is a reference, not a human rank');
@@ -626,6 +642,16 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const beforeDuplicate = requests.length;
   await get('score-form').dispatch('submit');
   assert.equal(requests.length, beforeDuplicate, 'A round cannot submit twice');
+  const savedSequence = sphere.model.sequence, savedState = [...sphere.model.state];
+  await browser.dispatch('pagehide');
+  await browser.dispatch('pageshow', { persisted: true });
+  const restoredBoard = requests.at(-1);
+  assert.equal(new URL(restoredBoard.url, 'https://example.test').searchParams.get('player'), String(own.id));
+  await reply(restoredBoard, board(windowEntries, own, 40));
+  assert.equal(sphere.model.sequence, savedSequence, 'Restoring a saved round preserves its circuit');
+  samePoint(sphere.model.state, savedState);
+  assert.equal(dialog.open, true, 'Restoration preserves the result dialog');
+  assert.equal(get('score-form').hidden, true, 'Restoration keeps a saved round submitted');
   click('try-again');
   assert.equal(dialog.open, false);
   assert.equal(winning(), false);
@@ -922,6 +948,27 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
       await reply(scores, board());
     }
   }
+
+  // A first Daily request cancelled by navigation cannot leave the restored
+  // page locked, even before daily metadata has ever been received.
+  const beforeRestoreSequence = sphere.model.sequence, beforeRestoreTarget = [...sphere.model.target];
+  const interruptedDailyLoad = click('mode-daily'), interruptedDaily = pendingDaily();
+  const interruptedSearch = workers.at(-1);
+  assert.equal(get('best-count').textContent, 'Finding optimum…');
+  assert.equal(get('gate-h').disabled, true);
+  await browser.dispatch('pagehide');
+  assert.equal(interruptedDaily.options.signal.aborted, true);
+  assert.equal(interruptedSearch.terminated, true);
+  interruptedSearch.respond({ status: 'optimal', optimalMoves: 99 });
+  assert.equal(get('best-count').textContent, 'Optimum unavailable', 'An interrupted search cannot keep a pending label or accept a late optimum');
+  await browser.dispatch('pageshow', { persisted: true });
+  assert.equal(get('best-count').textContent, 'Optimum unavailable');
+  assert.equal(get('gate-h').disabled, false, 'A BFCache return unlocks the preserved round');
+  assert.equal(get('restart').disabled, false);
+  await reply(interruptedDaily, metadata('2026-10-14')); await interruptedDailyLoad;
+  assert.equal(sphere.model.sequence, beforeRestoreSequence);
+  samePoint(sphere.model.target, beforeRestoreTarget);
+  assert.equal(get('mode-random').getAttribute('aria-pressed'), 'true', 'A cancelled Daily selection cannot resurrect after returning');
 
   // The first Daily request can fail before a server clock or archive exists.
   const firstDailyLoad = click('mode-daily');

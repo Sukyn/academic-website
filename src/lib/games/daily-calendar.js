@@ -38,6 +38,17 @@ export function validDailyDate(date, now = Date.now(), startDate = '0000-01-01')
   }
 }
 
+export function dailyMetadata(date, startDate, now = Date.now()) {
+  const today = dailyDate(now), selected = date ?? today;
+  if (!validDailyDate(selected, now, startDate)) throw new RangeError('Choose an available daily puzzle.');
+  const bounds = dailyBounds(selected);
+  return {
+    today, startDate, date: selected, timeZone: DAILY_TIME_ZONE, serverNow: now, ...bounds,
+    nextChangeAt: selected === today ? bounds.closesAt : dailyBounds(today).closesAt,
+    acceptingScores: selected === today,
+  };
+}
+
 function midnight(utcDate) {
   let result = utcDate;
   for (let attempt = 0; attempt < 3; attempt++) {

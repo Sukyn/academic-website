@@ -1,6 +1,6 @@
 ---
-interface Props { gameTitle: string; unit?: string; filename?: string }
-const { gameTitle, unit = 'Moves', filename = 'circuit-reduction.gif' } = Astro.props;
+interface Props { gameTitle: string; unit?: string }
+const { gameTitle, unit = 'Moves' } = Astro.props;
 ---
 
 <dialog class="game-dialog rules-dialog" id="rules-dialog" aria-labelledby="rules-title">
@@ -48,6 +48,6 @@ const { gameTitle, unit = 'Moves', filename = 'circuit-reduction.gif' } = Astro.
   <img id="share-preview" hidden alt={`Replay of your ${gameTitle.toLowerCase()} score`} />
   <div class="share-actions">
     <button class="button" id="copy-gif" type="button" disabled>Copy image</button>
-    <a class="button ghost" id="download-gif" download={filename} hidden>Download GIF</a>
+    <a class="button ghost" id="download-gif" download hidden>Download GIF</a>
   </div>
 </dialog>

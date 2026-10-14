@@ -15,7 +15,7 @@ export function scoreName(value) {
   return name;
 }
 
-export async function readSubmission(request, maxBytes = MAX_SUBMISSION_BYTES) {
+export async function readSubmission(request, maxBytes = MAX_SUBMISSION_BYTES, onBytes = (_bytes) => {}) {
   const reader = request.body?.getReader();
   if (!reader) throw new SubmissionError("Expected a JSON submission.");
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]);
@@ -36,6 +36,7 @@ export async function readSubmission(request, maxBytes = MAX_SUBMISSION_BYTES) {
       }
       body += decoder.decode(value, { stream: true });
     }
+    onBytes(size);
     return JSON.parse(body + decoder.decode());
   } catch (error) {
     if (error instanceof SubmissionError) throw error;

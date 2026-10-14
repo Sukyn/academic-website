@@ -1,6 +1,22 @@
 const unavailable = 'Your browser cannot create GIFs. Try an up-to-date browser.';
 const failed = 'Could not create the GIF. Please try again.';
 
+/** Run a game's synchronous encoder inside its worker and transfer the result. */
+export function installReplayEncoder(encodeReplay) {
+  if (typeof WorkerGlobalScope === 'undefined' || !(globalThis instanceof WorkerGlobalScope)) return;
+  globalThis.onmessage = async ({ data }) => {
+    try {
+      let finalFrame, image;
+      const bytes = encodeReplay(data, progress => globalThis.postMessage({ progress }), canvas => { finalFrame = canvas; });
+      // PNG support is optional: a conversion failure must preserve the GIF.
+      try { image = await finalFrame.convertToBlob({ type: 'image/png' }); } catch {}
+      globalThis.postMessage({ bytes, ...(image ? { image } : {}) }, [bytes.buffer]);
+    } catch (error) {
+      globalThis.postMessage({ error: error.message || failed, name: error.name });
+    }
+  };
+}
+
 export function createWorkerReplayGif(round, createWorker, { signal, onProgress, onImage } = {}) {
   return new Promise((resolve, reject) => {
     let worker, settled = false;

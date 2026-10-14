@@ -1,12 +1,12 @@
 /** Own the shared share dialog and its abortable export job, independent of gameplay. */
 export function createReplayShare({ createGif, get = id => document.getElementById(id) }) {
   const dialog = get('share-dialog');
-  let request, image, copyBlob, url, previewUrl, source;
+  let request, copyBlob, url, previewUrl, source;
 
   function dispose() {
     request?.abort();
     request = null;
-    image = copyBlob = null;
+    copyBlob = null;
     if (previewUrl && previewUrl !== url) URL.revokeObjectURL(previewUrl);
     if (url) URL.revokeObjectURL(url);
     url = previewUrl = null;
@@ -32,21 +32,20 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     try {
       const blob = await createGif(round, {
         signal: job.signal,
-        onImage: png => { if (request === job) image = png; },
+        onImage: png => { if (request === job) copyBlob = png; },
         onProgress: progress => {
           if (request === job) get('share-status').textContent = `Making your GIF… ${Math.round(progress * 100)}%`;
         },
       });
       if (request !== job) return;
-      const file = new File([blob], filename, { type: 'image/gif' });
-      url = URL.createObjectURL(file);
+      url = URL.createObjectURL(blob);
       get('download-gif').href = url;
       get('download-gif').download = filename;
       get('download-gif').hidden = false;
       const canCopy = Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined');
       const copyGif = canCopy && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('image/gif');
       const copyImage = canCopy && (typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports('image/png'));
-      copyBlob = copyGif ? file : copyImage ? image : null;
+      copyBlob = copyGif ? blob : copyImage ? copyBlob : null;
       previewUrl = copyBlob?.type === 'image/png' ? URL.createObjectURL(copyBlob) : url;
       get('share-preview').src = previewUrl;
       get('share-preview').hidden = false;
@@ -76,5 +75,5 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
   dialog.addEventListener('close', () => {
     if (!dialog.open) { dispose(); source?.focus(); }
   });
-  return { open, close, dispose };
+  return { open, close };
 }

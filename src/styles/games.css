@@ -23,8 +23,7 @@
   .quantum-game #show-rules { height: 2.5rem; padding: 0 .7rem; line-height: normal; }
   .quantum-game .daily-heading { margin-top: .75rem; font-family: var(--font-ui); }
   .quantum-game #daily-title { margin: 0; color: var(--color-heading); font-variant-numeric: tabular-nums; }
-  .quantum-game .round-controls { max-width: 37rem; margin-inline: auto; display: flex; align-items: center; gap: .7rem; }
-  .quantum-game .round-controls { position: relative; flex-wrap: wrap; justify-content: center; margin-top: .9rem; font-family: var(--font-ui); font-size: .85rem; }
+  .quantum-game .round-controls { position: relative; max-width: 37rem; margin: .9rem auto 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .7rem; font-family: var(--font-ui); font-size: .85rem; }
   .quantum-game .round-controls .button, .quantum-game .advanced-features .button, .quantum-game .review-controls .button, .quantum-game .replay-actions .button, .quantum-game .share-actions .button { padding: .35rem .65rem; font-size: .85rem; }
   .quantum-game .round-controls .button { background: transparent; }
   .quantum-game summary { cursor: pointer; color: var(--color-muted); }

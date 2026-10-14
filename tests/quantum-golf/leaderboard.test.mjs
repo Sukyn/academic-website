@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { websiteFile } from '../../tools/quantum-golf/website.mjs';
 const {
   CAMPAIGN, MAX_SUBMISSION_BYTES, SubmissionError, getLevel, validateSubmission, readSubmission,
-} = await import(websiteFile('src/lib/quantum-golf/leaderboard.ts'));
+} = await import(websiteFile('src/lib/quantum-golf/leaderboard.js'));
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { START_STATE, applyGate, traceDistance } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });

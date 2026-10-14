@@ -1,0 +1,32 @@
+import { getBoard as golfBoard, validateSubmission as golfSubmission } from '../quantum-golf/leaderboard.js';
+import { DAILY_START as GOLF_START, dailyPuzzle as golfDaily } from '../quantum-golf/daily.js';
+import { getBoard as reductionBoard, validateSubmission as reductionSubmission, MAX_SUBMISSION_BYTES as REDUCTION_BYTES } from '../circuit-reduction/leaderboard.js';
+import { DAILY_START as REDUCTION_START, dailyPuzzle as reductionDaily } from '../circuit-reduction/puzzles.js';
+import { MAX_SUBMISSION_BYTES, SubmissionError } from './submission.js';
+
+// One registry for the two APIs. Each game owns its rules and public puzzle shape.
+const games = {
+  'quantum-golf': {
+    getBoard: golfBoard, validateSubmission: golfSubmission,
+    startDate: GOLF_START, maxBytes: MAX_SUBMISSION_BYTES,
+    dailyPuzzle(date) {
+      const { target, epsilon, optimalMoves } = golfDaily(date);
+      return { target, epsilon, optimalMoves };
+    },
+  },
+  'circuit-reduction': {
+    getBoard: reductionBoard, validateSubmission: reductionSubmission,
+    startDate: REDUCTION_START, maxBytes: REDUCTION_BYTES,
+    dailyPuzzle(date) {
+      const { circuit, optimalMoves } = reductionDaily(date);
+      return { circuit, optimalMoves };
+    },
+  },
+};
+
+export function getGame(value = 'quantum-golf') {
+  if (typeof value !== 'string' || !Object.hasOwn(games, value)) {
+    throw new SubmissionError('Choose a supported game.');
+  }
+  return games[value];
+}

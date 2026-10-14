@@ -1,6 +1,7 @@
 import * as gifenc from 'gifenc';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import { START_STATE, applyGate, gateRotation } from '../lib/quantum-golf/quantum.js';
+import { installReplayEncoder } from '../lib/games/replay-gif.js';
 
 // gifenc exposes CommonJS in Node and ES modules in the browser bundle.
 const { GIFEncoder, quantize, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
@@ -94,15 +95,4 @@ export function encodeReplay(round, onProgress, onFinalFrame) {
   return gif.bytesView();
 }
 
-if (typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope) {
-  globalThis.onmessage = async ({ data }) => {
-    try {
-      let canvas, image;
-      const bytes = encodeReplay(data, progress => globalThis.postMessage({ progress }), finalFrame => { canvas = finalFrame; });
-      try { image = await canvas.convertToBlob({ type: 'image/png' }); } catch {}
-      globalThis.postMessage({ bytes, image }, [bytes.buffer]);
-    } catch (error) {
-      globalThis.postMessage({ error: error.message || 'Could not create the GIF. Please try again.', name: error.name });
-    }
-  };
-}
+installReplayEncoder(encodeReplay);

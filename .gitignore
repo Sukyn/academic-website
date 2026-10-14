@@ -20,6 +20,7 @@ pnpm-debug.log*
 .vercel/
 quantum-golf-scores*.json
 __pycache__/
+tmp/
 
 # macOS-specific files
 .DS_Store

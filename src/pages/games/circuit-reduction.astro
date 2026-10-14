@@ -1,0 +1,137 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import GameShell from '../../components/games/GameShell.astro';
+import GameModeMenu from '../../components/games/GameModeMenu.astro';
+import GameToolbar from '../../components/games/GameToolbar.astro';
+import GameLeaderboard from '../../components/games/GameLeaderboard.astro';
+import GameDialogs from '../../components/games/GameDialogs.astro';
+import { LEVELS } from '../../lib/circuit-reduction/puzzles.js';
+import { RULES } from '../../lib/circuit-reduction/engine.js';
+---
+
+<BaseLayout title="Circuit reduction" description="Simplify quantum circuits to the identity using reversible rewrite rules. Play levels, custom circuits and a daily puzzle.">
+  <GameShell>
+    <a class="back" href="/games/">← Games</a>
+    <h1>Circuit reduction</h1>
+    <div class="game-layout">
+      <GameModeMenu />
+      <div class="game-content">
+        <GameToolbar levels={LEVELS} />
+        <section aria-label="Circuit reduction">
+          <div class="circuit-heading"><p id="move-count" role="status">0 moves</p></div>
+          <div class="circuit-scroll" id="circuit-scroll" role="region" aria-label="Circuit board. Scroll horizontally to see longer circuits." tabindex="0">
+            <div id="circuit-board" aria-label="Quantum circuit"></div>
+          </div>
+          <p class="selection-note" id="selection-note" role="status" aria-live="polite"></p>
+          <div class="rule-palette" role="group" aria-label="Circuit rules">
+            {RULES.filter(rule => !rule.advanced).map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
+          </div>
+          <details class="paper-rules" id="paper-rules">
+            <summary>Advanced rules</summary>
+            <div class="rule-palette" role="group" aria-label="Advanced circuit rules">
+              {RULES.filter(rule => rule.advanced).map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
+            </div>
+          </details>
+          <div class="round-controls">
+            <button class="button ghost" id="undo" type="button" title="Undo · Backspace" disabled>Undo</button>
+            <button class="button ghost" id="restart" type="button" title="Reset · R">Reset</button>
+            <button class="button ghost" id="compact-identities" type="button" title="Remove all unnecessary empty slots">Tidy</button>
+            <button class="button ghost" id="show-results" type="button" hidden>Scores</button>
+          </div>
+          <div id="daily-replay-actions" class="daily-replay-actions" hidden></div>
+          <details class="advanced-features" id="advanced-features">
+            <summary>Advanced</summary>
+            <div class="advanced-panel">
+              <button class="button ghost" id="toggle-trace" type="button" aria-pressed="true">Trace</button>
+              <div class="replay-actions" id="replay-actions">
+                <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
+                <button class="button ghost" id="share-score" type="button" hidden>Share your score</button>
+              </div>
+            </div>
+            <div id="sequence" role="group" aria-label="Rewrite sequence in chronological order"></div>
+          </details>
+          <div class="review-controls" id="review-controls" hidden>
+            <p class="message" id="review-note" role="status"></p>
+            <button class="button ghost" id="resume-round" type="button">Back to game</button>
+          </div>
+          <p class="message" id="status" role="status"></p>
+          <div class="custom-controls" id="custom-controls" hidden>
+            <div class="generator-controls">
+              <label for="difficulty">Difficulty</label>
+              <select id="difficulty"><option value="3">Easy · 3 moves</option><option value="6" selected>Medium · 6 moves</option><option value="10">Hard · 10 moves</option><option value="14">Expert · 14 moves</option></select>
+              <button class="button ghost" id="new-circuit" type="button">New circuit</button>
+            </div>
+            <details><summary>Custom circuit</summary>
+              <form id="custom-form">
+                <label for="custom-circuit">One wire per line. Use . H X Z and linked endpoints ZU/ZD or XU/XD.</label>
+                <textarea id="custom-circuit" rows="4" spellcheck="false" required aria-describedby="custom-help">H Z H X</textarea>
+                <p class="message" id="custom-help">Rows must have equal lengths. The circuit must implement the identity. Custom circuits use the same rules.</p>
+                <button class="button" type="submit">Play circuit</button>
+              </form>
+            </details>
+            <p class="message" id="custom-status" role="status"></p>
+          </div>
+          <noscript>Enable JavaScript to play.</noscript>
+        </section>
+        <GameLeaderboard unit="Moves" />
+      </div>
+    </div>
+    <GameDialogs gameTitle="Circuit reduction">
+      <Fragment slot="rules">
+        <p>Reduce every wire to empty slots: this is the <strong>identity circuit</strong>. Read the circuit from left to right. Use as few moves as possible.</p>
+        <p>Select the cells shown in a rule, including empty slots, then choose that rule.</p>
+        <p>A yellow square (<strong>H</strong>) is a Hadamard gate, <strong>X</strong> flips a bit, and a green dot (<strong>Z</strong>) changes its phase. Linked green dots are a controlled Z; a red ⊕ endpoint turns the link into a controlled X (CNOT).</p>
+        <div class="rule-reference">
+          {RULES.map(rule => <div data-reference-rule={rule.id}><strong>{rule.title}</strong><code>{rule.left.map(row => row.join(' ')).join(' / ')} ↔ {rule.right.map(row => row.join(' ')).join(' / ')}</code></div>)}
+        </div>
+        <p>Click <strong>+</strong> between slots to add space. Right-click an empty slot to remove it; on touch screens, hold it. Shift-click + adds space on every wire. <strong>Tidy</strong> removes all unnecessary gaps. Space adjustments are free and can be undone.</p>
+        <p>Every rule works <strong>both ways</strong>. Introducing gates can help you simplify. Only rewrites count towards your score; moving gates through empty slots is free.</p>
+        <p>Levels introduce rules progressively using the missions in the <a href="/outreach/jeu-circuits-quantiques.pdf" target="_blank" rel="noopener noreferrer">original rules PDF</a>. First derive an identity, then use its learned shortcut in later lessons. Random and daily puzzles use the complete learned rule set. Keyboard: R to reset, Backspace to undo, Escape to clear the selection.</p>
+        <p>Daily puzzles have a shortest solution of 10–14 moves. Rankings close at midnight in Paris; past puzzles remain playable as practice.</p>
+      </Fragment>
+    </GameDialogs>
+  </GameShell>
+</BaseLayout>
+<script>import '../../scripts/circuit-reduction.js';</script>
+<style>
+  .circuit-heading { display: flex; align-items: center; margin-top: 1rem; font-family: var(--font-ui); font-size: .9rem; }
+  .circuit-heading p { margin: 0 0 .5rem; }
+  #move-count { color: var(--color-heading); font-variant-numeric: tabular-nums; }
+  .circuit-scroll { overflow-x: auto; padding: 1rem .5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface-2); overscroll-behavior-x: contain; }
+  .circuit-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+  #circuit-board { position: relative; display: grid; width: max-content; margin-inline: auto; padding-inline: 22px; grid-template-columns: repeat(var(--columns, 4), 64px); grid-template-rows: repeat(var(--wires, 1), 72px); justify-items: stretch; align-items: center; font-family: var(--font-mono); user-select: none; -webkit-touch-callout: none; }
+  #circuit-board :global(.circuit-wires) { position: absolute; top: 0; left: 0; pointer-events: none; }
+  #circuit-board :global(.circuit-cell) { position: relative; height: 64px; width: 64px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--color-text); cursor: pointer; padding: 0; display: grid; place-items: center; }
+  #circuit-board :global(.gate-glyph) { position: relative; }
+  #circuit-board :global(.circuit-cell:disabled) { opacity: 1; }
+  #circuit-board :global(.circuit-cell[aria-pressed="true"]) { border-color: var(--color-accent); background: rgba(154, 217, 209, .12); }
+  #circuit-board :global(.space-handle) { position: absolute; z-index: 2; width: 24px; height: 44px; transform: translate(-50%, -50%); border: 0; padding: 0; background: transparent; color: var(--color-muted); cursor: col-resize; display: grid; place-items: center; }
+  #circuit-board :global(.space-glyph) { display: block; opacity: 0; transition: opacity .12s; }
+  #circuit-board :global(.space-handle:hover .space-glyph), #circuit-board :global(.space-handle:focus-visible .space-glyph) { opacity: 1; color: var(--color-accent); }
+  #circuit-board :global(.space-handle[data-edge] .space-glyph) { opacity: .75; }
+  #circuit-board :global(.space-handle:disabled) { visibility: hidden; }
+  @media (hover: none) { #circuit-board :global(.space-glyph) { opacity: .65; } }
+  #circuit-board :global(button:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -3px; }
+  .selection-note { color: var(--color-muted); font-family: var(--font-ui); font-size: .8rem; margin: .25rem 0; min-height: 1.2em; }
+  .rule-palette { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.25rem, 1fr)); gap: .5rem; margin-top: .25rem; }
+  .rule-palette .button { font-family: var(--font-ui); font-size: .85rem; padding: .4rem .6rem; min-height: 2.75rem; width: 100%; max-width: 16rem; background: var(--color-surface-2); }
+  .rule-palette .button:disabled { opacity: .28; }
+  .rule-palette :global(.rule-preview) { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 24px; }
+  .rule-palette :global(.rule-mini) { position: relative; display: grid; grid-template-columns: repeat(var(--mini-columns), 22px); grid-auto-rows: 22px; }
+  .rule-palette :global(.rule-mini .circuit-wires) { position: absolute; inset: 0; pointer-events: none; }
+  .rule-palette :global(.rule-mini .gate-glyph) { position: relative; width: 22px; height: 22px; }
+  .paper-rules { font-family: var(--font-ui); font-size: .85rem; margin-top: .7rem; }
+  .paper-rules > summary { width: fit-content; cursor: pointer; min-height: 2.75rem; padding-block: .6rem; }
+  .custom-controls { margin-top: 1rem; font-family: var(--font-ui); font-size: .9rem; }
+  .generator-controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  .generator-controls select { min-height: 2.75rem; }
+  .custom-controls > details { margin-top: .8rem; }
+  .custom-controls summary { cursor: pointer; padding: .5rem 0; min-height: 2.75rem; }
+  #custom-form { display: grid; gap: .5rem; margin-top: .6rem; }
+  #custom-form textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 3px; padding: .7rem; color: var(--color-text); background: var(--color-surface-2); font: .95rem var(--font-mono); resize: vertical; }
+  #custom-form .button { justify-self: start; margin-top: .3rem; }
+  .rule-reference { display: grid; gap: .6rem; margin-top: 1rem; font-size: .8rem; }
+  .rule-reference div { display: grid; gap: .2rem; }
+  .rule-reference code { white-space: normal; overflow-wrap: anywhere; }
+  @media(max-width: 400px) { .rule-palette { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rule-palette .button { font-size: .8rem; padding: .4rem; } }
+</style>
