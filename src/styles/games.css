@@ -70,7 +70,7 @@
   .quantum-game #share-preview { display: block; width: 100%; max-height: 60vh; object-fit: contain; margin: 1rem auto; }
   .quantum-game .share-actions { margin-top: 1rem; }
   .quantum-game button:disabled { opacity: .35; cursor: default; }
-  .quantum-game button:focus-visible, .quantum-game input:focus-visible, .quantum-game select:focus-visible, .quantum-game summary:focus-visible, .quantum-game .ranking:focus-visible, .quantum-game .share-actions a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+  .quantum-game button:focus-visible, .quantum-game input:focus-visible, .quantum-game select:focus-visible, .quantum-game summary:focus-visible, .quantum-game .ranking:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
   @media (max-width: 760px) {
   .quantum-game .game-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .quantum-game .mode-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }

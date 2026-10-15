@@ -48,6 +48,6 @@ const { gameTitle, unit = 'Moves' } = Astro.props;
   <img id="share-preview" hidden alt={`Replay of your ${gameTitle.toLowerCase()} score`} />
   <div class="share-actions">
     <button class="button" id="copy-gif" type="button" disabled>Copy image</button>
-    <a class="button ghost" id="download-gif" download hidden>Download GIF</a>
+    <button class="button ghost" id="download-gif" type="button">Download the replay</button>
   </div>
 </dialog>

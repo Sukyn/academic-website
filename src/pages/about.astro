@@ -16,81 +16,23 @@ const quickFacts = [
 ---
 
 <BaseLayout
-  title="About"
-  description="Research profile, current questions, and the kinds of quantum-circuit collaborations I am open to."
+  title="Research & teaching"
+  description="Qudit circuit theory, published results, teaching, and academic background."
 >
   <section class="prose">
-    <h1>About</h1>
+    <h1>Research &amp; teaching</h1>
 
     <p class="lead">
-      I work on the algebra of quantum circuits: when two circuits should count
-      as the same, which equations are enough to prove it, and how those
-      equations turn into normal forms, rewrite systems, or small tools.
+      My research concerns equational theories of quantum circuits, especially
+      qudits: completeness, minimality, and normal forms for rewriting.
+    </p>
+
+    <p>
+      <a href="/profile/research-overview.pdf" download>Research overview (PDF)</a>
+      · <a href="/publications">Publications and software</a>
     </p>
 
     <FactsList class="quick-facts" aria-label="Quick facts" facts={quickFacts} />
-
-    <aside class="disambiguation" aria-labelledby="disambiguation-title">
-      <h2 id="disambiguation-title">Disambiguation</h2>
-
-      <p>
-        Because &quot;Colin Blake&quot; turns out not to be a unique identifier, a brief
-        clarification may help. I am not
-        <a
-          href="https://www.eliteprospects.com/player/240742/colin-blake"
-          target="_blank"
-          rel="noopener noreferrer"
-        >the hockey player Colin Blake</a>, nor
-        <a
-          href="https://www.imdb.com/name/nm2072003/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >the production designer Colin Blake.</a>
-      </p>
-
-      <p>
-        Genealogically, I cannot currently prove that I am related to
-        <a
-          href="https://en.wikipedia.org/wiki/Blake_(surname)"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          William Blake
-        </a>
-        , but the surname is at least suggestive enough to keep the joke alive.
-        For further information on the wider Blake line, I can only recommend
-        the impeccably reliable
-        <a
-          href="https://seanceofblakemanor.wiki.gg/wiki/Blake_Family"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Blake Family records from <em>The Seance at Blake Manor</em>
-        </a>
-        .
-      </p>
-    </aside>
-
-    <p>
-      I am a PhD student in quantum computing at <strong>Inria</strong>, in
-      the <strong>MOCQUA</strong> team. My research is about <strong>when two
-      quantum circuits should count as the same</strong>, especially in qudit
-      settings where the right algebra is still much less settled than in the
-      qubit world.
-    </p>
-
-    <p>
-      Because I am still a PhD student, I am not currently supervising students
-      on my own. I am nevertheless happy to discuss related problems with other
-      researchers, or with students who already have formal supervision elsewhere.
-    </p>
-
-    <p>
-      In practice, that means asking which generators and relations actually
-      describe a circuit fragment, how to make those descriptions uniform in
-      the dimension, and how to turn them into normal forms, rewrite systems,
-      or small pieces of software.
-    </p>
 
     <h2>Current themes</h2>
     <ul>
@@ -113,11 +55,6 @@ const quickFacts = [
       <li>
         <strong>2026</strong> —
         <a href="/publications#blake:LIPIcs.MFCS.2026.6">Best Student Paper award, MFCS 2026</a>.
-      </li>
-      <li>
-        <strong>2025</strong> — first prize of the jury at Scientific Game Jam
-        Nancy, with the team behind
-        <a href="/games/#les-chevaliers-du-quantique"><em>Les Chevaliers du Quantique</em></a>.
       </li>
       <li>
         <strong>2022–2023</strong> —
@@ -173,6 +110,11 @@ const quickFacts = [
     </ul>
 
     <h2 id="teaching">Teaching</h2>
+    <p>
+      I also design <a href="/games/#quantum-circuit-simplification-game">classroom
+      and outreach games for quantum-circuit rewriting</a>, including a printable
+      tile game and <em>Les Chevaliers du Quantique</em>.
+    </p>
     <ul>
       <li>
         <strong>2026–2027 — Mines Nancy</strong>: tutorials and practical classes (TD/TP)
@@ -198,24 +140,5 @@ const quickFacts = [
       margin: 1rem 0 1.5rem;
     }
 
-    .disambiguation {
-      margin: 1.5rem 0;
-      padding: 1rem 1.1rem;
-      border: 1px solid var(--color-border);
-      border-left: 3px solid var(--color-accent);
-      border-radius: 0.7rem;
-      background:
-        linear-gradient(135deg, rgba(15, 102, 124, 0.06), transparent 72%),
-        var(--color-surface);
-    }
-
-    .disambiguation h2 {
-      margin-top: 0;
-      font-size: clamp(1.25rem, 2.4vw, 1.45rem);
-    }
-
-    .disambiguation p:last-child {
-      margin-bottom: 0;
-    }
   </style>
 </BaseLayout>

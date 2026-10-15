@@ -251,7 +251,7 @@ async function submitScore(event) {
   if (scores.player && dialog.open) get(campaign() ? 'result-next' : 'try-again').focus();
 }
 
-async function shareScore(source) {
+function shareScore(source) {
   if (busy || daily.loading || !won || !level || !sequence || shareDialog.open) return;
   const styles = typeof getComputedStyle === 'function' ? getComputedStyle(get('sphere')) : null;
   const round = {
@@ -262,7 +262,7 @@ async function shareScore(source) {
     headingColor: styles?.getPropertyValue('--color-heading').trim() || '#fff3cf',
   };
   const filename = `quantum-golf-${level.date ?? `level-${level.id}`}.gif`;
-  await sharing.open(source, round, filename);
+  sharing.open(source, round, filename);
 }
 
 function animateGate(from, gate, done) {

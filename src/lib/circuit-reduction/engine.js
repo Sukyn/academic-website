@@ -19,14 +19,14 @@ export const RULES = Object.freeze([
   // Keep both valid versions, rather than silently losing either source's rule.
   { id: 'cancel-cnot-down', title: 'Cancel CNOT ↓ pair', left: [['ZU', 'ZU'], ['XD', 'XD']], right: [['.', '.'], ['.', '.']], description: 'Two CNOT gates with the same lower target cancel.' },
   { id: 'cancel-cnot-up', derived: true, title: 'Cancel CNOT ↑ pair', left: [['XU', 'XU'], ['ZD', 'ZD']], right: [['.', '.'], ['.', '.']], description: 'A learned shortcut: two CNOT gates with the same upper target cancel.' },
-  { id: 'phase-up', advanced: true, title: 'Move upper phase', left: [['Z', 'ZU', '.']], right: [['.', 'ZU', 'Z']], description: 'A Z phase commutes with a Z control.' },
-  { id: 'phase-down', advanced: true, title: 'Move lower phase', left: [['Z', 'ZD', '.']], right: [['.', 'ZD', 'Z']], description: 'A Z phase commutes with a Z control.' },
-  { id: 'control-order', advanced: true, title: 'Reorder controls', left: [['.', 'ZU'], ['ZU', 'ZD'], ['ZD', '.']], right: [['ZU', '.'], ['ZD', 'ZU'], ['.', 'ZD']], description: 'Overlapping controlled Z gates commute.' },
-  { id: 'stabilizer-up', advanced: true, title: 'Propagate upper X', left: [['X', 'ZU'], ['.', 'ZD']], right: [['ZU', 'X'], ['ZD', 'Z']], description: 'Moving X through CZ adds a Z on the other wire.' },
-  { id: 'stabilizer-down', advanced: true, title: 'Propagate lower X', left: [['.', 'ZU'], ['X', 'ZD']], right: [['ZU', 'Z'], ['ZD', 'X']], description: 'Moving X through CZ adds a Z on the other wire.' },
-  { id: 'transfer', advanced: true, title: 'Transfer', left: [['ZU', 'XU', 'ZU'], ['XD', 'ZD', 'XD']], right: [['XU', 'ZU', 'XU'], ['ZD', 'XD', 'ZD']], description: 'Reverse the directions of an alternating three-CNOT block.' },
-  { id: 'corner-down', advanced: true, title: 'Change lower corner', left: [['ZU', 'ZU', '.'], ['XD', 'ZD', '.']], right: [['ZU', 'ZU', 'Z'], ['ZD', 'XD', '.']], description: 'Swap CNOT and CZ while introducing the corresponding phase.' },
-  { id: 'corner-up', advanced: true, title: 'Change upper corner', left: [['XU', 'ZU', '.'], ['ZD', 'ZD', '.']], right: [['ZU', 'XU', '.'], ['ZD', 'ZD', 'Z']], description: 'Swap CNOT and CZ while introducing the corresponding phase.' },
+  { id: 'phase-up', title: 'Move upper phase', left: [['Z', 'ZU', '.']], right: [['.', 'ZU', 'Z']], description: 'A Z phase commutes with a Z control.' },
+  { id: 'phase-down', title: 'Move lower phase', left: [['Z', 'ZD', '.']], right: [['.', 'ZD', 'Z']], description: 'A Z phase commutes with a Z control.' },
+  { id: 'control-order', title: 'Reorder controls', left: [['.', 'ZU'], ['ZU', 'ZD'], ['ZD', '.']], right: [['ZU', '.'], ['ZD', 'ZU'], ['.', 'ZD']], description: 'Overlapping controlled Z gates commute.' },
+  { id: 'stabilizer-up', title: 'Propagate upper X', left: [['X', 'ZU'], ['.', 'ZD']], right: [['ZU', 'X'], ['ZD', 'Z']], description: 'Moving X through CZ adds a Z on the other wire.' },
+  { id: 'stabilizer-down', title: 'Propagate lower X', left: [['.', 'ZU'], ['X', 'ZD']], right: [['ZU', 'Z'], ['ZD', 'X']], description: 'Moving X through CZ adds a Z on the other wire.' },
+  { id: 'transfer', title: 'Transfer', left: [['ZU', 'XU', 'ZU'], ['XD', 'ZD', 'XD']], right: [['XU', 'ZU', 'XU'], ['ZD', 'XD', 'ZD']], description: 'Reverse the directions of an alternating three-CNOT block.' },
+  { id: 'corner-down', title: 'Change lower corner', left: [['ZU', 'ZU', '.'], ['XD', 'ZD', '.']], right: [['ZU', 'ZU', 'Z'], ['ZD', 'XD', '.']], description: 'Swap CNOT and CZ while introducing the corresponding phase.' },
+  { id: 'corner-up', title: 'Change upper corner', left: [['XU', 'ZU', '.'], ['ZD', 'ZD', '.']], right: [['ZU', 'XU', '.'], ['ZD', 'ZD', 'Z']], description: 'Swap CNOT and CZ while introducing the corresponding phase.' },
 ]);
 export const PAPER_RULE_IDS = Object.freeze(RULES.filter(rule => !rule.derived).map(rule => rule.id));
 export const LEARNED_RULE_IDS = Object.freeze(RULES.map(rule => rule.id));

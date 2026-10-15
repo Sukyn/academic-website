@@ -2,7 +2,7 @@
 // GAME_API_URL opts into the local PostgreSQL API harness instead.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
 import { RULES, sequenceCost, solveShortest, applyMove } from '../../src/lib/circuit-reduction/engine.js';
@@ -43,6 +43,36 @@ async function pageFor(options) {
 }
 async function openDetails(page, selector) {
   if (!await page.locator(selector).evaluate(element => element.open)) await activate(page, page.locator(`${selector} > summary`));
+}
+async function downloadReplay(page) {
+  const workers = [];
+  const trackWorker = worker => workers.push(worker);
+  page.on('worker', trackWorker);
+  try {
+    await activate(page, page.locator('#share-score'));
+    const button = page.getByRole('button', { name: 'Download the replay', exact: true });
+    await button.waitFor();
+    assert.equal(workers.length, 0, 'Sharing does not start a GIF worker');
+    assert.equal(await page.locator('#share-preview').isVisible(), false);
+    assert.equal(await page.locator('#copy-gif').isDisabled(), true);
+    const pending = page.waitForEvent('download');
+    await activate(page, button);
+    const download = await pending;
+    assert.match(download.suggestedFilename(), /\.gif$/);
+    const bytes = await readFile(await download.path());
+    assert.match(bytes.toString('ascii', 0, 6), /^GIF8[79]a$/);
+    assert.ok(bytes.length > 1000);
+    assert.equal(workers.length, 1, 'Download starts exactly one encoder');
+    await page.locator('#share-preview').evaluate(image => image.decode());
+    const repeated = page.waitForEvent('download');
+    await activate(page, button);
+    const second = await repeated;
+    assert.deepEqual(await readFile(await second.path()), bytes);
+    assert.equal(workers.length, 1, 'Repeated download reuses the GIF');
+    await activate(page, page.locator('#close-share'));
+  } finally {
+    page.off('worker', trackWorker);
+  }
 }
 async function boardCircuit(page) {
   return page.locator('[data-cell]').evaluateAll(cells => {
@@ -115,7 +145,6 @@ async function apply(page, move) {
     assert.ok(rule, `Known playable rule ${move.rule}`);
     assert.equal(await page.locator(`[data-rule="${move.rule}"]`).evaluate(button => button.hidden), false, 'A witness uses only rules unlocked by the current lesson');
     for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) await activate(page, page.locator(`[data-cell="${move.row + y}:${move.column + x}"]`));
-    if (rule.advanced) await openDetails(page, '#paper-rules');
     await activate(page, page.locator(`[data-rule="${move.rule}"]`));
   }
 }
@@ -133,6 +162,17 @@ async function finish(page, sequence, { optimalMoves = sequenceCost(sequence), p
 }
 async function noOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, 'No horizontal page overflow');
+}
+async function fullRulePalette(page) {
+  const rules = page.locator('[data-rule]:visible');
+  assert.equal(await rules.count(), RULES.length, 'Every rule is visible without a disclosure');
+  assert.deepEqual(await rules.evaluateAll(buttons => buttons.filter(button => {
+    const bounds = button.getBoundingClientRect();
+    return Array.from(button.querySelectorAll('.rule-preview, .rule-mini, .rule-mini > svg')).some(diagram => {
+      const rect = diagram.getBoundingClientRect();
+      return rect.left < bounds.left - 1 || rect.right > bounds.right + 1;
+    });
+  }).map(button => button.dataset.rule)), [], 'Rule diagrams fit inside their buttons');
 }
 try {
   let desktop, beforeRemoval;
@@ -159,7 +199,7 @@ try {
       assert.deepEqual(available.sort(), [...level.allowedRules].sort(), `Progressive rule palette in lesson ${level.id}`);
       if (level.id <= 2) {
         assert.equal(available.length, level.id, 'The first lessons each introduce one cancellation');
-        assert.equal(await desktop.locator('#paper-rules').evaluate(element => element.hidden), true);
+        assert.equal(await desktop.locator('#paper-rules').count(), 0);
       }
       if (level.id === LEVELS.at(-1).id) await desktop.screenshot({ path: resolve(output, 'desktop-advanced.png'), fullPage: true });
       await finish(desktop, level.solution, level);
@@ -175,13 +215,8 @@ try {
         await desktop.locator('#replay').click();
         await desktop.locator('#review-note').filter({ hasText: 'Step 1 / 1' }).waitFor();
         await desktop.locator('#resume-round').click();
-        await desktop.locator('#share-score').click();
-        await desktop.locator('#download-gif:not([hidden])').waitFor();
-        const gif = await desktop.locator('#download-gif').evaluate(async link => { const bytes = new Uint8Array(await (await fetch(link.href)).arrayBuffer()); return { header: String.fromCharCode(...bytes.slice(0, 6)), length: bytes.length }; });
-        assert.match(gif.header, /^GIF8[79]a$/); assert.ok(gif.length > 1000);
-        await desktop.locator('#share-preview').evaluate(image => image.decode());
-        console.log('GIF verified', gif);
-        await desktop.locator('#close-share').click();
+        await downloadReplay(desktop);
+        console.log('Circuit replay: lazy encoding, GIF download and cached repeat verified');
         await desktop.locator('#undo').click(); assert.match(await desktop.locator('#move-count').innerText(), /^0 moves$/);
         await desktop.locator('#restart').click();
         // Hundreds of slots are a free layout choice even after a circuit is solved.
@@ -203,6 +238,7 @@ try {
     }
     console.log(`Desktop: all ${LEVELS.length} campaign levels completed with progressive rules; final two Best known benchmarks, free 100-slot spacing, compaction, replay/undo/reset/share verified`);
     await desktop.locator('#mode-random').click();
+    await fullRulePalette(desktop);
     await desktop.locator('#custom-controls details > summary').click();
     await desktop.locator('#custom-circuit').fill('H .'); await desktop.locator('#custom-form button').click();
     assert.match(await desktop.locator('#custom-status').innerText(), /not the identity/);
@@ -215,6 +251,7 @@ try {
     await desktop.locator('#close-win').click();
     await desktop.locator('#mode-daily').click();
     await desktop.locator('#daily-heading:not([hidden])').waitFor();
+    await fullRulePalette(desktop);
     assert.ok(await desktop.locator('.circuit-cell').count() >= 30);
     await desktop.screenshot({ path: resolve(output, 'desktop-daily.png'), fullPage: true });
     {
@@ -248,6 +285,8 @@ try {
   assert.equal(await mobile.locator('#move-count').innerText(), '0 moves');
   await mobile.locator('#restart').click();
   await finish(mobile, LEVELS[0].solution); await mobile.locator('#close-win').click();
+  await openDetails(mobile, '#advanced-features');
+  await downloadReplay(mobile);
   for (const lesson of [15, 20, 22].map(id => LEVELS.find(level => level.id === id))) {
     console.log(`Mobile: playing campaign level ${lesson.id}`);
     await mobile.locator('#level').selectOption(String(lesson.id));
@@ -257,6 +296,7 @@ try {
     await activate(mobile, mobile.locator('#close-win'));
   }
   await mobile.locator('#mode-daily').click(); await mobile.locator('#daily-heading:not([hidden])').waitFor(); await noOverflow(mobile);
+  await fullRulePalette(mobile);
   await mobile.screenshot({ path: resolve(output, 'mobile-daily.png'), fullPage: true });
   {
     const info = api ? await (await mobile.request.get(`${api}/api/daily?game=circuit-reduction`)).json() : fixture.getDaily('circuit-reduction');
@@ -268,14 +308,17 @@ try {
     console.log(`Mobile daily: solved through touch input and score accepted through ${scoreTransport}`);
   }
   await mobile.screenshot({ path: resolve(output, 'mobile-daily-completed.png'), fullPage: true });
-  for (const width of [320, 768]) { await mobile.setViewportSize({ width, height: 900 }); await noOverflow(mobile); }
+  for (const width of [320, 768]) { await mobile.setViewportSize({ width, height: 900 }); await noOverflow(mobile); await fullRulePalette(mobile); }
   await mobile.setViewportSize({ width: 390, height: 844 });
   console.log('Mobile: three complex PDF missions completed using touch, advanced commutation, Hadamard changes of basis, identity spacing, daily horizontal scrolling and responsive page layout verified');
   for (const page of [desktop, mobile].filter(Boolean)) {
     await page.goto(`${base}/games/quantum-golf/`); await page.locator('#gate-t').waitFor();
     await noOverflow(page); await page.locator('#gate-t').click(); await page.locator('#win-dialog[open]').waitFor();
     assert.match(await page.locator('#win-summary').innerText(), /Optimal solution in 1 move/);
+    await activate(page, page.locator('#close-win'));
+    await openDetails(page, '#advanced-features');
+    await downloadReplay(page);
   }
-  console.log(`Golf: ${desktop ? 'desktop/mobile' : 'mobile'} winning gate and shared overlays verified`);
+  console.log(`Golf: ${desktop ? 'desktop/mobile' : 'mobile'} winning gate, shared overlays and lazy replay downloads verified`);
   assert.deepEqual(errors, [], 'No uncaught browser errors');
 } finally { await browser.close(); }

@@ -1,16 +1,14 @@
 # Quantum golf
 
-Play at `/games/quantum-golf/`. See the [website README](../../README.md) for run and check commands, and [SETUP.md](SETUP.md) for shared scores and backups.
+The 15 campaign levels start at `|+⟩`. Scores count H/T presses; a hit requires Bloch distance `‖r − target‖ / 2 ≤ ε`.
 
-## Source
+Daily puzzles start on 13 October 2026 and have optimal solutions of 8–12 moves. They are generated on request. Scoring closes at midnight in Europe/Paris; past puzzles remain playable as practice.
 
-- `src/pages/games/quantum-golf.astro`: layout and controls.
-- `src/scripts/quantum-golf.js`: game flow; `src/lib/quantum-golf/`: sphere, gates, puzzles, and score validation.
-- `api/daily.ts` and `api/leaderboard.ts`: Vercel endpoints; scores use Neon Postgres.
-- `tests/quantum-golf/`: browser-controller, solver, date, and database checks. API tests use local PGlite and need no credentials.
+Game logic is in `src/lib/quantum-golf/`, with the controller in `src/scripts/quantum-golf.js`. Shared game services are in `src/lib/games/`.
 
-## Puzzles
+```sh
+npm run test:golf
+npm run test:games:api
+```
 
-The 15 campaign levels start at `|+⟩`. A score counts H/T presses; a hit means Bloch distance `‖r − target‖ / 2 ≤ ε`.
-
-Daily puzzles start on 13 October 2026 and require 8–12 moves optimally. They are generated on request, with no scheduled job. Scoring closes at midnight in **Europe/Paris**, including daylight-saving changes. Past puzzles remain playable as practice, with readable rankings. The server enforces the deadline; daily scores share the existing table without changing campaign scores.
+See [SETUP.md](SETUP.md) for local API access and score backups. Tests use an isolated PGlite database without credentials.

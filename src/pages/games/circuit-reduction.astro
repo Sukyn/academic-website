@@ -24,14 +24,8 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
           </div>
           <p class="selection-note" id="selection-note" role="status" aria-live="polite"></p>
           <div class="rule-palette" role="group" aria-label="Circuit rules">
-            {RULES.filter(rule => !rule.advanced).map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
+            {RULES.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
           </div>
-          <details class="paper-rules" id="paper-rules">
-            <summary>Advanced rules</summary>
-            <div class="rule-palette" role="group" aria-label="Advanced circuit rules">
-              {RULES.filter(rule => rule.advanced).map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
-            </div>
-          </details>
           <div class="round-controls">
             <button class="button ghost" id="undo" type="button" title="Undo · Backspace" disabled>Undo</button>
             <button class="button ghost" id="restart" type="button" title="Reset · R">Reset</button>
@@ -120,8 +114,6 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   .rule-palette :global(.rule-mini) { position: relative; display: grid; grid-template-columns: repeat(var(--mini-columns), 22px); grid-auto-rows: 22px; }
   .rule-palette :global(.rule-mini .circuit-wires) { position: absolute; inset: 0; pointer-events: none; }
   .rule-palette :global(.rule-mini .gate-glyph) { position: relative; width: 22px; height: 22px; }
-  .paper-rules { font-family: var(--font-ui); font-size: .85rem; margin-top: .7rem; }
-  .paper-rules > summary { width: fit-content; cursor: pointer; min-height: 2.75rem; padding-block: .6rem; }
   .custom-controls { margin-top: 1rem; font-family: var(--font-ui); font-size: .9rem; }
   .generator-controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
   .generator-controls select { min-height: 2.75rem; }
@@ -133,5 +125,5 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   .rule-reference { display: grid; gap: .6rem; margin-top: 1rem; font-size: .8rem; }
   .rule-reference div { display: grid; gap: .2rem; }
   .rule-reference code { white-space: normal; overflow-wrap: anywhere; }
-  @media(max-width: 400px) { .rule-palette { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rule-palette .button { font-size: .8rem; padding: .4rem; } }
+  @media(max-width: 400px) { .rule-palette .button { max-width: none; font-size: .8rem; padding: .4rem; } }
 </style>

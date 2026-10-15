@@ -67,6 +67,18 @@ try {
         assert.equal(await page.locator('.skip-link').evaluate(link => link === document.activeElement), true, `${pathname}: skip link is first in keyboard order`);
         await page.keyboard.press('Enter');
         assert.equal(await page.locator('main').evaluate(main => main === document.activeElement), true, `${pathname}: skip link focuses content`);
+        if (pathname === '') {
+          assert.equal(await page.locator('.highlights > li').count(), 2, 'Home highlights two proceedings papers');
+          assert.match(await page.locator('.highlights').innerText(), /MFCS 2026.*Best Student Paper/);
+          for (const filename of ['colin-blake-cv.pdf', 'research-overview.pdf']) {
+            const pending = page.waitForEvent('download');
+            await page.locator(`.home-links a[href="/profile/${filename}"]`).click();
+            const download = await pending;
+            assert.equal(download.suggestedFilename(), filename);
+            const bytes = await readFile(await download.path());
+            assert.equal(bytes.toString('ascii', 0, 5), '%PDF-', 'Profile downloads contain actual PDF data');
+          }
+        }
         if (pathname === 'circuits/') {
           await page.locator('#circuit-preview[aria-busy="false"] .circuit-row').first().waitFor();
           const extension = await page.locator('#dimension').evaluate(select =>

@@ -112,7 +112,6 @@ function update({ board = true } = {}) {
     button.disabled = !matches.some(move => move.rule === button.dataset.rule);
   }
   for (const reference of ruleReferences) reference.hidden = !availableRules.includes(reference.dataset.referenceRule);
-  get('paper-rules').hidden = !RULES.some(rule => rule.advanced && availableRules.includes(rule.id));
   const selectionNote = !locked && !won && selection.size && !matches.length ? 'No matching rule' : '';
   get('selection-note').textContent = selectionNote;
   for (const name of ['campaign', 'random', 'daily']) {

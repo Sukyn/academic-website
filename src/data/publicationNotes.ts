@@ -35,7 +35,7 @@ export const publicationNotesById: Record<string, PublicationNote> = {
     fullVersionUrl: "https://arxiv.org/abs/2602.09874",
     links: [
       {
-        label: "Heuristics tool",
+        label: "minimality-auto",
         href: "https://github.com/Sukyn/minimality-auto/",
       },
     ],
@@ -46,7 +46,7 @@ export const publicationNotesById: Record<string, PublicationNote> = {
       },
       {
         label: "Update 2",
-        html: `The Heuristics tool below implements more arguments than the paper uses, including the amalgam normal form, which seems especially useful for Euler-style equations, and a Spin-group interpretation that separates pattern (19) on <span class="math-inline"><var>n</var></span> wires in the recent real Clifford+CH presentation, where this was left open.`,
+        html: `minimality-auto implements additional arguments, including the amalgam normal form for Euler-style equations and a Spin-group interpretation that separates pattern (19) on <span class="math-inline"><var>n</var></span> wires in the recent real Clifford+CH presentation, where this was left open.`,
       },
       {
         label: "Update 3",

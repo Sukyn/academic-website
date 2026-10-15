@@ -18,8 +18,8 @@ async function gameMarkup() {
   html = html.replace(dialogs[0], (await component('GameDialogs'))
     .replace('<slot name="rules" />', dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '')
     .replace('<slot name="result-actions" />', ''));
-  html = html.replace(/\{RULES\.filter\(rule => (!?)rule\.advanced\)\.map\(rule => <button[^\n]+/g, (_, basic) =>
-    RULES.filter(rule => basic ? !rule.advanced : rule.advanced).map(rule => `<button type="button" data-rule="${rule.id}" aria-label="${rule.title}" disabled>${rule.title}</button>`).join(''));
+  html = html.replace(/\{RULES\.map\(rule => <button[^\n]+/g,
+    RULES.map(rule => `<button type="button" data-rule="${rule.id}" aria-label="${rule.title}" disabled>${rule.title}</button>`).join(''));
   html = html.replace(/\{RULES\.map\(rule => <div data-reference-rule[^\n]+/g,
     RULES.map(rule => `<div data-reference-rule="${rule.id}">${rule.title}</div>`).join(''));
   return html.replace(/^---[\s\S]*?---/, '').replace(/<(?:style|script)\b[\s\S]*?<\/(?:style|script)>/g, '');
@@ -260,7 +260,8 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     if (button.hidden) assert.equal(button.disabled, true);
     assert.ok(button.querySelector('.rule-preview'), 'The playable rule shows a circuit diagram');
   }
-  assert.equal(get('paper-rules').hidden, true);
+  assert.equal(elements.has('paper-rules'), false, 'Rules are not placed in a collapsed Advanced disclosure');
+  assert.ok(rules.every(button => button.parentElement === rules[0].parentElement), 'All rules share the visible palette');
   const xGate = get('circuit-board').querySelectorAll('[data-cell]').find(cell => /: X$/.test(cell.getAttribute('aria-label')));
   assert.ok(xGate.children[0]?.children.some(node => node.tagName === 'PATH'), 'X is drawn as a vector plus');
   assert.equal(xGate.textContent, '', 'The X symbol does not rely on a Unicode glyph');
@@ -412,7 +413,10 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await invalid.dispatch('click'); assert.equal(get('review-controls').hidden, true);
   invalid.remove();
   await finish({ solution: LEVELS[0].solution });
-  await click('share-result'); await settle(); const exportJob = gifs.at(-1);
+  const beforeExport = gifs.length;
+  await click('share-result'); await settle();
+  assert.equal(gifs.length, beforeExport, 'Opening sharing does not encode a replay');
+  click('download-gif'); await settle(); const exportJob = gifs.at(-1);
   assert.equal(exportJob.args[0].label, 'Custom circuit'); assert.deepEqual(exportJob.args[0].circuit, [['.', 'X', 'X', '.']]);
   await click('restart'); assert.equal(exportJob.args[1].signal.aborted, true); assert.equal(get('share-dialog').open, false);
   exportJob.resolve(new Blob(['GIF89a'], { type: 'image/gif' })); await settle(); assert.equal(get('share-preview').hidden, true);
@@ -485,7 +489,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   const savedSubmission = get('score-form').dispatch('submit');
   await reply(requests.at(-1), boardData(savedPlayer), 201); await savedSubmission;
   const savedBoard = boardSignature(), savedMoves = moveCount();
-  await click('share-result'); await settle(); const restoredExport = gifs.at(-1);
+  await click('share-result'); click('download-gif'); await settle(); const restoredExport = gifs.at(-1);
   await windowMock.dispatch('pagehide');
   assert.equal(restoredExport.args[1].signal.aborted, true);
   assert.equal(get('share-dialog').open, false, 'Navigation closes the disposed sharing dialog');

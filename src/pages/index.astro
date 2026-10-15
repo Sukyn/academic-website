@@ -1,29 +1,13 @@
 ---
 import ScratchProfileCard from "../components/ScratchProfileCard.astro";
-import FactsList from "../components/FactsList.astro";
 import { profileLinks, siteProfile } from "../data/site";
+import { publicationNotesById } from "../data/publicationNotes";
+import { parseBibtexToPubs } from "../lib/bibtex";
+import bibtex from "../content/publications.bibtex?raw";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
-const profileFacts = [
-  {
-    label: "Affiliation",
-    value: siteProfile.affiliation,
-  },
-  {
-    label: "Research area",
-    value: siteProfile.researchArea,
-  },
-  {
-    label: "Availability",
-    value: "Open to research discussion and collaboration, but not currently available for formal student supervision.",
-  },
-];
-
-const currentTopics = [
-  "equational theories for quantum circuits",
-  "qudit fragments and dimension-uniform presentations",
-  "normal forms and rewriting methods for compilation",
-];
+const highlights = parseBibtexToPubs(bibtex).filter(publication =>
+  publication.id === "blake:LIPIcs.MFCS.2026.6" || publication.id === "blake:LIPIcs.FSCD.2026.6");
 ---
 
 <BaseLayout
@@ -33,25 +17,14 @@ const currentTopics = [
   <section class="prose home-page">
     <div class="intro">
       <div class="intro-copy">
-        <h1>Colin Blake</h1>
+        <h1>{siteProfile.name}</h1>
 
         <p class="lead">PhD student in quantum computing at Inria's MOCQUA team.</p>
 
         <p>
-          I work on <strong>equational theories for quantum circuits</strong>:
-          which identities are enough, how to make them uniform in the dimension,
-          and how those identities turn into normal forms or rewrite systems.
-        </p>
-
-        <p>
-          Most of my current work sits around qudits, phase-affine fragments,
-          controlled structure, and the algebra underneath compilation.
-        </p>
-
-        <p>
-          I am currently a PhD student, so I am not in a position to supervise
-          students on my own. I am still happy to discuss related research with
-          people who already have formal supervision on their side.
+          I study <strong>equations and normal forms for quantum circuits</strong>,
+          especially qudits: how to prove circuits equivalent and turn those
+          proofs into rewriting methods.
         </p>
       </div>
 
@@ -61,31 +34,93 @@ const currentTopics = [
     </div>
 
     <p class="home-links">
+      <a href="/profile/colin-blake-cv.pdf" download>CV (PDF)</a>
+      <a href="/profile/research-overview.pdf" download>Research overview (PDF)</a>
       <a href="/publications">Publications</a>
-      <span aria-hidden="true"> | </span>
       <a href="/contact">Contact</a>
     </p>
 
-    <h2>Current topics</h2>
-    <ul>
-      {currentTopics.map((topic) => (
-        <li>{topic}</li>
-      ))}
-    </ul>
-
-    <h2>Research profile</h2>
-    <FactsList class="profile-list" facts={profileFacts} />
-
-    <h2>External profiles</h2>
-    <ul>
-      {profileLinks.map((link) => (
+    <h2>Selected work</h2>
+    <ul class="highlights">
+      {highlights.map(publication => (
         <li>
-          <a href={link.href} target="_blank" rel="noopener noreferrer">
-            {link.label}
-          </a>
+          <a href={`/publications#${publication.id}`}>{publication.title}</a>
+          <p>{publicationNotesById[publication.id].status}</p>
         </li>
       ))}
     </ul>
+
+    <p class="home-links">
+      {profileLinks.map((link) => (
+        <a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}</a>
+      ))}
+    </p>
+
+    <aside class="disambiguation" aria-labelledby="disambiguation-title">
+      <h2 id="disambiguation-title">Disambiguation</h2>
+
+      <p>
+        Because &quot;Colin Blake&quot; turns out not to be a unique identifier, a brief
+        clarification may help. I am not
+        <a
+          href="https://www.eliteprospects.com/player/240742/colin-blake"
+          target="_blank"
+          rel="noopener noreferrer"
+        >the hockey player Colin Blake</a>, nor
+        <a
+          href="https://www.imdb.com/name/nm2072003/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >the production designer Colin Blake.</a>
+      </p>
+
+      <p>
+        Genealogically, I cannot currently prove that I am related to
+        <a
+          href="https://en.wikipedia.org/wiki/Blake_(surname)"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          William Blake
+        </a>
+        , but the surname is at least suggestive enough to keep the joke alive.
+        For further information on the wider Blake line, I can only recommend
+        the impeccably reliable
+        <a
+          href="https://seanceofblakemanor.wiki.gg/wiki/Blake_Family"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Blake Family records from <em>The Seance at Blake Manor</em>
+        </a>
+        .
+      </p>
+
+      <figure class="colin-barbu" lang="fr">
+        <a
+          href="https://commons.wikimedia.org/wiki/File:Dendrortyx_barbatus_-_A_monograph_of_the_Odontophorin%C3%A6,_or,_Partridges_of_America.jpg"
+          title="John Gould &amp; Henry Constantine Richter, 1850 · Domaine public"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img
+            src="/og/colin-barbu.webp"
+            alt="Deux Colins barbus, illustration de John Gould et Henry Constantine Richter"
+            width="480"
+            height="316"
+            loading="lazy"
+            decoding="async"
+          />
+        </a>
+        <figcaption>
+          <blockquote cite="https://fr.wikipedia.org/wiki/Colin_barbu">
+            <p>« Le Colin barbu (<i>Dendrortyx barbatus</i>) est une espèce d'oiseau
+              galliforme appartenant à la famille des Odontophoridae. »</p>
+          </blockquote>
+          <cite><a href="https://fr.wikipedia.org/wiki/Colin_barbu" target="_blank" rel="noopener noreferrer">Wikipédia</a></cite>
+        </figcaption>
+      </figure>
+    </aside>
   </section>
 
   <style>
@@ -110,6 +145,9 @@ const currentTopics = [
     }
 
     .home-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
       margin: 1.25rem 0 1.5rem;
       font-family: var(--font-mono);
       font-size: 0.88rem;
@@ -117,8 +155,14 @@ const currentTopics = [
       text-transform: uppercase;
     }
 
-    .profile-list {
-      margin: 1rem 0 0;
+    .highlights li {
+      margin-bottom: 1rem;
+    }
+
+    .highlights p {
+      margin: 0.25rem 0 0;
+      color: var(--color-muted);
+      font-size: 0.9rem;
     }
 
     @media (min-width: 760px) {
@@ -131,6 +175,66 @@ const currentTopics = [
         justify-content: end;
         margin: 0;
         padding-top: 0.25rem;
+      }
+    }
+
+    .disambiguation {
+      margin: 1.5rem 0;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--color-border);
+      border-left: 3px solid var(--color-accent);
+      border-radius: 0.7rem;
+      background:
+        linear-gradient(135deg, rgba(15, 102, 124, 0.06), transparent 72%),
+        var(--color-surface);
+    }
+
+    .disambiguation h2 {
+      margin-top: 0;
+      font-size: clamp(1.25rem, 2.4vw, 1.45rem);
+    }
+
+    .disambiguation p:last-child {
+      margin-bottom: 0;
+    }
+
+    .colin-barbu {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 1.25rem 0 0;
+      font-size: 0.9rem;
+    }
+
+    .colin-barbu > a {
+      flex: 0 0 9rem;
+    }
+
+    .colin-barbu img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 0.3rem;
+    }
+
+    .colin-barbu blockquote {
+      margin: 0 0 0.35rem;
+    }
+
+    .colin-barbu cite {
+      font-size: 0.8rem;
+      font-style: normal;
+    }
+
+    @media (max-width: 480px) {
+      .colin-barbu {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .colin-barbu > a {
+        flex-basis: auto;
+        width: 9rem;
       }
     }
   </style>
