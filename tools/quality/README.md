@@ -25,7 +25,8 @@ node tmp/quality-tools/node_modules/knip/bin/knip.js --config knip.json
 ```
 
 Reports go to `tmp/quality-report/`. Browser tests use score fixtures; API tests use PGlite.
+For recovery checks only: `npm run test:site:browser -- --resilience-only`.
 
 Set `SITE_BASE_URL` (site checks) or `GAME_BASE_URL` (games) for another preview. `PLAYWRIGHT_EXECUTABLE` and `PLAYWRIGHT_MODULE_DIR` select an existing browser/runtime. Game API options are in [the game README](../circuit-reduction/README.md).
 
-On low-memory machines, run database and browser tests separately. Set `KNIP_DISABLE_RAW_TRANSFER=1` if Knip fails allocating buffers on Windows.
+Run memory-heavy checks separately. For PGlite compiler exhaustion, use `node --liftoff-only --test tests/games/leaderboard-api.test.mjs`. Set `KNIP_DISABLE_RAW_TRANSFER=1` if Knip exhausts buffers on Windows.

@@ -12,13 +12,14 @@ const { chromium } = (process.env.PLAYWRIGHT_MODULE_DIR
 const axeSource = await readFile(qualityRequire.resolve('axe-core/axe.min.js'), 'utf8');
 const base = new URL(process.env.SITE_BASE_URL ?? 'http://127.0.0.1:4323');
 const output = resolve('tmp/quality-report');
+const resilienceOnly = process.argv.includes('--resilience-only');
 await mkdir(output, { recursive: true });
 const routes = (await readdir('dist', { recursive: true })).filter(file => file.endsWith('.html'));
 assert.ok(routes.length > 0, 'Build the website before auditing it.');
 const fixture = createBrowserApi();
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
-const results = [], failures = [], links = new Map();
+const results = [], failures = [], resilience = [], links = new Map();
 
 async function accessibility(page, label) {
   // DevTools evaluation installs the test engine without weakening the page CSP.
@@ -34,8 +35,9 @@ async function accessibility(page, label) {
 }
 
 try {
-  for (const [profile, options] of [
+  for (const [profile, options] of resilienceOnly ? [] : [
     ['desktop', { viewport: { width: 1440, height: 1000 } }],
+    ['tablet', { viewport: { width: 768, height: 1024 }, hasTouch: true }],
     ['mobile', { viewport: { width: 320, height: 780 }, isMobile: true, hasTouch: true }],
   ]) {
     const context = await browser.newContext({ ...options, reducedMotion: 'reduce' });
@@ -43,8 +45,26 @@ try {
       const html = await readFile(resolve('dist', file), 'utf8');
       const pathname = file.replaceAll('\\', '/').replace(/index\.html$/, '');
       const archive = pathname.startsWith('outreach/');
-      const page = await context.newPage(), errors = [];
+      const page = await context.newPage(), errors = [], resources = [];
       page.on('pageerror', error => errors.push(error.message));
+      page.on('response', response => {
+        const url = new URL(response.url());
+        if (url.origin === base.origin && !response.request().isNavigationRequest() && !url.pathname.startsWith('/api/')) {
+          // Fixed clocks hide Resource Timing entries; keep HTTP header sizes instead.
+          const size = response.headers()['content-length'];
+          resources.push({ path: url.pathname, resourceType: response.request().resourceType(), contentLength: size ? Number(size) : null });
+        }
+        if (url.origin === base.origin && response.status() >= 400
+          && !(pathname === '404.html' && response.request().isNavigationRequest())) {
+          errors.push(`HTTP ${response.status()}: ${new URL(response.url()).pathname}`);
+        }
+      });
+      page.on('requestfailed', request => {
+        if (new URL(request.url()).origin === base.origin
+          && ['script', 'stylesheet', 'font', 'image'].includes(request.resourceType())) {
+          errors.push(`${request.failure()?.errorText}: ${new URL(request.url()).pathname}`);
+        }
+      });
       page.on('console', message => {
         if (message.type() === 'error' && /Content Security Policy|Refused to (execute|load|apply|connect|create)/i.test(message.text())) {
           errors.push(message.text().replace(/data:[^\s'"]+/g, 'data:…'));
@@ -135,14 +155,14 @@ try {
         }
         assert.deepEqual(errors, [], `${pathname}: browser errors`);
         const metrics = await page.evaluate(() => ({
-          resources: performance.getEntriesByType('resource').map(({ name, transferSize, decodedBodySize }) => ({
-            path: new URL(name).pathname, transferSize, decodedBodySize,
-          })),
           domElements: document.querySelectorAll('*').length,
+          scriptElements: document.querySelectorAll('script').length,
         }));
-        results.push({ profile, pathname, ...audit, ...metrics });
+        results.push({ profile, pathname, ...audit, ...metrics, resources });
         if (pathname === '' || pathname === 'offers/' || pathname === 'circuits/' || archive) {
-          await page.screenshot({ path: resolve(output, `${profile}-${pathname.replaceAll('/', '') || 'home'}.png`), fullPage: true });
+          // Viewport captures keep long documents affordable on low-memory hosts.
+          await page.evaluate(() => scrollTo(0, 0));
+          await page.screenshot({ path: resolve(output, `${profile}-${pathname.replaceAll('/', '') || 'home'}.png`) });
         }
         console.log(`${profile}: /${pathname} — ${audit.passedRules} accessibility rules checked`);
       } catch (error) {
@@ -173,6 +193,105 @@ try {
     }
     await context.close();
   }
+  // Public research content and navigation remain available without scripts.
+  const noScript = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 780 } });
+  try {
+    const page = await noScript.newPage();
+    for (const pathname of ['', 'about/', 'publications/', 'games/', 'contact/', 'offers/']) {
+      assert.equal((await page.goto(new URL(pathname, base).href)).status(), 200);
+      await page.locator('main h1').waitFor();
+      assert.equal(await page.locator('.site-nav a').count(), 4);
+      assert.ok((await page.locator('main').innerText()).trim().length > 50, `${pathname}: useful content without JavaScript`);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${pathname}: no-script mobile layout`);
+    }
+    await page.locator('.brand').click();
+    await page.waitForURL(base.href);
+    assert.equal(await page.locator('.home-links a[href$=".pdf"]').count(), 2);
+    resilience.push('Public content, mobile navigation and profile downloads work without JavaScript.');
+  } finally {
+    await noScript.close();
+  }
+  // A failed worker asset must give a usable error and allow a later retry.
+  const recovery = await browser.newContext({ reducedMotion: 'reduce' });
+  try {
+    const page = await recovery.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const workerAsset = /\/_astro\/circuit-worker[-.][^/]+\.js$/;
+    let blockedWorkers = 0;
+    await page.route(workerAsset, route => { blockedWorkers += 1; return route.abort('connectionfailed'); });
+    await page.goto(new URL('circuits/?unexpected=%00#%E0%A4%A', base).href);
+    await page.locator('#circuit-status[data-error]').waitFor();
+    assert.equal(blockedWorkers, 1, 'The worker HTTP failure was exercised');
+    assert.equal(await page.locator('#circuit-preview').getAttribute('aria-busy'), 'false');
+    assert.equal(await page.locator('#copy-tikz').isDisabled(), true);
+    assert.match(await page.locator('#circuit-status').innerText(), /could not|couldn't|failed/i);
+    await page.unroute(workerAsset);
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true,
+      value: { writeText: () => Promise.reject(new DOMException('Denied', 'NotAllowedError')) } }));
+    await page.locator('#controls').selectOption('2');
+    await page.locator('#copy-tikz:enabled').waitFor();
+    await page.locator('#copy-tikz').click();
+    await page.locator('#copy-fallback:not([hidden])').waitFor();
+    const expectedTikz = await page.locator('#tikz-code').inputValue();
+    assert.match(expectedTikz, /\\begin\{tikzpicture\}/);
+    // Rapid edits cancel obsolete work; only the final configuration may be drawn/exported.
+    for (const [selector, value] of [['#controls', '32'], ['#algorithm', 'simple_polarization'],
+      ['#dimension', '7'], ['#controls', '1'], ['#dimension', '5'],
+      ['#algorithm', 'borrow-and-conquer'], ['#controls', '2']]) {
+      await page.locator(selector).selectOption(value);
+    }
+    await page.locator('#copy-tikz:enabled').waitFor();
+    await page.locator('#copy-tikz').click();
+    await page.locator('#copy-fallback:not([hidden])').waitFor();
+    assert.equal(await page.locator('#tikz-code').inputValue(), expectedTikz, 'The final circuit/export matches the latest inputs');
+    assert.deepEqual(errors, [], 'Worker failures and malformed URL fragments do not escape as uncaught errors');
+    resilience.push('Circuit worker HTTP failure recovers; malformed URL fragments and rapid input changes remain safe.');
+  } finally {
+    await recovery.close();
+  }
+  // Server outages and denied browser storage must not prevent local play.
+  for (const game of ['quantum-golf', 'circuit-reduction']) {
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
+    try {
+      await context.addInitScript(() => {
+        for (const method of ['getItem', 'setItem', 'removeItem', 'clear']) {
+          Storage.prototype[method] = () => { throw new DOMException('Storage denied', 'SecurityError'); };
+        }
+      });
+      const page = await context.newPage(), errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.clock.setFixedTime(new Date('2026-10-14T10:00:00Z'));
+      await page.route('**/api/**', route => route.fulfill({ status: 503,
+        contentType: 'application/json', body: '{"error":"Service unavailable"}' }));
+      await page.goto(new URL(`games/${game}/?unexpected=%00#%E0%A4%A`, base).href);
+      await page.locator('#leaderboard-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
+      if (game === 'quantum-golf') await page.locator('#gate-t').click();
+      else {
+        await page.locator('[data-cell="0:1"]').click();
+        await page.locator('[data-cell="0:2"]').click();
+        await page.locator('[data-rule="cancel-x"]').click();
+      }
+      await page.locator('#win-dialog[open]').waitFor();
+      await page.locator('#player-name').fill('Quality test');
+      await page.locator('#submit-score').click();
+      await page.locator('#score-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
+      assert.equal(await page.locator('#submit-score').isEnabled(), true, 'A failed save permits retry');
+      await page.locator('#close-win').click();
+      await page.locator('#mode-daily').click();
+      await page.locator('#daily-status').filter({ hasText: /Offline practice|Daily puzzle unavailable/ }).waitFor();
+      if (game === 'circuit-reduction') {
+        assert.equal(await page.locator('#mode-daily').getAttribute('aria-pressed'), 'true');
+        assert.match(await page.locator('#daily-note').innerText(), /Practice/);
+      }
+      await page.locator('#mode-campaign').click();
+      await page.locator('#restart').click();
+      assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
+      assert.deepEqual(errors, [], `${game}: outages, blocked storage and malformed fragments do not cause uncaught errors`);
+      resilience.push(`${game}: campaign playable with API503/blocked storage; failed scores stay retryable; daily failure is explained.`);
+    } finally {
+      await context.close();
+    }
+  }
   // Prove that the production policy blocks an injected executable script.
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -184,9 +303,13 @@ try {
   });
   assert.equal(await page.evaluate(() => window.injectedQualityProbe), undefined, 'CSP blocks script injection');
   await context.close();
-  await writeFile(resolve(output, 'browser.json'), JSON.stringify({ results, failures, checkedLinks: links.size }, null, 2));
-  assert.deepEqual(failures, [], 'Accessibility violations: see tmp/quality-report/browser.json');
-  console.log(`${results.length} page/profile checks; ${links.size} internal links; script injection blocked.`);
+  assert.deepEqual(failures, [], 'Browser checks failed: see tmp/quality-report/browser*.json');
+  console.log(`${results.length} page/profile checks; ${links.size} internal links; ${resilience.length} resilience checks; script injection blocked.`);
+} catch (error) {
+  failures.push({ label: 'audit', error: error.message.split('\n')[0] });
+  throw error;
 } finally {
+  await writeFile(resolve(output, resilienceOnly ? 'browser-resilience.json' : 'browser.json'),
+    JSON.stringify({ results, resilience, failures, checkedLinks: links.size }, null, 2));
   await browser.close();
 }

@@ -13,7 +13,6 @@ const get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 const winDialog = get('win-dialog');
 const ruleButtons = [...document.querySelectorAll('[data-rule]')];
-const ruleReferences = [...document.querySelectorAll('[data-reference-rule]')];
 const rulesById = Object.fromEntries(RULES.map(rule => [rule.id, rule]));
 const cellNames = { '.': 'empty slot', H: 'H', X: 'X', Z: 'Z', ZU: 'upper Z endpoint', ZD: 'lower Z endpoint', XU: 'upper X endpoint', XD: 'lower X endpoint' };
 let mode = 'campaign', level = LEVELS[0], campaignLevel = level;
@@ -21,8 +20,13 @@ let circuit = level.circuit, sequence = [], states = [circuit];
 const selection = new Set();
 let reviewStep = null, replayTimer, trace = true;
 let searchWorker;
-let touchPress, suppressTouchClick = false;
+let touchPress, selectionDrag, selectionAnchor = null, suppressBoardClick = false;
 function cancelTouchPress() { clearTimeout(touchPress?.timer); touchPress = null; }
+function cancelSelectionDrag() {
+  const drag = selectionDrag; selectionDrag = null;
+  if (drag?.target.hasPointerCapture?.(drag.pointerId)) drag.target.releasePointerCapture(drag.pointerId);
+}
+function clearSelection() { cancelSelectionDrag(); selection.clear(); selectionAnchor = null; }
 function cancelSearch() { searchWorker?.terminate(); searchWorker = null; }
 const sharing = createReplayShare({ get, createGif: async (round, options) => {
   const { createReplayGif } = await import('../lib/circuit-reduction/replay-gif.js');
@@ -69,7 +73,21 @@ function matchingSelection() {
   return getLegalMoves(circuit, { allowedRules: allowedRules(), window: { row, column, height, width } });
 }
 
+function updateSelection() {
+  for (const cell of get('circuit-board').querySelectorAll('[data-cell]')) cell.setAttribute('aria-pressed', String(selection.has(cell.dataset.cell)));
+  update({ board: false });
+}
+function selectRectangle(start, end) {
+  const [firstRow, firstColumn] = start.split(':').map(Number), [lastRow, lastColumn] = end.split(':').map(Number);
+  selection.clear();
+  for (let row = Math.min(firstRow, lastRow); row <= Math.max(firstRow, lastRow); row++) {
+    for (let column = Math.min(firstColumn, lastColumn); column <= Math.max(firstColumn, lastColumn); column++) selection.add(`${row}:${column}`);
+  }
+  updateSelection();
+}
+
 function renderCircuit() {
+  cancelSelectionDrag(); cancelTouchPress();
   const visible = reviewStep === null ? circuit : states[reviewStep];
   const board = get('circuit-board'), fragment = document.createDocumentFragment();
   fragment.appendChild(circuitWires(visible, { gutter: 22, header: 0, slotGaps: true }));
@@ -79,6 +97,7 @@ function renderCircuit() {
     row.forEach((cell, x) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'circuit-cell'; button.dataset.cell = `${y}:${x}`;
       button.dataset.gate = cell; button.setAttribute('aria-label', `Wire ${y + 1}, column ${x + 1}: ${cellNames[cell]}`);
+      button.title = 'Drag or Shift-click to select a rectangle · Enter: apply sole matching rule';
       button.setAttribute('aria-pressed', String(selection.has(`${y}:${x}`)));
       button.disabled = daily.loading || reviewStep !== null;
       if (cell !== '.') {
@@ -88,8 +107,8 @@ function renderCircuit() {
     });
     for (let boundary = 0; boundary <= row.length; boundary++) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'space-handle'; button.dataset.space = `${y}:${boundary}`;
-      button.setAttribute('aria-label', `Add space on wire ${y + 1}, before slot ${boundary + 1}`);
-      button.title = 'Add space · Shift: all wires · Right-click: remove space';
+      button.setAttribute('aria-label', `Add space before slot ${boundary + 1} on all wires`);
+      button.title = 'Add space on all wires · Right-click: remove space';
       button.style.setProperty('left', `${22 + boundary * 64}px`); button.style.setProperty('top', `${36 + y * 72}px`);
       button.disabled = daily.loading || reviewStep !== null;
       if (boundary === 0 || boundary === row.length) button.dataset.edge = boundary === 0 ? 'start' : 'end';
@@ -111,7 +130,6 @@ function update({ board = true } = {}) {
     button.hidden = !availableRules.includes(button.dataset.rule);
     button.disabled = !matches.some(move => move.rule === button.dataset.rule);
   }
-  for (const reference of ruleReferences) reference.hidden = !availableRules.includes(reference.dataset.referenceRule);
   const selectionNote = !locked && !won && selection.size && !matches.length ? 'No matching rule' : '';
   get('selection-note').textContent = selectionNote;
   for (const name of ['campaign', 'random', 'daily']) {
@@ -182,7 +200,7 @@ function resetScore() {
 }
 function reset() {
   if (daily.loading) return;
-  cancelTouchPress(); suppressTouchClick = false; clearReview(); resetScore(); selection.clear();
+  cancelTouchPress(); suppressBoardClick = false; clearReview(); resetScore(); clearSelection();
   circuit = level.circuit; sequence = []; states = [circuit]; get('status').textContent = ''; update();
   scores.load();
 }
@@ -194,7 +212,7 @@ function playMove(move) {
     const next = applyMove(circuit, move);
     if (circuitKey(next) === circuitKey(circuit)) { get('status').textContent = ''; return; }
     // applyMove never mutates its input, so history can retain each result directly.
-    circuit = next; sequence.push({ ...move }); states.push(circuit); selection.clear();
+    circuit = next; sequence.push({ ...move }); states.push(circuit); clearSelection();
     get('status').textContent = ''; update();
     if (isSolved(circuit) && !wasWon) openWin();
   } catch (error) { get('status').textContent = error.message; }
@@ -217,7 +235,7 @@ function randomCircuit() {
 
 function inspect(step) {
   if (daily.loading || !Number.isInteger(step) || step < 0 || step > sequence.length) return;
-  clearReview(); selection.clear(); reviewStep = step; winDialog.close(); update();
+  clearReview(); clearSelection(); reviewStep = step; winDialog.close(); update();
 }
 function replay() {
   if (daily.loading || !sequence.length) return;
@@ -232,50 +250,78 @@ function share(source) {
 
 get('circuit-board').addEventListener('click', event => {
   if (daily.loading || reviewStep !== null) return;
-  if (suppressTouchClick) { suppressTouchClick = false; return; }
+  if (suppressBoardClick && event.detail !== 0) { suppressBoardClick = false; return; }
+  suppressBoardClick = false;
   const space = event.target.closest('button[data-space]');
   if (space) {
-    const [row, column] = space.dataset.space.split(':').map(Number);
-    playMove({ rule: event.shiftKey ? 'insert-column' : 'insert-space', row: event.shiftKey ? 0 : row, column });
+    const [, column] = space.dataset.space.split(':').map(Number);
+    playMove({ rule: 'insert-column', row: 0, column });
     if (event.detail === 0) [...get('circuit-board').querySelectorAll('[data-space]')].find(button => button.dataset.space === space.dataset.space)?.focus({ preventScroll: true });
     return;
   }
   const cell = event.target.closest('button[data-cell]');
-  if (cell) { const key = cell.dataset.cell; if (selection.has(key)) selection.delete(key); else selection.add(key); }
-  else return;
+  if (!cell || cell.disabled) return;
+  if (event.shiftKey && selectionAnchor) { selectRectangle(selectionAnchor, cell.dataset.cell); return; }
+  const key = selectionAnchor = cell.dataset.cell;
+  if (selection.has(key)) selection.delete(key); else selection.add(key);
   // Keep the tapped/focused cell in place; updating selection should not rebuild the board.
-  for (const button of get('circuit-board').querySelectorAll('[data-cell]')) button.setAttribute('aria-pressed', String(selection.has(button.dataset.cell)));
-  update({ board: false });
+  updateSelection();
 });
 function removeSpace(row, column) {
   if (circuit[row]?.[column] === '.') playMove({ rule: 'remove-space', row, column });
 }
 get('circuit-board').addEventListener('contextmenu', event => {
   event.preventDefault();
-  if (daily.loading || reviewStep !== null || suppressTouchClick) return;
+  if (daily.loading || reviewStep !== null || suppressBoardClick) return;
   const cell = event.target.closest('button[data-cell]'), space = event.target.closest('button[data-space]');
   if (cell) removeSpace(...cell.dataset.cell.split(':').map(Number));
   else if (space) { const [row, boundary] = space.dataset.space.split(':').map(Number); removeSpace(row, boundary - 1); }
 });
 get('circuit-board').addEventListener('pointerdown', event => {
-  cancelTouchPress(); suppressTouchClick = false;
-  if (event.pointerType !== 'touch' || daily.loading || reviewStep !== null) return;
+  cancelTouchPress(); cancelSelectionDrag(); suppressBoardClick = false;
+  if (daily.loading || reviewStep !== null || event.isPrimary === false) return;
   const cell = event.target.closest('button[data-cell]');
-  if (cell?.dataset.gate !== '.') return;
-  const [row, column] = cell.dataset.cell.split(':').map(Number);
-  const press = touchPress = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
-  press.timer = setTimeout(() => {
-    if (touchPress !== press) return;
-    suppressTouchClick = true; cancelTouchPress(); removeSpace(row, column);
-  }, 450);
+  if (!cell || cell.disabled) return;
+  if (event.pointerType === 'touch') {
+    if (cell.dataset.gate !== '.') return;
+    const [row, column] = cell.dataset.cell.split(':').map(Number);
+    const press = touchPress = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    press.timer = setTimeout(() => {
+      if (touchPress !== press) return;
+      suppressBoardClick = true; cancelTouchPress(); removeSpace(row, column);
+    }, 450);
+  } else if (event.button === 0 && ['mouse', 'pen'].includes(event.pointerType)) {
+    selectionDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, target: cell,
+      anchor: event.shiftKey && selectionAnchor ? selectionAnchor : cell.dataset.cell, moved: false, last: null };
+  }
 });
 get('circuit-board').addEventListener('pointermove', event => {
   if (touchPress && event.pointerId === touchPress.pointerId && Math.hypot(event.clientX - touchPress.x, event.clientY - touchPress.y) > 10) cancelTouchPress();
+  const drag = selectionDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (event.buttons === 0) { cancelSelectionDrag(); return; }
+  if (!drag.moved) {
+    if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
+    drag.moved = true; selectionAnchor = drag.anchor;
+    drag.target.setPointerCapture(event.pointerId);
+  }
+  // Capture keeps the gesture alive over gaps and outside the original cell.
+  const bounds = get('circuit-board').getBoundingClientRect();
+  const row = Math.max(0, Math.min(circuit.length - 1, Math.floor((event.clientY - bounds.top) / 72)));
+  const column = Math.max(0, Math.min(circuit[0].length - 1, Math.floor((event.clientX - bounds.left - 22) / 64)));
+  const key = `${row}:${column}`;
+  if (key === drag.last) return;
+  event.preventDefault(); suppressBoardClick = true; drag.last = key;
+  selectRectangle(drag.anchor, key);
 });
-for (const event of ['pointerup', 'pointercancel']) get('circuit-board').addEventListener(event, cancelTouchPress);
+for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) document.addEventListener(name, event => {
+  if (touchPress?.pointerId === event.pointerId) cancelTouchPress();
+  if (selectionDrag?.pointerId === event.pointerId) cancelSelectionDrag();
+});
+window.addEventListener('blur', () => { cancelTouchPress(); cancelSelectionDrag(); });
 get('circuit-scroll').addEventListener('scroll', cancelTouchPress);
 for (const button of ruleButtons) button.addEventListener('click', () => { const move = matchingSelection().find(move => move.rule === button.dataset.rule); if (move) playMove(move); });
-onClick('undo', () => { if (daily.loading || !sequence.length) return; clearReview(); resetScore(); selection.clear(); sequence.pop(); states.pop(); circuit = states.at(-1); update(); scores.load(); });
+onClick('undo', () => { if (daily.loading || !sequence.length) return; clearReview(); resetScore(); clearSelection(); sequence.pop(); states.pop(); circuit = states.at(-1); update(); scores.load(); });
 onClick('restart', reset); onClick('try-again', reset); onClick('show-results', openWin);
 onClick('mode-campaign', () => { if (mode === 'campaign') { daily.cancel(); update(); } else setPuzzle('campaign', campaignLevel); });
 onClick('mode-random', () => { if (mode === 'random') { daily.cancel(); update(); } else randomCircuit(); });
@@ -329,7 +375,23 @@ get('custom-form').addEventListener('submit', event => {
   } catch (error) { get('custom-status').textContent = error.message; }
 });
 document.addEventListener('keydown', event => {
-  if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || document.querySelector('dialog[open]')) return;
+  if (event.defaultPrevented || event.altKey || event.repeat || event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || document.querySelector('dialog[open]')) return;
+  if (event.ctrlKey || event.metaKey) {
+    if (!event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); get('undo').click(); }
+    return;
+  }
+  if (event.key === 'Enter' && !daily.loading && reviewStep === null && !isSolved(circuit)) {
+    const cell = event.target.closest('button[data-cell]');
+    if (cell?.parentElement === get('circuit-board') || event.target === get('circuit-scroll')) {
+      const matches = matchingSelection();
+      if (matches.length === 1) {
+        event.preventDefault();
+        const focusKey = cell?.dataset.cell ?? selectionAnchor;
+        playMove(matches[0]);
+        if (!winDialog.open) [...get('circuit-board').querySelectorAll('[data-cell]')].find(button => button.dataset.cell === focusKey)?.focus();
+      }
+    }
+  }
   if (event.key === 'Backspace') { event.preventDefault(); get('undo').click(); }
   if (event.key === 'Delete' && !daily.loading && reviewStep === null) {
     const cell = event.target.closest('button[data-cell]');
@@ -340,10 +402,9 @@ document.addEventListener('keydown', event => {
     }
   }
   if (event.key.toLowerCase() === 'r') { event.preventDefault(); reset(); }
-  if (event.key === 'Escape' && !daily.loading && reviewStep === null && selection.size) {
-    selection.clear();
-    for (const cell of get('circuit-board').querySelectorAll('[data-cell]')) cell.setAttribute('aria-pressed', 'false');
-    update({ board: false });
+  if (event.key === 'Escape' && !daily.loading && reviewStep === null && (selection.size || selectionDrag || selectionAnchor)) {
+    if (selectionDrag) suppressBoardClick = true;
+    clearSelection(); updateSelection();
   }
 });
 window.addEventListener('pageshow', event => {
@@ -351,7 +412,7 @@ window.addEventListener('pageshow', event => {
   update(); daily.refresh(); scores.load();
 });
 window.addEventListener('pagehide', () => {
-  cancelTouchPress(); clearReview(); daily.cancel(); scores.dispose();
+  cancelTouchPress(); cancelSelectionDrag(); clearReview(); daily.cancel(); scores.dispose();
   if (searchWorker) get('custom-status').textContent = 'Identity verified. Shortest solution is unavailable.';
   cancelSearch(); sharing.close();
 });

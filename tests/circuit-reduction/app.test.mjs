@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { RULES, applyMove, cloneCircuit, isSolved, sequenceCost } from '../../src/lib/circuit-reduction/engine.js';
 import { LEVELS, dailyPuzzle } from '../../tools/circuit-reduction/witnesses.js';
+import { layoutMoves } from '../../tools/circuit-reduction/layout-moves.js';
 import { DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
 import { dailyBounds, dailyDate } from '../../src/lib/games/daily-calendar.js';
 
@@ -20,8 +21,6 @@ async function gameMarkup() {
     .replace('<slot name="result-actions" />', ''));
   html = html.replace(/\{RULES\.map\(rule => <button[^\n]+/g,
     RULES.map(rule => `<button type="button" data-rule="${rule.id}" aria-label="${rule.title}" disabled>${rule.title}</button>`).join(''));
-  html = html.replace(/\{RULES\.map\(rule => <div data-reference-rule[^\n]+/g,
-    RULES.map(rule => `<div data-reference-rule="${rule.id}">${rule.title}</div>`).join(''));
   return html.replace(/^---[\s\S]*?---/, '').replace(/<(?:style|script)\b[\s\S]*?<\/(?:style|script)>/g, '');
 }
 
@@ -34,13 +33,14 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     addEventListener(name, callback) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), callback]); }
     async dispatch(name, extra = {}) {
       const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
-      const path = [this]; if (['click', 'contextmenu', 'pointerdown', 'pointerup', 'pointermove', 'pointercancel'].includes(name)) for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
+      const path = [this]; if (['click', 'contextmenu', 'pointerdown', 'pointerup', 'pointermove', 'pointercancel', 'lostpointercapture'].includes(name)) for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
       const promises = [];
       for (const node of path) {
         event.currentTarget = node;
         for (const callback of node.listeners.get(name) ?? []) promises.push(callback(event));
       }
       await Promise.all(promises);
+      return event;
     }
     click() { return this.disabled ? Promise.resolve() : this.dispatch('click'); }
     setAttribute(name, value) {
@@ -52,6 +52,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     matches(selector) {
       if (selector.includes(',')) return selector.split(',').some(part => this.matches(part.trim()));
       if (selector === 'dialog[open]') return this.tagName === 'DIALOG' && this.open;
+      if (selector.startsWith('#')) return this.attrs.id === selector.slice(1);
       if (selector.startsWith('.')) return (this.className ?? '').split(/\s+/).includes(selector.slice(1));
       const match = selector.match(/^(button)?\[data-([\w-]+)\]$/);
       return Boolean(match && (!match[1] || this.tagName === 'BUTTON') && Object.hasOwn(this.dataset, match[2].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())));
@@ -74,8 +75,9 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     showModal() { this.open = true; }
     close() { if (this.open) { this.open = false; this.dispatch('close'); } }
     focus() { document.activeElement = this; }
-    setPointerCapture() {}
-    releasePointerCapture() {}
+    setPointerCapture(id) { (this.capturedPointers ??= new Set()).add(id); }
+    releasePointerCapture(id) { this.capturedPointers?.delete(id); }
+    hasPointerCapture(id) { return this.capturedPointers?.has(id) ?? false; }
     reportValidity() { return true; }
     getBoundingClientRect() { return { left: 0, right: 100, top: 0, bottom: 100 }; }
   }
@@ -152,17 +154,24 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     return circuit;
   };
   const selected = () => get('circuit-board').querySelectorAll('[data-cell]').filter(cell => cell.getAttribute('aria-pressed') === 'true');
+  const cellAt = (row, column) => {
+    const cell = get('circuit-board').querySelectorAll('[data-cell]').find(node => node.dataset.cell === `${row}:${column}`);
+    assert.ok(cell, `Circuit cell ${row}:${column} exists`); return cell;
+  };
+  const selectedKeys = () => selected().map(cell => cell.dataset.cell);
+  const pointAt = (row, column) => ({ clientX: 22 + column * 64 + 32, clientY: row * 72 + 36 });
+  const mouse = (row, column, extra = {}) => ({ pointerType: 'mouse', pointerId: 11, button: 0, buttons: 1, isPrimary: true, ...pointAt(row, column), ...extra });
   const requestPath = request => new URL(request.url, 'https://example.test').pathname;
   const pendingDaily = () => requests.findLast(request => requestPath(request) === '/api/daily' && !request.replied);
   const boardData = (currentPlayer = null) => ({ entries: currentPlayer ? [currentPlayer] : [], currentPlayer, total: currentPlayer ? 1 : 0 });
   async function reply(request, data, status = 200) { assert.ok(request); request.replied = true; request.resolve({ ok: status >= 200 && status < 300, status, json: async () => data }); await settle(); }
   async function boards() { for (const request of requests.filter(request => requestPath(request) === '/api/leaderboard' && request.options.method !== 'POST' && !request.replied)) await reply(request, boardData()); }
   async function chooseLevel(id) { get('level').value = id; await get('level').dispatch('change'); await boards(); }
-  async function addSpace(row, column, count = 1, all = false) {
+  async function addSpace(row, column, count = 1) {
     for (let index = 0; index < count; index++) {
       const gap = get('circuit-board').querySelectorAll('[data-space]').find(node => node.dataset.space === `${row}:${column}`);
       assert.ok(gap, 'Identity space is added directly at a wire boundary');
-      await gap.dispatch('click', { shiftKey: all });
+      await gap.click();
     }
   }
   async function removeSpace(row, column) {
@@ -171,39 +180,18 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     await cell.dispatch('contextmenu');
   }
   async function play(move) {
-    if (move.rule === 'arrange') {
-      await click('compact-identities');
-      // Reproduce the solver's free layout using the same wire-spacing controls
-      // available to a player, retaining gate order and linked endpoints.
-      const seen = move.circuit.map(() => 0);
-      for (let column = 0; column < move.circuit[0].length; column++) for (let row = 0; row < move.circuit.length; row++) {
-        const symbol = move.circuit[row][column];
-        if (symbol === '.') continue;
-        const current = boardCircuit()[row].flatMap((cell, index) => cell === '.' ? [] : [{ cell, index }])[seen[row]++];
-        assert.equal(current.cell, symbol);
-        if (symbol.endsWith('D')) continue;
-        assert.ok(current.index <= column, 'Free arrangement only adds space after compaction');
-        if (current.index < column) {
-          await addSpace(row, current.index, column - current.index);
-        }
-      }
-      while (boardCircuit()[0].length > move.circuit[0].length) {
-        const column = boardCircuit()[0].length - 1;
-        assert.ok(boardCircuit().every(line => line[column] === '.'));
-        await removeSpace(0, column);
-      }
-      if (boardCircuit()[0].length < move.circuit[0].length) {
-        await addSpace(0, boardCircuit()[0].length, move.circuit[0].length - boardCircuit()[0].length, true);
-      }
-      assert.deepEqual(boardCircuit(), move.circuit, 'Players can recreate the free witness arrangement');
+    if (move.rule === 'arrange' || move.rule === 'insert-space') {
+      const target = move.rule === 'arrange' ? move.circuit : applyMove(boardCircuit(), move);
+      // Reproduce solver layouts and older local-spacing witnesses through the
+      // current public controls: whole-column additions and identity removals.
+      for (const spacing of layoutMoves(boardCircuit(), target)) await play(spacing);
+      assert.deepEqual(boardCircuit(), target, 'Players can recreate the free witness arrangement');
     } else if (move.rule === 'compact-identities') {
       await click('compact-identities');
-    } else if (move.rule === 'insert-space') {
-      await addSpace(move.row, move.column, move.count ?? 1);
     } else if (move.rule === 'remove-space') {
       await removeSpace(move.row, move.column);
     } else if (move.rule.endsWith('-column')) {
-      if (move.rule === 'insert-column') await addSpace(0, move.column, move.count ?? 1, true);
+      if (move.rule === 'insert-column') await addSpace(0, move.column, move.count ?? 1);
       else await removeSpace(0, move.column);
     } else {
       const rule = RULES.find(rule => rule.id === move.rule);
@@ -269,7 +257,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   // Layout is unbounded, costs no rewrites, and can be compacted in one action.
   for (const id of ['space-wire', 'space-position', 'space-count', 'add-space', 'insert-column', 'remove-column']) assert.equal(elements.has(id), false, 'Spacing needs no separate form');
   await addSpace(0, 1, 50); assert.equal(boardCircuit()[0].length, 54); assert.equal(moveCount(), 0);
-  await addSpace(0, 0, 100, true); assert.equal(boardCircuit()[0].length, 154); assert.equal(moveCount(), 0);
+  await addSpace(0, 0, 100); assert.equal(boardCircuit()[0].length, 154); assert.equal(moveCount(), 0);
   await click('compact-identities'); assert.deepEqual(boardCircuit(), [['X', 'X']]); assert.equal(moveCount(), 0);
   await click('restart'); await boards();
 
@@ -288,10 +276,24 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.deepEqual(boardCircuit(), applyMove(beforeSpace, { rule: 'remove-space', row: 0, column: 0 }));
   await click('restart'); await boards();
 
-  // Delete keeps focus on the same wire as the board shrinks, so consecutive
-  // key presses can remove trailing identities without finding the cell again.
+  // Every + inserts a whole column, regardless of its wire or the Shift key.
   const keyboardLesson = LEVELS.find(lesson => lesson.circuit.length > 1);
   await chooseLevel(keyboardLesson.id);
+  const beforeColumn = boardCircuit();
+  const withColumn = applyMove(beforeColumn, { rule: 'insert-column', row: 0, column: 1 });
+  await addSpace(1, 1);
+  assert.deepEqual(boardCircuit(), withColumn, 'A normal + click on a lower wire inserts the same column on every wire');
+  assert.equal(moveCount(), 0, 'Inserting a whole column costs no rewrites');
+  await click('undo'); await boards();
+  assert.deepEqual(boardCircuit(), beforeColumn, 'Undo restores every wire before the spacing edit');
+  const lowerGap = get('circuit-board').querySelectorAll('[data-space]').find(node => node.dataset.space === '1:1');
+  await lowerGap.dispatch('click', { shiftKey: true });
+  assert.deepEqual(boardCircuit(), withColumn, 'Holding Shift no longer changes a + click');
+  assert.equal(moveCount(), 0);
+  await click('undo'); await boards();
+  assert.deepEqual(boardCircuit(), beforeColumn);
+  // Delete keeps focus on the same wire as the board shrinks, so consecutive
+  // key presses can remove trailing identities without finding the cell again.
   const keyboardInitial = boardCircuit(), keyboardRow = 1, keyboardWidth = keyboardInitial[0].length;
   await addSpace(keyboardRow, keyboardWidth, 2);
   let focusedCell = get('circuit-board').querySelectorAll('[data-cell]').find(node => node.dataset.cell === `${keyboardRow}:${keyboardWidth + 1}`);
@@ -312,6 +314,94 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await documentMock.dispatch('keydown', { target: focusedGate, key: 'Delete' });
   assert.deepEqual(boardCircuit(), keyboardInitial, 'Delete preserves a focused gate');
   assert.equal(documentMock.activeElement, focusedGate);
+  await chooseLevel(1);
+
+  // Mouse and pen drags replace a selection with the complete rectangle,
+  // including reverse drags and every wire between the endpoints.
+  const dragLesson = LEVELS.find(lesson => lesson.circuit.length > 1 && lesson.circuit[0].length > 3);
+  await chooseLevel(dragLesson.id);
+  const rectangle = ['0:0', '0:1', '0:2', '1:0', '1:1', '1:2'];
+  const dragBoard = boardSignature(), dragOrigin = cellAt(0, 0);
+  await cellAt(0, 3).click();
+  await dragOrigin.dispatch('pointerdown', mouse(0, 0));
+  assert.equal(dragOrigin.hasPointerCapture(11), false, 'A press does not capture before it becomes a drag');
+  await get('circuit-board').dispatch('pointermove', mouse(1, 2, { pointerId: 12 }));
+  assert.deepEqual(selectedKeys(), ['0:3'], 'An unrelated pointer cannot start the drag');
+  await get('circuit-board').dispatch('pointermove', mouse(1, 2));
+  assert.deepEqual(selectedKeys(), rectangle);
+  assert.equal(dragOrigin.hasPointerCapture(11), true, 'A drag captures its original cell');
+  await documentMock.dispatch('pointerup', mouse(1, 2, { buttons: 0 }));
+  await dragOrigin.dispatch('click', { detail: 1, pointerId: 11 });
+  assert.deepEqual(selectedKeys(), rectangle, 'Releasing a drag does not toggle its starting cell');
+  assert.equal(boardSignature(), dragBoard, 'Dragging across insertion handles leaves circuit spacing intact');
+  assert.equal(moveCount(), 0, 'Selecting cells is free');
+  const reverseOrigin = cellAt(1, 2);
+  await reverseOrigin.dispatch('pointerdown', mouse(1, 2, { pointerType: 'pen' }));
+  await get('circuit-board').dispatch('pointermove', mouse(0, 0, { pointerType: 'pen' }));
+  await documentMock.dispatch('pointerup', mouse(0, 0, { pointerType: 'pen', buttons: 0 }));
+  await reverseOrigin.dispatch('click', { detail: 1, pointerId: 11 });
+  assert.deepEqual(selectedKeys(), rectangle, 'Reverse pen drags use the same rectangle');
+
+  // Small hand movements retain ordinary toggles. Shift extends from the
+  // previous clicked cell, and Escape resets that anchor as well as the paint.
+  await documentMock.dispatch('keydown', { key: 'Escape' });
+  await dragOrigin.dispatch('pointerdown', mouse(0, 0));
+  await get('circuit-board').dispatch('pointermove', mouse(0, 0, { clientX: pointAt(0, 0).clientX + 3 }));
+  await documentMock.dispatch('pointerup', mouse(0, 0, { buttons: 0 }));
+  await dragOrigin.click(); assert.deepEqual(selectedKeys(), ['0:0']);
+  await cellAt(1, 2).dispatch('click', { shiftKey: true }); assert.deepEqual(selectedKeys(), rectangle);
+  await documentMock.dispatch('keydown', { key: 'Escape' });
+  await cellAt(1, 2).dispatch('click', { shiftKey: true });
+  assert.deepEqual(selectedKeys(), ['1:2'], 'Escape prevents a later Shift-click from reusing the old anchor');
+  for (const ending of ['pointercancel', 'lostpointercapture', 'blur']) {
+    await dragOrigin.dispatch('pointerdown', mouse(0, 0));
+    await get('circuit-board').dispatch('pointermove', mouse(1, 2));
+    if (ending === 'blur') await windowMock.dispatch(ending);
+    else await (ending === 'lostpointercapture' ? dragOrigin : documentMock).dispatch(ending, mouse(1, 2));
+    const endedSelection = selectedKeys();
+    await get('circuit-board').dispatch('pointermove', mouse(1, 0));
+    assert.deepEqual(selectedKeys(), endedSelection, `${ending} ends a drag even outside the board`);
+  }
+  await dragOrigin.dispatch('pointerdown', mouse(0, 0));
+  await click('restart'); await boards();
+  await get('circuit-board').dispatch('pointermove', mouse(1, 2));
+  assert.deepEqual(selectedKeys(), [], 'A reset cannot leave a pending drag attached to an old board');
+  await cellAt(0, 0).dispatch('pointerdown', mouse(0, 0, { button: 2, buttons: 2 }));
+  await get('circuit-board').dispatch('pointermove', mouse(1, 2, { buttons: 2 }));
+  assert.deepEqual(selectedKeys(), [], 'Right-clicking does not start selection');
+
+  // Enter applies a unique match from the circuit, while other controls keep
+  // their native Enter handling. Ambiguous matches never choose for the user.
+  await chooseLevel(1);
+  await cellAt(0, 1).click(); await cellAt(0, 2).click();
+  const enterElsewhere = await documentMock.dispatch('keydown', { target: get('show-rules'), key: 'Enter' });
+  assert.equal(enterElsewhere.defaultPrevented, false); assert.equal(moveCount(), 0);
+  await documentMock.dispatch('keydown', { target: cellAt(0, 1), key: 'Enter' });
+  assert.equal(moveCount(), 1); assert.equal(get('win-dialog').open, true);
+  await click('close-win');
+  await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'z', ctrlKey: true }); await boards();
+  assert.equal(moveCount(), 0, 'Ctrl+Z undoes the rewrite');
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    const beforeShortcut = boardSignature(); await addSpace(0, 0);
+    await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'z', [modifier]: true }); await boards();
+    assert.equal(boardSignature(), beforeShortcut, `${modifier} + Z undoes spacing too`);
+  }
+  await addSpace(0, 0); const guardedUndoBoard = boardSignature();
+  for (const extra of [{ shiftKey: true }, { altKey: true }, { repeat: true }, { defaultPrevented: true }, { target: get('custom-circuit') }]) {
+    const ignored = await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'z', ctrlKey: true, ...extra });
+    assert.equal(boardSignature(), guardedUndoBoard, 'Native or modified shortcuts do not undo the circuit');
+    if (!extra.defaultPrevented) assert.equal(ignored.defaultPrevented, false);
+  }
+  get('rules-dialog').showModal();
+  await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'z', metaKey: true });
+  assert.equal(boardSignature(), guardedUndoBoard, 'A dialog owns its keyboard shortcuts');
+  get('rules-dialog').close();
+  await chooseLevel(2); await addSpace(0, 0, 2);
+  await cellAt(0, 0).click(); await cellAt(0, 1).click();
+  assert.ok(rules.filter(rule => !rule.hidden && !rule.disabled).length > 1);
+  const ambiguous = boardSignature();
+  await documentMock.dispatch('keydown', { target: cellAt(0, 0), key: 'Enter' });
+  assert.equal(boardSignature(), ambiguous, 'Enter does not resolve competing rules arbitrarily');
   await chooseLevel(1);
 
   // Touch holds perform the same free edit, suppress its compatibility click,
@@ -360,7 +450,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
 
   // Empty layouts remain editable after a win without inflating the score.
   await finish(LEVELS[0]); await click('close-win');
-  await addSpace(0, 0, 100, true); assert.equal(boardCircuit()[0].length, 104); assert.equal(moveCount(), 1);
+  await addSpace(0, 0, 100); assert.equal(boardCircuit()[0].length, 104); assert.equal(moveCount(), 1);
   await click('compact-identities'); assert.deepEqual(boardCircuit(), [['.', '.']]); assert.equal(moveCount(), 1);
   assert.equal(get('score-form').hidden, false);
   await click('restart'); await boards();
@@ -371,6 +461,11 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   const disclosure = click('daily-toggle'); await reply(pendingDaily(), metadata('2026-10-14')); await disclosure; await boards();
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true'); assert.equal(boardSignature(), progress);
   const staleLoad = click('mode-daily'), stale = pendingDaily(); assert.equal(get('undo').disabled, true);
+  await cellAt(0, 0).dispatch('pointerdown', mouse(0, 0));
+  await get('circuit-board').dispatch('pointermove', mouse(0, 1));
+  await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'z', ctrlKey: true });
+  assert.deepEqual(selectedKeys(), [], 'Daily loading locks drag selection');
+  assert.equal(moveCount(), 1, 'Daily loading also locks keyboard undo');
   await click('mode-campaign'); assert.equal(stale.options.signal.aborted, true);
   await reply(stale, metadata('2026-10-14')); await staleLoad;
   assert.equal(boardSignature(), progress); assert.equal(moveCount(), 1);
@@ -398,6 +493,12 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(get('sequence').children[0], traceStep, 'Inspecting a step retains its live Trace button');
   assert.equal(documentMock.activeElement, traceStep, 'Keyboard focus remains on the inspected Trace step');
   assert.equal(traceStep.getAttribute('aria-current'), 'step');
+  const inspectedBoard = boardSignature();
+  await cellAt(0, 0).dispatch('pointerdown', mouse(0, 0));
+  await get('circuit-board').dispatch('pointermove', mouse(0, 1));
+  await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'Enter' });
+  assert.deepEqual(selectedKeys(), [], 'Review snapshots cannot be selected by dragging');
+  assert.equal(boardSignature(), inspectedBoard, 'Enter cannot rewrite an inspected snapshot');
   await click('resume-round'); assert.equal(traceStep.getAttribute('aria-current'), 'false');
   await addSpace(0, 0);
   assert.equal(get('sequence').children[0], traceStep, 'Appending a free layout step retains earlier Trace buttons');

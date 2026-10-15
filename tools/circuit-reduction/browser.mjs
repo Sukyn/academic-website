@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
 import { RULES, sequenceCost, solveShortest, applyMove } from '../../src/lib/circuit-reduction/engine.js';
 import { createBrowserApi } from './browser-api.mjs';
+import { layoutMoves } from './layout-moves.js';
 
 const require = createRequire(process.env.PLAYWRIGHT_MODULE_DIR ? resolve(process.env.PLAYWRIGHT_MODULE_DIR, 'package.json') : import.meta.url);
 const { chromium } = require('playwright');
@@ -84,13 +85,9 @@ async function boardCircuit(page) {
     return circuit;
   });
 }
-async function addSpace(page, wire, column, count) {
+async function addSpace(page, row, column, count = 1) {
   for (let index = 0; index < count; index++) {
-    const gap = page.locator(`[data-space="${wire === 'all' ? 0 : wire}:${column}"]`);
-    if (wire === 'all' && !touchPages.has(page)) {
-      await page.keyboard.down('Shift');
-      try { await activate(page, gap); } finally { await page.keyboard.up('Shift'); }
-    } else await activate(page, gap);
+    await activate(page, page.locator(`[data-space="${row}:${column}"]`));
   }
 }
 async function removeSpace(page, row, column) {
@@ -107,24 +104,7 @@ async function removeSpace(page, row, column) {
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 async function arrange(page, target) {
-  await activate(page, page.locator('#compact-identities'));
-  const seen = target.map(() => 0);
-  for (let column = 0; column < target[0].length; column++) for (let row = 0; row < target.length; row++) {
-    const symbol = target[row][column];
-    if (symbol === '.') continue;
-    const current = (await boardCircuit(page))[row].flatMap((cell, index) => cell === '.' ? [] : [{ cell, index }])[seen[row]++];
-    assert.equal(current.cell, symbol, 'Free arrangements retain gate order');
-    if (symbol.endsWith('D')) continue;
-    assert.ok(current.index <= column, 'The layout can be recreated by adding identity space');
-    if (current.index < column) await addSpace(page, row, current.index, column - current.index);
-  }
-  while ((await boardCircuit(page))[0].length > target[0].length) {
-    const circuit = await boardCircuit(page), column = circuit[0].length - 1;
-    assert.ok(circuit.every(row => row[column] === '.'));
-    await removeSpace(page, 0, column);
-  }
-  const currentWidth = (await boardCircuit(page))[0].length;
-  if (currentWidth < target[0].length) await addSpace(page, 'all', currentWidth, target[0].length - currentWidth);
+  for (const move of layoutMoves(await boardCircuit(page), target)) await apply(page, move);
   assert.deepEqual(await boardCircuit(page), target, 'Public wire-space controls reproduce the witness layout');
 }
 async function apply(page, move) {
@@ -133,11 +113,11 @@ async function apply(page, move) {
   } else if (move.rule === 'compact-identities') {
     await activate(page, page.locator('#compact-identities'));
   } else if (move.rule === 'insert-space') {
-    await addSpace(page, move.row, move.column, move.count ?? 1);
+    await arrange(page, applyMove(await boardCircuit(page), move));
   } else if (move.rule === 'remove-space') {
     await removeSpace(page, move.row, move.column);
   } else if (move.rule === 'insert-column') {
-    await addSpace(page, 'all', move.column, move.count ?? 1);
+    await addSpace(page, 0, move.column, move.count ?? 1);
   } else if (move.rule.endsWith('column')) {
     await removeSpace(page, 0, move.column);
   } else {
@@ -174,11 +154,69 @@ async function fullRulePalette(page) {
     });
   }).map(button => button.dataset.rule)), [], 'Rule diagrams fit inside their buttons');
 }
+async function desktopSelection(page) {
+  const selected = () => page.locator('[data-cell][aria-pressed="true"]').evaluateAll(cells => cells.map(cell => cell.dataset.cell));
+  async function drag(from, to) {
+    const start = page.locator(`[data-cell="${from}"]`), end = page.locator(`[data-cell="${to}"]`);
+    await start.scrollIntoViewIfNeeded(); await end.scrollIntoViewIfNeeded();
+    const a = await start.boundingBox(), b = await end.boundingBox(); assert.ok(a && b);
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 }); await page.mouse.up();
+  }
+  const original = await boardCircuit(page);
+  await drag('0:1', '0:2');
+  assert.deepEqual(await selected(), ['0:1', '0:2'], 'A real drag selects both gates and keeps its origin selected on release');
+  assert.deepEqual(await boardCircuit(page), original, 'Dragging across a space handle does not insert an identity');
+  await page.keyboard.press('Enter'); await page.locator('#win-dialog[open]').waitFor();
+  assert.equal(await page.locator('#move-count').innerText(), '1 move');
+  await page.locator('#close-win').click(); await page.keyboard.press('Control+z');
+  assert.deepEqual(await boardCircuit(page), original, 'The standard undo shortcut restores a completed circuit');
+  assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+
+  // Native Enter still activates a focused rule button exactly once.
+  await page.locator('[data-cell="0:1"]').click(); await page.locator('[data-cell="0:2"]').click();
+  await page.locator('[data-rule="cancel-x"]').focus(); await page.keyboard.press('Enter');
+  await page.locator('#win-dialog[open]').waitFor();
+  assert.equal(await page.locator('#move-count').innerText(), '1 move');
+  await page.locator('#close-win').click(); await page.locator('#restart').click();
+
+  const lesson = LEVELS.find(level => level.circuit.length > 1 && level.circuit[0].length > 3);
+  await page.locator('#level').selectOption(String(lesson.id));
+  const rectangle = ['0:0', '0:1', '0:2', '1:0', '1:1', '1:2'];
+  await drag('1:2', '0:0');
+  assert.deepEqual(await selected(), rectangle, 'A reverse drag selects a rectangle across wires');
+  await page.keyboard.press('Escape'); assert.deepEqual(await selected(), []);
+  await page.locator('[data-cell="0:0"]').click();
+  await page.locator('[data-cell="1:2"]').click({ modifiers: ['Shift'] });
+  assert.deepEqual(await selected(), rectangle, 'Shift-click extends from the previous clicked cell');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-cell="1:2"]').click({ modifiers: ['Shift'] });
+  assert.deepEqual(await selected(), ['1:2'], 'Escape also clears the Shift-click anchor');
+  await page.locator('#level').selectOption('1');
+  console.log('Desktop selection: drag across wires and spacing handles, Shift-click, Enter, native rule activation and Ctrl+Z verified');
+}
+async function columnSpacing(page) {
+  const lesson = LEVELS.find(level => level.circuit.length > 1);
+  await page.locator('#level').selectOption(String(lesson.id));
+  const original = await boardCircuit(page);
+  const expected = applyMove(original, { rule: 'insert-column', row: 0, column: 1 });
+  await addSpace(page, 1, 1);
+  assert.deepEqual(await boardCircuit(page), expected, 'A normal + on the lower wire inserts space on every wire');
+  assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+  if (!touchPages.has(page)) {
+    await page.locator('#restart').click();
+    await page.locator('[data-space="1:1"]').click({ modifiers: ['Shift'] });
+    assert.deepEqual(await boardCircuit(page), expected, 'Shift does not change the standard + behavior');
+  }
+  await page.locator('#level').selectOption('1');
+}
 try {
   let desktop, beforeRemoval;
   if (process.env.GAME_TEST_SCOPE !== 'mobile') {
     desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
     await noOverflow(desktop);
+    await desktopSelection(desktop);
+    await columnSpacing(desktop);
     await desktop.screenshot({ path: resolve(output, 'desktop.png'), fullPage: true });
     assert.equal(await desktop.locator('#space-wire, #space-position, #space-count, #add-space, #insert-column, #remove-column').count(), 0, 'Spacing is edited directly on the circuit');
     await addSpace(desktop, 0, 1, 1);
@@ -227,7 +265,7 @@ try {
         assert.deepEqual(await boardCircuit(desktop), [['X', 'X']]);
         await finish(desktop, [{ rule: 'cancel-x', row: 0, column: 0 }]);
         await desktop.locator('#close-win').click();
-        await addSpace(desktop, 'all', 0, 100);
+        await addSpace(desktop, 0, 0, 100);
         assert.equal((await boardCircuit(desktop))[0].length, 102);
         await activate(desktop, desktop.locator('#compact-identities'));
         assert.deepEqual(await boardCircuit(desktop), [['.', '.']]);
@@ -274,6 +312,7 @@ try {
 
   const mobile = await pageFor({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await noOverflow(mobile);
+  await columnSpacing(mobile);
   const cellSize = await mobile.locator('.circuit-cell').first().boundingBox();
   assert.ok(cellSize.width >= 44 && cellSize.height >= 44, 'Touchable cells are at least44px');
   await mobile.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true });

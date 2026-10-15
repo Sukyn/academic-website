@@ -27,7 +27,7 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
             {RULES.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
           </div>
           <div class="round-controls">
-            <button class="button ghost" id="undo" type="button" title="Undo · Backspace" disabled>Undo</button>
+            <button class="button ghost" id="undo" type="button" title="Undo · Ctrl/Cmd+Z · Backspace" disabled>Undo</button>
             <button class="button ghost" id="restart" type="button" title="Reset · R">Reset</button>
             <button class="button ghost" id="compact-identities" type="button" title="Remove all unnecessary empty slots">Tidy</button>
             <button class="button ghost" id="show-results" type="button" hidden>Scores</button>
@@ -73,15 +73,11 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
     <GameDialogs gameTitle="Circuit reduction">
       <Fragment slot="rules">
         <p>Reduce every wire to empty slots: this is the <strong>identity circuit</strong>. Read the circuit from left to right. Use as few moves as possible.</p>
-        <p>Select the cells shown in a rule, including empty slots, then choose that rule.</p>
+        <p>Select the cells shown in a rule, including empty slots, then choose that rule. Drag or Shift-click for a rectangle; Enter applies the sole matching rule.</p>
         <p>A yellow square (<strong>H</strong>) is a Hadamard gate, <strong>X</strong> flips a bit, and a green dot (<strong>Z</strong>) changes its phase. Linked green dots are a controlled Z; a red ⊕ endpoint turns the link into a controlled X (CNOT).</p>
-        <div class="rule-reference">
-          {RULES.map(rule => <div data-reference-rule={rule.id}><strong>{rule.title}</strong><code>{rule.left.map(row => row.join(' ')).join(' / ')} ↔ {rule.right.map(row => row.join(' ')).join(' / ')}</code></div>)}
-        </div>
-        <p>Click <strong>+</strong> between slots to add space. Right-click an empty slot to remove it; on touch screens, hold it. Shift-click + adds space on every wire. <strong>Tidy</strong> removes all unnecessary gaps. Space adjustments are free and can be undone.</p>
+        <p>Click <strong>+</strong> to add a column on every wire. Right-click an empty slot to remove it; on touch screens, hold it. <strong>Tidy</strong> removes all unnecessary gaps. Space adjustments are free and can be undone.</p>
         <p>Every rule works <strong>both ways</strong>. Introducing gates can help you simplify. Only rewrites count towards your score; moving gates through empty slots is free.</p>
-        <p>Levels introduce rules progressively using the missions in the <a href="/outreach/jeu-circuits-quantiques.pdf" target="_blank" rel="noopener noreferrer">original rules PDF</a>. First derive an identity, then use its learned shortcut in later lessons. Random and daily puzzles use the complete learned rule set. Keyboard: R to reset, Backspace to undo, Escape to clear the selection.</p>
-        <p>Daily puzzles have a shortest solution of 10–14 moves. Rankings close at midnight in Paris; past puzzles remain playable as practice.</p>
+        <p>Keyboard: R to reset, Backspace or Ctrl/Cmd+Z to undo, Escape to clear the selection.</p>
       </Fragment>
     </GameDialogs>
   </GameShell>
@@ -122,8 +118,5 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   #custom-form { display: grid; gap: .5rem; margin-top: .6rem; }
   #custom-form textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 3px; padding: .7rem; color: var(--color-text); background: var(--color-surface-2); font: .95rem var(--font-mono); resize: vertical; }
   #custom-form .button { justify-self: start; margin-top: .3rem; }
-  .rule-reference { display: grid; gap: .6rem; margin-top: 1rem; font-size: .8rem; }
-  .rule-reference div { display: grid; gap: .2rem; }
-  .rule-reference code { white-space: normal; overflow-wrap: anywhere; }
   @media(max-width: 400px) { .rule-palette .button { max-width: none; font-size: .8rem; padding: .4rem; } }
 </style>

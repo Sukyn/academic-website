@@ -7,7 +7,7 @@
 | Home | Short introduction, selected papers, visible MFCS award; disambiguation below. |
 | Navigation | Research & teaching, Publications, Outreach & games, Contact; CV linked from Home. |
 | Downloads | Two-page CV and one-page overview of public research. |
-| Software | Purpose, reproducible examples, exact versus numerical results. |
+| Software | Short purpose statement and linked examples. |
 | Profile | Research and teaching together; game-jam award under Outreach; supervision clarification only on Contact. |
 | Writing | Concrete claims, descriptive links, less repeated text. |
 

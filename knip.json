@@ -2,6 +2,5 @@
   "entry": ["src/pages/**/*.astro", "api/*.ts", "src/scripts/*worker*", "tests/**/*.test.mjs", "tools/**/*.mjs"],
   "project": ["src/**/*.{js,ts,astro}", "api/**/*.ts", "tests/**/*.mjs", "tools/**/*.{js,mjs}"],
   "ignoreExportsUsedInFile": true,
-  "ignoreBinaries": ["python", "python3", "vercel"],
-  "ignoreDependencies": ["axe-core", "playwright"]
+  "ignoreDependencies": ["playwright"]
 }
