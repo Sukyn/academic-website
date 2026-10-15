@@ -1,5 +1,5 @@
 ---
-interface Props { levels: { id: number; title: string }[] }
+interface Props { levels: { title: string }[] }
 const { levels } = Astro.props;
 ---
 
@@ -8,7 +8,7 @@ const { levels } = Astro.props;
     <button class="button ghost" id="previous-level" type="button" aria-label="Previous level" disabled>←</button>
     <label class="sr-only" for="level">Level</label>
     <select id="level">
-      {levels.map(item => <option value={item.id}>{item.id} · {item.title}</option>)}
+      {levels.map((item, index) => <option value={index + 1}>{index + 1} · {item.title}</option>)}
     </select>
     <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
   </div>

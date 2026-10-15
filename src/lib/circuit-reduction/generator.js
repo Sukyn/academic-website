@@ -1,11 +1,12 @@
 import {
-  EMPTY, MAX_WIRES, LEARNED_RULE_IDS, RULES, applyMove, circuitKey, compactCircuit,
+  EMPTY, MAX_WIRES, LEARNED_RULE_IDS, RULES, circuitKey, compactCircuit,
   getRewriteMoves, lowerBound, seededRandom,
 } from './engine.js';
 import { CERTIFIED_PUZZLES } from './generated-catalogue.js';
 
 const reflectedRules = { 'basis-up': 'basis-down', 'basis-down': 'basis-up', 'cancel-cnot-up': 'cancel-cnot-down', 'cancel-cnot-down': 'cancel-cnot-up', 'phase-up': 'phase-down', 'phase-down': 'phase-up', 'stabilizer-up': 'stabilizer-down', 'stabilizer-down': 'stabilizer-up', 'corner-up': 'corner-down', 'corner-down': 'corner-up' };
-const reflectCircuit = circuit => [...circuit].reverse().map(row => row.map(cell => ({ ZU: 'ZD', ZD: 'ZU', XU: 'XD', XD: 'XU' })[cell] || cell));
+const reflectedCells = { ZU: 'ZD', ZD: 'ZU', XU: 'XD', XD: 'XU' };
+const reflectCircuit = circuit => [...circuit].reverse().map(row => row.map(cell => reflectedCells[cell] || cell));
 const offsetCircuit = (circuit, offset, wires) => Array.from({ length: wires }, (_, row) =>
   row >= offset && row < offset + circuit.length ? [...circuit[row - offset]] : Array(circuit[0].length).fill(EMPTY));
 function reflectMove(move, wires) {
@@ -52,12 +53,10 @@ function growIdentity(seed, difficulty, wires, columns, includeSolution) {
     const pool = interesting.length && random() < .8 ? interesting : options;
     if (!pool.length) throw new Error('Could not grow an identity circuit.');
     const { move, next } = pool[Math.floor(random() * pool.length)];
-    const layout = applyMove(next, move);
     // Undo this rewrite, then restore the previous free layout before following
     // the older inverse steps, whose windows use those previous coordinates.
     solution?.unshift(move, { rule: 'arrange', row: 0, column: 0, circuit: before });
     circuit = next;
-    if (circuitKey(compactCircuit(layout)) !== circuitKey(compactCircuit(before))) throw new Error('Invalid reverse rewrite.');
   }
   if (columns && circuit[0].length < columns) {
     const compact = circuit;

@@ -1,5 +1,6 @@
 // Reversible rules from the outreach PDF, its solved missions, and the Unity game.
 // Rows are wires, columns are freely adjustable identity slots.
+export { seededRandom } from '../games/random.js';
 export const EMPTY = '.';
 // Width is a layout choice, not a limit on the paper circuit. Replay/API callers
 // impose their own resource budgets before allocating user-supplied layouts.
@@ -30,11 +31,13 @@ export const RULES = Object.freeze([
 ]);
 export const PAPER_RULE_IDS = Object.freeze(RULES.filter(rule => !rule.derived).map(rule => rule.id));
 export const LEARNED_RULE_IDS = Object.freeze(RULES.map(rule => rule.id));
+const rulesById = new Map(RULES.map(rule => [rule.id, rule]));
+const freeRules = new Set(['slide-h', 'slide-x', 'insert-column', 'remove-column', 'insert-space', 'remove-space', 'compact-identities', 'arrange']);
 const symbols = new Set(['.', 'H', 'X', 'Z', 'ZU', 'ZD', 'XU', 'XD']);
 export const cloneCircuit = circuit => circuit.map(row => [...row]);
 export const isSolved = circuit => circuit.every(row => row.every(cell => cell === EMPTY));
 export const circuitKey = circuit => circuit.map(row => row.join(',')).join(';');
-export const moveCost = move => ['slide-h', 'slide-x', 'insert-column', 'remove-column', 'insert-space', 'remove-space', 'compact-identities', 'arrange'].includes(move?.rule) ? 0 : 1;
+export const moveCost = move => freeRules.has(move?.rule) ? 0 : 1;
 export const sequenceCost = sequence => sequence.reduce((total, move) => total + moveCost(move), 0);
 
 function gateCounts(circuit) {
@@ -73,7 +76,8 @@ function circuitGraph(circuit) {
 }
 
 function drawGraph(graph, columns, minimumWidth = 2) {
-  const width = Math.max(minimumWidth, ...columns.map(column => column + 1));
+  let width = minimumWidth;
+  for (const column of columns) width = Math.max(width, column + 1);
   const circuit = graph.wires.map(() => Array(width).fill(EMPTY));
   graph.nodes.forEach(node => node.cells.forEach(({ row, symbol }) => { circuit[row][columns[node.id]] = symbol; }));
   return circuit;
@@ -171,22 +175,24 @@ export function applyMove(circuit, move) {
     if (circuitKey(compactCircuit(circuit)) !== circuitKey(compactCircuit(move.circuit))) throw new RangeError('Space adjustments must preserve every gate and the order on each wire.');
     return cloneCircuit(move.circuit);
   }
-  const next = cloneCircuit(circuit);
   if (move.rule === 'insert-column') {
     if (row !== 0 || column > circuit[0].length) throw new RangeError('Cannot insert a column here.');
     const count = move.count ?? 1;
     if (!Number.isSafeInteger(count) || count < 1) throw new RangeError('Choose a positive whole-number space count.');
-    next.forEach((line, index) => { next[index] = [...line.slice(0, column), ...Array(count).fill(EMPTY), ...line.slice(column)]; });
-  } else if (move.rule === 'remove-column') {
-    if (row !== 0 || column >= circuit[0].length || circuit[0].length <= 2 || !circuit.every(line => line[column] === EMPTY)) throw new RangeError('Only a completely empty column can be removed.');
-    next.forEach(line => line.splice(column, 1));
-  } else {
-    const rule = RULES.find(item => item.id === move.rule);
-    if (!rule) throw new RangeError('Unknown circuit rule.');
-    const pattern = matches(circuit, rule.left, row, column) ? rule.right : matches(circuit, rule.right, row, column) ? rule.left : null;
-    if (!pattern) throw new RangeError('Select every cell in a matching rule window, including empty cells.');
-    pattern.forEach((line, y) => line.forEach((cell, x) => { next[row + y][column + x] = cell; }));
+    return circuit.map(line => [...line.slice(0, column), ...Array(count).fill(EMPTY), ...line.slice(column)]);
   }
+  if (move.rule === 'remove-column') {
+    if (row !== 0 || column >= circuit[0].length || circuit[0].length <= 2 || !circuit.every(line => line[column] === EMPTY)) throw new RangeError('Only a completely empty column can be removed.');
+    const next = cloneCircuit(circuit);
+    next.forEach(line => line.splice(column, 1));
+    return next;
+  }
+  const rule = rulesById.get(move.rule);
+  if (!rule) throw new RangeError('Unknown circuit rule.');
+  const pattern = matches(circuit, rule.left, row, column) ? rule.right : matches(circuit, rule.right, row, column) ? rule.left : null;
+  if (!pattern) throw new RangeError('Select every cell in a matching rule window, including empty cells.');
+  const next = cloneCircuit(circuit);
+  pattern.forEach((line, y) => line.forEach((cell, x) => { next[row + y][column + x] = cell; }));
   return next;
 }
 
@@ -279,17 +285,6 @@ export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinit
 export function lowerBound(circuit) {
   const { singles, linked } = gateCounts(circuit);
   return Math.ceil(singles / 2) + Math.ceil(linked / 2);
-}
-
-export function seededRandom(seed) {
-  let value = 2166136261;
-  for (const char of String(seed)) value = Math.imul(value ^ char.charCodeAt(0), 16777619);
-  return () => {
-    value += 0x6d2b79f5;
-    let t = Math.imul(value ^ value >>> 15, value | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
 }
 
 export function solveShortest(circuit, { maxDepth = 16, maxNodes = 150000, allowedRules } = {}) {

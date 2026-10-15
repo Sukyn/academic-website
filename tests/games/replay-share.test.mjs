@@ -100,7 +100,7 @@ test('one Download click encodes and saves, while subsequent clicks reuse the co
   await h.click('download-gif');
   assert.equal(h.jobs.length, 1, 'Even a synthetic repeated click cannot start a duplicate worker');
   const gif = new Blob(['GIF89a'], { type: 'image/gif' });
-  job.options.onImage(new Blob(['png'], { type: 'image/png' }));
+  assert.equal(job.options.onImage, undefined, 'Direct GIF copying does not request a redundant PNG');
   job.resolve(gif); await pending;
   assert.equal(h.downloads.length, 1, 'The initial click saves automatically after generation');
   const saved = h.downloads[0];
@@ -151,6 +151,7 @@ test('export failures allow a direct retry and clipboard absence does not preven
   const h = setup(context, { clipboard: false });
   h.open();
   const failed = h.click('download-gif');
+  assert.equal(h.jobs[0].options.onImage, undefined, 'Downloading without clipboard support does not request a PNG');
   h.jobs[0].reject(new Error('Encoding failed')); await failed;
   assert.equal(h.dialog.open, true);
   assert.equal(h.get('download-gif').disabled, false);

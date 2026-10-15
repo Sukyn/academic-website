@@ -263,7 +263,7 @@ function workers(context) {
       this.url = url; this.options = options; this.terminations = 0;
       result.push(this);
     }
-    postMessage(value) { this.round = value; }
+    postMessage(value) { this.request = value; }
     terminate() { this.terminations++; }
   });
   return result;
@@ -276,7 +276,7 @@ test('worker wrapper forwards progress, transfers a GIF blob and releases its wo
   const worker = created[0];
   assert.ok(worker.url.pathname.endsWith('/src/scripts/quantum-golf-gif-worker.js'));
   assert.deepEqual(worker.options, { type: 'module' });
-  assert.equal(worker.round, round);
+  assert.deepEqual(worker.request, { round, image: true });
   const message = worker.onmessage;
   message({ data: { progress: 0.25 } });
   message({ data: { progress: 2 } });
@@ -313,6 +313,10 @@ test('cancel stops encoding immediately, including a signal cancelled before lau
 
 test('GIF download remains available when no final PNG is returned', async context => {
   const created = workers(context), images = [];
+  const download = createReplayGif(round);
+  assert.deepEqual(created.at(-1).request, { round, image: false }, 'Ordinary downloads request no still image');
+  created.at(-1).onmessage({ data: { bytes: new Uint8Array([71, 73, 70]) } });
+  assert.equal((await download).type, 'image/gif');
   for (const image of [undefined, new Blob(['wrong type'], { type: 'image/gif' })]) {
     const promise = createReplayGif(round, { onImage: value => images.push(value) });
     created.at(-1).onmessage({ data: { bytes: new Uint8Array([71, 73, 70]), image } });
@@ -346,7 +350,7 @@ test('worker converts the completed frame to PNG and retains GIF bytes if conver
     return new Promise(resolve => { finishConversion = resolve; });
   };
   await import(`${websiteFile('src/scripts/quantum-golf-gif-worker.js').href}?png-worker-test`);
-  const encoding = globalThis.onmessage({ data: round });
+  const encoding = globalThis.onmessage({ data: { round, image: true } });
   assert.equal(conversions, 1);
   assert.equal(messages.at(-1).data.progress, 1, 'GIF completion waits for the PNG conversion');
   const image = new Blob(['png'], { type: 'image/png' });
@@ -357,13 +361,18 @@ test('worker converts the completed frame to PNG and retains GIF bytes if conver
   assert.equal(gifFrames(completed.data.bytes).length, sequence.length * 6 + 1);
   assert.deepEqual(completed.transfer, [completed.data.bytes.buffer]);
 
+  await globalThis.onmessage({ data: { round, image: false } });
+  assert.equal(conversions, 1, 'GIF-only exports never convert the final frame to PNG');
+  assert.equal(messages.at(-1).data.image, undefined);
+  assert.equal(gifFrames(messages.at(-1).data.bytes).length, sequence.length * 6 + 1);
+
   globalThis.OffscreenCanvas.prototype.convertToBlob = async () => { throw new Error('PNG unavailable'); };
-  await globalThis.onmessage({ data: round });
+  await globalThis.onmessage({ data: { round, image: true } });
   assert.equal(messages.at(-1).data.image, undefined);
   assert.equal(gifFrames(messages.at(-1).data.bytes).length, sequence.length * 6 + 1);
 
   delete globalThis.OffscreenCanvas.prototype.convertToBlob;
-  await globalThis.onmessage({ data: round });
+  await globalThis.onmessage({ data: { round, image: true } });
   assert.equal(messages.at(-1).data.image, undefined);
   assert.equal(gifFrames(messages.at(-1).data.bytes).length, sequence.length * 6 + 1);
 });

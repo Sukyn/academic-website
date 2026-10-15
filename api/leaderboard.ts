@@ -55,6 +55,25 @@ async function board(sql: ReturnType<typeof getSql>, campaign: string, level: nu
   return { total: rows[0] ? number(rows[0].total) : 0, entries, currentPlayer: mine < 0 ? null : entries[mine] };
 }
 
+async function completions(sql: ReturnType<typeof getSql>, campaign: string, level: number, player: { id?: number; name?: string } = {}) {
+  const rows = await sql`
+    WITH ordered AS (
+      SELECT id, name, COUNT(*) OVER () AS total,
+        ROW_NUMBER() OVER (ORDER BY name, id) AS position
+      FROM completions WHERE campaign = ${campaign} AND level = ${level}
+    ), selected_player AS (
+      SELECT id FROM completions WHERE campaign = ${campaign} AND level = ${level}
+        AND (id = ${player.id ?? null} OR name = ${player.name ?? null}) LIMIT 1
+    )
+    SELECT id, name, total, id = (SELECT id FROM selected_player) AS is_player
+    FROM ordered WHERE position <= 10 OR id = (SELECT id FROM selected_player)
+    ORDER BY name, id
+  `;
+  const entries = rows.map(row => ({ id: number(row.id), name: String(row.name), completed: true }));
+  const mine = rows.findIndex(row => row.is_player === true);
+  return { total: rows[0] ? number(rows[0].total) : 0, entries, currentPlayer: mine < 0 ? null : entries[mine] };
+}
+
 export default {
   async fetch(request: Request) {
     if (request.method !== "GET" && request.method !== "POST") {
@@ -74,7 +93,8 @@ export default {
         if (id !== undefined && (!Number.isSafeInteger(id) || id < 1)) {
           throw new SubmissionError("Choose a valid player record.");
         }
-        return Response.json(await board(getSql(request), selected.campaign, selected.level, { id }), {
+        const read = 'completionOnly' in game ? completions : board;
+        return Response.json(await read(getSql(request), selected.campaign, selected.level, { id }), {
           headers: { "Cache-Control": id === undefined ? "public, max-age=15" : "no-store" },
         });
       }
@@ -89,6 +109,16 @@ export default {
       }
       const score = payloadGame.validateSubmission(input);
       const sql = getSql(request);
+      if ('completionOnly' in payloadGame) {
+        await sql`
+          INSERT INTO completions (campaign, level, name)
+          VALUES (${score.campaign}, ${score.level}, ${score.name})
+          ON CONFLICT (campaign, level, name) DO NOTHING
+        `;
+        return Response.json(await completions(sql, score.campaign, score.level, { name: score.name }), {
+          status: 201, headers: { "Cache-Control": "no-store" },
+        });
+      }
       if ("date" in score) {
         // Use the database clock in the write itself: a request that waits across
         // Paris midnight cannot slip onto yesterday's leaderboard.

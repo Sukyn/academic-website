@@ -3,8 +3,12 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import GameShell from '../../components/games/GameShell.astro';
 import GameModeMenu from '../../components/games/GameModeMenu.astro';
 import GameToolbar from '../../components/games/GameToolbar.astro';
+import GameTutorial from '../../components/games/GameTutorial.astro';
 import GameLeaderboard from '../../components/games/GameLeaderboard.astro';
 import GameDialogs from '../../components/games/GameDialogs.astro';
+import GameJsonActions from '../../components/games/GameJsonActions.astro';
+import GameRoundControls from '../../components/games/GameRoundControls.astro';
+import GameReviewControls from '../../components/games/GameReviewControls.astro';
 import { LEVELS } from '../../lib/circuit-reduction/puzzles.js';
 import { RULES } from '../../lib/circuit-reduction/engine.js';
 ---
@@ -17,52 +21,39 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
       <GameModeMenu />
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
+        <GameTutorial />
         <section aria-label="Circuit reduction">
           <div class="circuit-heading"><p id="move-count" role="status">0 moves</p></div>
-          <div class="circuit-scroll" id="circuit-scroll" role="region" aria-label="Circuit board. Scroll horizontally to see longer circuits." tabindex="0">
+          <div class="generator-controls circuit-editor-controls" id="circuit-editor-controls" hidden>
+            <label for="editor-wires">Wires</label>
+            <select id="editor-wires"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select>
+            <button class="button" id="save-circuit" type="button">Play puzzle</button>
+          </div>
+          <div class="game-scroll circuit-scroll" id="circuit-scroll" role="region" aria-label="Circuit board. Scroll horizontally to see longer circuits." tabindex="0">
             <div id="circuit-board" aria-label="Quantum circuit"></div>
           </div>
           <p class="selection-note" id="selection-note" role="status" aria-live="polite"></p>
           <div class="rule-palette" role="group" aria-label="Circuit rules">
             {RULES.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
           </div>
-          <div class="round-controls">
-            <button class="button ghost" id="undo" type="button" title="Undo · Ctrl/Cmd+Z · Backspace" disabled>Undo</button>
-            <button class="button ghost" id="restart" type="button" title="Reset · R">Reset</button>
+          <GameRoundControls>
             <button class="button ghost" id="compact-identities" type="button" title="Remove all unnecessary empty slots">Tidy</button>
-            <button class="button ghost" id="show-results" type="button" hidden>Scores</button>
-          </div>
+          </GameRoundControls>
           <div id="daily-replay-actions" class="daily-replay-actions" hidden></div>
-          <details class="advanced-features" id="advanced-features">
-            <summary>Advanced</summary>
-            <div class="advanced-panel">
-              <button class="button ghost" id="toggle-trace" type="button" aria-pressed="true">Trace</button>
-              <div class="replay-actions" id="replay-actions">
-                <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
-                <button class="button ghost" id="share-score" type="button" hidden>Share your score</button>
-              </div>
-            </div>
-            <div id="sequence" role="group" aria-label="Rewrite sequence in chronological order"></div>
-          </details>
-          <div class="review-controls" id="review-controls" hidden>
-            <p class="message" id="review-note" role="status"></p>
-            <button class="button ghost" id="resume-round" type="button">Back to game</button>
+          <div class="replay-actions daily-replay-actions" id="replay-actions" hidden>
+            <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
+            <button class="button ghost" id="share-score" type="button" hidden>Share your score</button>
           </div>
+          <GameReviewControls />
           <p class="message" id="status" role="status"></p>
           <div class="custom-controls" id="custom-controls" hidden>
             <div class="generator-controls">
               <label for="difficulty">Difficulty</label>
               <select id="difficulty"><option value="3">Easy · 3 moves</option><option value="6" selected>Medium · 6 moves</option><option value="10">Hard · 10 moves</option><option value="14">Expert · 14 moves</option></select>
               <button class="button ghost" id="new-circuit" type="button">New circuit</button>
+              <button class="button ghost" id="create-circuit" type="button">Create circuit</button>
             </div>
-            <details><summary>Custom circuit</summary>
-              <form id="custom-form">
-                <label for="custom-circuit">One wire per line. Use . H X Z and linked endpoints ZU/ZD or XU/XD.</label>
-                <textarea id="custom-circuit" rows="4" maxlength="16384" spellcheck="false" required aria-describedby="custom-help">H Z H X</textarea>
-                <p class="message" id="custom-help">Rows must have equal lengths. The circuit must implement the identity. Custom circuits use the same rules.</p>
-                <button class="button" type="submit">Play circuit</button>
-              </form>
-            </details>
+            <GameJsonActions />
             <p class="message" id="custom-status" role="status"></p>
           </div>
           <noscript>Enable JavaScript to play.</noscript>
@@ -87,8 +78,7 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   .circuit-heading { display: flex; align-items: center; margin-top: 1rem; font-family: var(--font-ui); font-size: .9rem; }
   .circuit-heading p { margin: 0 0 .5rem; }
   #move-count { color: var(--color-heading); font-variant-numeric: tabular-nums; }
-  .circuit-scroll { overflow-x: auto; padding: 1rem .5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface-2); overscroll-behavior-x: contain; }
-  .circuit-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+  .circuit-scroll { padding: 1rem .5rem; border-radius: 4px; }
   #circuit-board { position: relative; display: grid; width: max-content; margin-inline: auto; padding-inline: 22px; grid-template-columns: repeat(var(--columns, 4), 64px); grid-template-rows: repeat(var(--wires, 1), 72px); justify-items: stretch; align-items: center; font-family: var(--font-mono); user-select: none; -webkit-touch-callout: none; }
   #circuit-board :global(.circuit-wires) { position: absolute; top: 0; left: 0; pointer-events: none; }
   #circuit-board :global(.circuit-cell) { position: relative; height: 64px; width: 64px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--color-text); cursor: pointer; padding: 0; display: grid; place-items: center; }
@@ -113,10 +103,6 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   .custom-controls { margin-top: 1rem; font-family: var(--font-ui); font-size: .9rem; }
   .generator-controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
   .generator-controls select { min-height: 2.75rem; }
-  .custom-controls > details { margin-top: .8rem; }
-  .custom-controls summary { cursor: pointer; padding: .5rem 0; min-height: 2.75rem; }
-  #custom-form { display: grid; gap: .5rem; margin-top: .6rem; }
-  #custom-form textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 3px; padding: .7rem; color: var(--color-text); background: var(--color-surface-2); font: .95rem var(--font-mono); resize: vertical; }
-  #custom-form .button { justify-self: start; margin-top: .3rem; }
+  .circuit-editor-controls { margin-bottom: .75rem; font-family: var(--font-ui); font-size: .9rem; }
   @media(max-width: 400px) { .rule-palette .button { max-width: none; font-size: .8rem; padding: .4rem; } }
 </style>

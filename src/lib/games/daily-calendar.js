@@ -40,8 +40,10 @@ export function validDailyDate(date, now = Date.now(), startDate = '0000-01-01')
 
 export function dailyMetadata(date, startDate, now = Date.now()) {
   const today = dailyDate(now), selected = date ?? today;
-  if (!validDailyDate(selected, now, startDate)) throw new RangeError('Choose an available daily puzzle.');
-  const bounds = dailyBounds(selected);
+  if (typeof selected !== 'string' || selected < startDate || selected > today) throw new RangeError('Choose an available daily puzzle.');
+  let bounds;
+  try { bounds = dailyBounds(selected); }
+  catch { throw new RangeError('Choose an available daily puzzle.'); }
   return {
     today, startDate, date: selected, timeZone: DAILY_TIME_ZONE, serverNow: now, ...bounds,
     nextChangeAt: selected === today ? bounds.closesAt : dailyBounds(today).closesAt,

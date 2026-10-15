@@ -1,50 +1,37 @@
-type DialogBindingOptions = {
-  marker: string;
-  triggerAttribute: string;
-};
+function openDialog(id: string | null) {
+  if (!id) return;
+  const dialog = document.getElementById(`${id}-dialog`);
+  if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
+  dialog.showModal();
+}
 
-export function bindDialogControls({
-  marker,
-  triggerAttribute,
-}: DialogBindingOptions) {
-  const state = window as typeof window & { [key: string]: boolean };
-  if (state[marker]) return;
-  state[marker] = true;
+// Imported once by ContentDialog, regardless of how many dialogs a page contains.
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
 
-  function openDialog(id: string | null | undefined) {
-    if (!id) return;
-    const dialog = document.getElementById(`${id}-dialog`);
-    if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
-    dialog.showModal();
+  const trigger = target.closest("[data-content-dialog]");
+  if (trigger instanceof HTMLElement) {
+    event.preventDefault();
+    openDialog(trigger.getAttribute("data-content-dialog"));
+    return;
   }
 
-  document.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
+  const closeButton = target.closest("[data-modal-close]");
+  if (closeButton instanceof HTMLElement) {
+    const dialog = closeButton.closest("dialog");
+    if (dialog instanceof HTMLDialogElement) dialog.close();
+    return;
+  }
 
-    const trigger = target.closest(`[${triggerAttribute}]`);
-    if (trigger instanceof HTMLElement) {
-      event.preventDefault();
-      openDialog(trigger.getAttribute(triggerAttribute));
-      return;
-    }
+  if (target instanceof HTMLDialogElement) {
+    const rect = target.getBoundingClientRect();
+    const clickedBackdrop =
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom;
 
-    const closeButton = target.closest("[data-modal-close]");
-    if (closeButton instanceof HTMLElement) {
-      const dialog = closeButton.closest("dialog");
-      if (dialog instanceof HTMLDialogElement) dialog.close();
-      return;
-    }
-
-    if (target instanceof HTMLDialogElement) {
-      const rect = target.getBoundingClientRect();
-      const clickedBackdrop =
-        event.clientX < rect.left ||
-        event.clientX > rect.right ||
-        event.clientY < rect.top ||
-        event.clientY > rect.bottom;
-
-      if (clickedBackdrop) target.close();
-    }
-  });
-}
+    if (clickedBackdrop) target.close();
+  }
+});

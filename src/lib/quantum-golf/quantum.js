@@ -7,7 +7,7 @@ export function normalize(vector) {
     throw new TypeError('Expected a finite three-dimensional vector.');
   }
   const length = Math.hypot(...vector);
-  if (length === 0) throw new RangeError('Cannot normalize a zero vector.');
+  if (!Number.isFinite(length) || length === 0) throw new RangeError('Use a finite, nonzero vector length.');
   return vector.map((value) => value / length);
 }
 
@@ -51,7 +51,7 @@ export function gateTrajectory(state, gate, steps = 80) {
 // Pure-qubit trace distance is half the Bloch chord, stable near identical states.
 export function traceDistance(a, b) {
   const first = normalize(a), second = normalize(b);
-  return Math.min(1, Math.hypot(...first.map((value, i) => value - second[i])) / 2);
+  return Math.min(1, Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]) / 2);
 }
 
 function cross(a, b) {
@@ -71,14 +71,16 @@ function checkEpsilon(epsilon) {
 // The winning hole has angular radius 2 asin(ε).
 export function targetCap(target, epsilon, steps = 96) {
   checkEpsilon(epsilon);
+  if (!Number.isInteger(steps) || steps < 1) throw new RangeError('Cap steps must be a positive integer.');
   const normal = normalize(target);
   const reference = Math.abs(normal[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
   const tangent = normalize(cross(reference, normal)), bitangent = cross(normal, tangent);
   const angle = 2 * Math.asin(epsilon), cosine = Math.cos(angle), sine = Math.sin(angle);
   const points = Array.from({ length: steps }, (_, i) => {
     const azimuth = 2 * Math.PI * i / steps;
+    const cosAzimuth = Math.cos(azimuth), sinAzimuth = Math.sin(azimuth);
     return normal.map((value, j) => value * cosine + sine * (
-      Math.cos(azimuth) * tangent[j] + Math.sin(azimuth) * bitangent[j]
+      cosAzimuth * tangent[j] + sinAzimuth * bitangent[j]
     ));
   });
   points.push([...points[0]]);

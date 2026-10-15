@@ -185,7 +185,7 @@ test('Worker serializes errors and transfers successful GIF bytes after progress
     return new Promise(resolve => { finishConversion = resolve; });
   };
   await import('../../src/scripts/circuit-reduction-gif-worker.js?worker-message-test');
-  const encoding = globalThis.onmessage({ data: round });
+  const encoding = globalThis.onmessage({ data: { round, image: true } });
   assert.equal(conversions, 1);
   assert.deepEqual(messages.at(-1).data, { progress: 1 }, 'Worker waits for PNG before transferring the GIF');
   const image = new Blob(['png'], { type: 'image/png' });
@@ -198,15 +198,21 @@ test('Worker serializes errors and transfers successful GIF bytes after progress
   assert.deepEqual(messages.slice(0, -1).map(item => item.data), [{ progress: 0 }, { progress: 1 }]);
 
   messages.length = 0;
+  await globalThis.onmessage({ data: { round, image: false } });
+  assert.equal(conversions, 1, 'GIF-only exports never convert the final frame to PNG');
+  assert.equal(messages.at(-1).data.image, undefined);
+  assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2);
+
+  messages.length = 0;
   globalThis.OffscreenCanvas.prototype.convertToBlob = async () => { throw new Error('PNG unsupported'); };
-  await globalThis.onmessage({ data: round });
+  await globalThis.onmessage({ data: { round, image: true } });
   assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2);
   assert.equal(messages.at(-1).data.image, undefined, 'PNG conversion failure preserves the GIF');
   messages.length = 0;
-  await globalThis.onmessage({ data: { ...round, sequence: [move('unknown')] } });
+  await globalThis.onmessage({ data: { round: { ...round, sequence: [move('unknown')] }, image: false } });
   assert.deepEqual(messages, [{ data: { error: 'Unknown circuit rule.', name: 'RangeError' }, transfer: undefined }]);
   globalThis.OffscreenCanvas = undefined;
-  await globalThis.onmessage({ data: round });
+  await globalThis.onmessage({ data: { round, image: false } });
   assert.equal(messages.at(-1).data.name, 'NotSupportedError');
   assert.match(messages.at(-1).data.error, /browser cannot create GIFs/);
   assert.equal(messages.at(-1).transfer, undefined);

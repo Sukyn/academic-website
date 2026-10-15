@@ -6,6 +6,8 @@
   .quantum-game output { color: var(--color-heading); font-variant-numeric: tabular-nums; }
   .quantum-game .game-layout { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); gap: 1.5rem; margin-top: 1rem; }
   .quantum-game .game-content { min-width: 0; }
+  .quantum-game .game-scroll { overflow-x: auto; border: 1px solid var(--color-border); background: var(--color-surface-2); overscroll-behavior-x: contain; }
+  .quantum-game .game-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
   .quantum-game .mode-menu { display: flex; flex-direction: column; gap: .5rem; font-family: var(--font-ui); }
   .quantum-game .mode-menu .button { width: 100%; padding: .55rem .65rem; text-align: left; font-size: .95rem; }
   .quantum-game button[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
@@ -15,6 +17,13 @@
   .quantum-game .daily-archive { display: grid; gap: .4rem; padding-top: .6rem; font-size: .85rem; }
   .quantum-game .daily-archive select { width: 100%; max-width: none; height: 2.2rem; }
   .quantum-game .game-toolbar { display: flex; align-items: center; gap: .5rem; min-height: 2.5rem; font-family: var(--font-ui); }
+  .quantum-game .game-tutorial { position: sticky; top: .6rem; z-index: 5; margin-block: .75rem; padding: .8rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); font-family: var(--font-ui); font-size: .9rem; }
+  .quantum-game .game-tutorial p { margin: 0; }
+  .quantum-game #tutorial-heading { margin-bottom: .3rem; color: var(--color-accent); font-size: .8rem; }
+  .quantum-game .tutorial-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; }
+  .quantum-game .tutorial-actions .button { padding: .4rem .65rem; font-size: .85rem; }
+  .quantum-game [data-tutorial-focus] { outline: 3px solid var(--color-accent); outline-offset: 4px; scroll-margin-block: 12rem 2rem; }
+  .quantum-game .rule-palette [data-tutorial-focus] { order: -1; }
   .quantum-game .level-bar { display: flex; flex: 1; align-items: center; gap: .5rem; max-width: 24rem; }
   .quantum-game .level-bar button, .quantum-game .level-bar select { height: 2.5rem; line-height: normal; }
   .quantum-game .level-bar button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2rem; padding: 0; }
@@ -53,10 +62,18 @@
   .quantum-game .score-form label { width: 100%; }
   .quantum-game .score-form input { flex: 1; min-width: 8rem; width: 12rem; }
   .quantum-game .score-form button { font-size: .9rem; padding: .4rem .65rem; }
+  .quantum-game #nickname-form { text-align: left; }
+  .quantum-game #nickname-status { width: 100%; }
   .quantum-game .message { margin: .5rem 0 0; color: var(--color-muted); font-size: .85rem; }
   .quantum-game .message:empty { display: none; }
   .quantum-game .game-dialog { width: min(34rem, calc(100% - 2rem)); max-height: 85vh; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-family: var(--font-ui); }
   .quantum-game .game-dialog::backdrop { background: rgba(3, 12, 9, .8); }
+  /* Leave the completed board visible before revealing the result. */
+  .quantum-game .win-dialog[open], .quantum-game .win-dialog[open]::backdrop { animation: game-win-appear 250ms ease-out 750ms both; }
+  @keyframes game-win-appear { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+  .quantum-game .win-dialog[open], .quantum-game .win-dialog[open]::backdrop { animation-duration: 1ms; }
+  }
   .quantum-game .rules-dialog p { margin: .8rem 0 0; line-height: 1.55; }
   .quantum-game #win-title { text-align: center; margin: 0 0 .75rem; font-size: 2.4rem; line-height: 1; }
   .quantum-game #win-summary { margin: 0 0 1rem; text-align: center; font-variant-numeric: tabular-nums; }
@@ -69,11 +86,18 @@
   .quantum-game .share-dialog h2 { padding-right: 1.5rem; }
   .quantum-game #share-preview { display: block; width: 100%; max-height: 60vh; object-fit: contain; margin: 1rem auto; }
   .quantum-game .share-actions { margin-top: 1rem; }
+  .quantum-game .custom-json-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .6rem; width: 100%; max-width: 37rem; margin: .7rem auto 0; font-family: var(--font-ui); }
+  .quantum-game .custom-json-actions .button { padding: .35rem .65rem; font-size: .85rem; }
+  .quantum-game .puzzle-json-dialog h2 { padding-right: 1.5rem; }
+  .quantum-game #puzzle-json-form { display: grid; gap: .6rem; }
+  .quantum-game #puzzle-json-text { width: 100%; max-height: 45vh; padding: .7rem; border: 1px solid var(--color-border); border-radius: 3px; color: var(--color-text); background: var(--color-surface-2); font: .8rem var(--font-mono); resize: vertical; }
+  .quantum-game #puzzle-json-file-label { display: grid; gap: .35rem; }
+  .quantum-game #puzzle-json-file { max-width: 100%; font: inherit; }
   .quantum-game button:disabled { opacity: .35; cursor: default; }
   .quantum-game button:focus-visible, .quantum-game input:focus-visible, .quantum-game select:focus-visible, .quantum-game summary:focus-visible, .quantum-game .ranking:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
   @media (max-width: 760px) {
   .quantum-game .game-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .quantum-game .mode-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+  .quantum-game .mode-menu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; }
   .quantum-game .mode-menu .button { padding: .4rem .5rem; font-size: .85rem; }
   .quantum-game .mode-menu #daily-status { grid-column: 1 / -1; }
   .quantum-game .daily-menu { grid-template-columns: minmax(0, 1fr) 2.75rem; }
@@ -84,6 +108,7 @@
   .quantum-game .level-bar select, .quantum-game #show-rules { height: 2.75rem; }
   .quantum-game .daily-archive select, .quantum-game .score-form input { min-height: 2.75rem; font-size: 1rem; }
   .quantum-game .game-dialog { padding: 1rem; max-height: 90dvh; }
+  .quantum-game #puzzle-json-text { font-size: 1rem; }
   .quantum-game .close-dialog { width: 2.75rem; top: 0; right: 0; }
   .quantum-game .score-form input { min-width: 0; }
   .quantum-game table td:nth-child(2) { overflow-wrap: anywhere; }
@@ -92,7 +117,6 @@
   main.container:has(.quantum-game) { padding-top: 1rem; }
   .quantum-game .game-layout { gap: .75rem; margin-top: .75rem; }
   .quantum-game .mode-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .quantum-game .mode-menu > div { grid-column: 1 / -1; }
   .quantum-game .mode-menu .button { font-size: .95rem; text-align: center; }
   .quantum-game .game-toolbar, .quantum-game .level-bar { gap: .4rem; }
   .quantum-game #show-rules { margin-left: auto; }

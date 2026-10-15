@@ -2,14 +2,19 @@ import { createScoreboard } from '../lib/games/scoreboard.js';
 import { formatPuzzleDate as dateLabel, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
+import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
+import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
+import { createTutorial } from '../lib/games/tutorial.js';
 import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
+import { validateCustomPuzzle } from '../lib/quantum-golf/custom-puzzle.js';
 import { DAILY_START } from '../lib/quantum-golf/daily.js';
+import { GOLF_TUTORIAL } from '../lib/quantum-golf/tutorial.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const VIEW_STEPS = { ArrowLeft: [-30, 0], ArrowRight: [30, 0], ArrowUp: [0, -30], ArrowDown: [0, 30] };
 const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);
-const dialog = get('win-dialog'), rulesDialog = get('rules-dialog');
+const dialog = get('win-dialog');
 const shareDialog = get('share-dialog');
 const replayGroups = [
   [get('replay-actions'), get('daily-replay-actions'), document.querySelector('#advanced-features .advanced-panel')],
@@ -20,16 +25,17 @@ let state = START_STATE, target = level.target, sequence = '';
 let busy = false, picking = false, won = false;
 let following = true, precision = false, optimalMoves = null;
 let reviewStep = null, stopReplay, renderedSequence = '', sequenceLocked = false, reviewedButton;
-let worker;
+let worker, tutorial, tutorialMode = false, stopGate, finishGate;
+const tutorialBlocked = () => tutorialMode && !tutorial.executing;
 const epsilon = () => level ? level.epsilon : freeEpsilon;
 const circuitAt = (step = sequence.length) => {
   let point = START_STATE;
   for (let index = 0; index < step; index++) point = applyGate(point, sequence[index]);
   return point;
 };
-const campaign = () => Boolean(level && !level.date);
-const mode = () => level?.date ? 'daily' : level ? 'campaign' : 'random';
-const canScore = () => Boolean(level && (!level.date ||
+const campaign = () => !tutorialMode && Boolean(level && !level.date);
+const mode = () => tutorialMode ? 'tutorial' : level?.date ? 'daily' : level ? 'campaign' : 'random';
+const canScore = () => Boolean(!tutorialMode && level && (!level.date ||
   (level.acceptingScores && daily.serverTime() >= level.opensAt && daily.serverTime() < level.closesAt)));
 const scoreSelector = () => level.date ? { date: level.date } : { level: level.id };
 const sphere = new BlochSphere(get('sphere'), { onPick: setTarget });
@@ -38,14 +44,14 @@ const sharing = createReplayShare({ get, createGif: async (...args) => {
   return createReplayGif(...args);
 } });
 const scores = createScoreboard({
-  get, selector: () => level ? scoreSelector() : null,
-  benchmark: () => ({ optimalMoves: level?.optimalMoves, unit: 'stroke' }),
+  get, selector: () => !tutorialMode && level ? scoreSelector() : null,
+  benchmark: () => tutorialMode ? {} : { optimalMoves: level?.optimalMoves, unit: 'stroke' },
   canSubmit: () => !busy && !daily.loading && canScore() && won,
   sequence: () => sequence, update: () => update(),
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
 const daily = createDailySession({
-  game: 'quantum-golf', startDate: DAILY_START, get, update, selectedDate: () => level?.date, isBusy: () => busy,
+  game: 'quantum-golf', startDate: DAILY_START, get, update, selectedDate: () => level?.date, isBusy: () => busy && !tutorialMode,
   validatePuzzle(puzzle) {
     normalize(puzzle.target);
     if (!Number.isFinite(puzzle.epsilon) || puzzle.epsilon < 0 || puzzle.epsilon > 1) {
@@ -54,6 +60,7 @@ const daily = createDailySession({
   },
   onPuzzle(info, select) {
     if (!select && level?.date !== info.date) return;
+    if (select) leaveTutorial();
     const same = level?.date === info.date;
     level = { ...info.puzzle, date: info.date, opensAt: info.opensAt, closesAt: info.closesAt,
       acceptingScores: info.acceptingScores };
@@ -61,14 +68,42 @@ const daily = createDailySession({
     if (!same) { reset(); bestScore(); }
   },
 });
+const customJson = createCustomPuzzleJson({
+  get, game: 'quantum-golf', exportPuzzle: () => ({ target: [...target], epsilon: epsilon() }),
+  importPuzzle(value) {
+    if (busy || daily.loading || level) throw new Error('Choose Custom/Random before importing a puzzle.');
+    const puzzle = validateCustomPuzzle(value);
+    daily.cancel(); precision = false; freeEpsilon = puzzle.epsilon; target = puzzle.target;
+    reset(); bestScore();
+  },
+});
+tutorial = createTutorial({
+  get,
+  intro: 'Reach the gold target with H and T.',
+  isBlocked: () => daily.loading,
+  controls: '.gates button, .round-controls button, #sequence button, .advanced-panel button, #coordinate-form button',
+  steps: GOLF_TUTORIAL.moves.map(({ gate, text }) => ({ text, target: '#gate-' + gate.toLowerCase(), action: () => apply(gate) })),
+  onReset() {
+    cancelGate(); clearReview(); daily.cancel(); worker?.terminate(); worker = null;
+    tutorialMode = true; level = LEVELS[GOLF_TUTORIAL.level - 1]; target = level.target;
+    precision = false; optimalMoves = null; reset();
+  },
+  onLeave: cancelGate,
+});
+
+function leaveTutorial() {
+  if (!tutorialMode) return;
+  tutorial.leave(); tutorialMode = false;
+}
 
 function update(visibleState) {
   const wasWon = won;
   const locked = busy || daily.loading;
   const holeSize = epsilon(), currentMode = mode(), isCampaign = currentMode === 'campaign';
   const isDaily = currentMode === 'daily';
-  const scorable = canScore(), hasPlayer = Boolean(scores.player), showForm = scorable && !hasPlayer;
+  const scorable = canScore(), hasPlayer = Boolean(scores.player), showForm = scorable && !hasPlayer && !scores.automatic;
   const fixed = Boolean(level);
+  customJson.update({ visible: !fixed, disabled: locked });
   won = traceDistance(state, target) <= holeSize + 1e-12;
   get('epsilon').value = holeSize;
   get('epsilon-value').textContent = `ε = ${holeSize.toFixed(3)}`;
@@ -111,9 +146,9 @@ function update(visibleState) {
     if (actions.parentElement !== destination) destination.appendChild(actions);
     regular.hidden = !isDaily;
   }
-  get('result-advanced-features').hidden = isDaily;
+  get('result-advanced-features').hidden = isDaily && get('nickname-form').hidden;
   for (const id of ['share-score', 'share-result']) {
-    get(id).hidden = !level || !won || !sequence;
+    get(id).hidden = tutorialMode || !level || !won || !sequence;
     get(id).disabled = locked || Boolean(scores.submitting);
   }
   get('status').textContent = picking ? 'Click the sphere' : won ? 'In the hole!' : '';
@@ -126,17 +161,14 @@ function update(visibleState) {
     get('daily-title').textContent = `Daily puzzle · ${dateLabel(level.date)}`;
     get('daily-note').textContent = scorable ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
   }
-  for (const name of ['campaign', 'random', 'daily']) {
-    get(`mode-${name}`).setAttribute('aria-pressed', String(currentMode === name));
-    get(`mode-${name}`).disabled = busy;
-  }
+  updateModeMenu(get, currentMode, busy && !tutorialMode);
   get('daily-date').disabled = busy || !daily.info;
-  get('show-rules').disabled = busy;
+  get('show-rules').disabled = busy && !tutorialMode;
   get('previous-level').disabled = locked || !isCampaign || level.id === 1;
-  for (const id of ['next-level', 'result-next']) get(id).disabled = locked || !isCampaign || !won;
+  for (const id of ['next-level', 'result-next']) get(id).disabled = locked || scores.submitting || !isCampaign || !won;
   get('result-next').hidden = !isCampaign;
   for (const id of ['free-controls', 'best-count', 'hole-controls']) get(id).hidden = fixed;
-  get('leaderboard-section').hidden = !fixed;
+  get('leaderboard-section').hidden = tutorialMode || !fixed;
   for (const gate of ['h', 't']) get(`gate-${gate}`).disabled = locked || won || picking || reviewStep !== null;
   for (const id of ['new-hole', 'pick-target', 'epsilon']) get(id).disabled = locked || fixed || precision;
   get('pick-target').disabled ||= reviewStep !== null;
@@ -152,7 +184,7 @@ function update(visibleState) {
   get('coordinate-form').querySelector('button').disabled = locked || fixed || precision;
   get('undo').disabled = locked || !sequence;
   get('score-form').hidden = !showForm;
-  get('show-results').hidden = !sequence || !won;
+  get('show-results').hidden = tutorialMode || !sequence || !won;
   get('show-results').textContent = scorable || hasPlayer ? 'Scores' : 'Result';
   get('win-results').hidden = !hasPlayer;
   get('win-practice').hidden = !level?.date || scorable || hasPlayer;
@@ -168,13 +200,15 @@ function update(visibleState) {
       target, epsilon: holeSize, pickMode: picking, sequence: visibleSequence, animation: null });
   }
   if (sequence && won && !wasWon) openWin();
+  tutorial.render();
 }
 
 function openWin() {
-  if (!sequence || !won || dialog.open) return;
+  if (tutorialMode || !sequence || !won || dialog.open) return;
   if (reviewStep !== null) { clearReview(); update(); }
+  scores.autoSubmit();
   dialog.showModal();
-  get(scores.player || !canScore() ? (campaign() ? 'result-next' : 'try-again') : 'player-name').focus();
+  get(scores.automatic ? 'close-win' : scores.player || !canScore() ? (campaign() ? 'result-next' : 'try-again') : 'player-name').focus();
   if (scores.player) scores.load();
 }
 
@@ -184,7 +218,7 @@ function resetScores() {
 }
 
 function reset() {
-  if (busy) return;
+  if (busy || tutorialBlocked()) return;
   clearReview();
   resetScores();
   state = START_STATE;
@@ -199,7 +233,7 @@ function bestScore() {
   worker?.terminate();
   worker = null;
   optimalMoves = null;
-  if (level) return;
+  if (tutorialMode || level) return;
   get('best-count').textContent = 'Finding optimum…';
   try {
     const search = new Worker(new URL('./quantum-golf-worker.js', import.meta.url), { type: 'module' });
@@ -234,9 +268,10 @@ function setTarget(point) {
 }
 
 function selectLevel(value) {
-  if (busy) { update(); return; }
+  if (busy && !tutorialMode) { update(); return; }
   const next = value === 'infinite' ? null : LEVELS[Number(value) - 1];
   if (next === undefined) return;
+  leaveTutorial();
   daily.cancel();
   precision = false;
   level = next;
@@ -252,7 +287,7 @@ async function submitScore(event) {
 }
 
 function shareScore(source) {
-  if (busy || daily.loading || !won || !level || !sequence || shareDialog.open) return;
+  if (tutorialMode || busy || daily.loading || !won || !level || !sequence || shareDialog.open) return;
   const styles = typeof getComputedStyle === 'function' ? getComputedStyle(get('sphere')) : null;
   const round = {
     label: level.date ? `Daily puzzle : ${dateLabel(level.date)}` : `Level : ${level.id}`,
@@ -268,10 +303,11 @@ function shareScore(source) {
 function animateGate(from, gate, done) {
   const rotate = gateRotation(from, gate);
   const moveCamera = following ? sphere.cameraTo(rotate(1)) : () => {};
-  let frameId;
+  let frameId, cancelled = false;
   const start = performance.now();
   const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 400;
   function frame(now) {
+    if (cancelled) return;
     const progress = duration ? Math.max(0, Math.min(1, (now - start) / duration)) : 1;
     const point = rotate(progress);
     moveCamera(progress);
@@ -280,18 +316,26 @@ function animateGate(from, gate, done) {
     else done(point);
   }
   frameId = requestAnimationFrame(frame);
-  return () => cancelAnimationFrame(frameId);
+  return () => { cancelled = true; cancelAnimationFrame(frameId); };
+}
+
+function cancelGate() {
+  stopGate?.(); stopGate = null;
+  const finish = finishGate; finishGate = null; busy = false;
+  finish?.();
 }
 
 function apply(gate) {
-  if (busy || daily.loading || won || picking || reviewStep !== null) return;
+  if (tutorialBlocked() || busy || daily.loading || won || picking || reviewStep !== null) return;
   busy = true;
   update();
-  animateGate(state, gate, point => {
-    sequence += gate;
-    state = point;
-    busy = false;
-    update();
+  return new Promise(resolve => {
+    finishGate = resolve;
+    stopGate = animateGate(state, gate, point => {
+      stopGate = finishGate = null;
+      sequence += gate; state = point; busy = false;
+      update(); resolve();
+    });
   });
 }
 
@@ -302,7 +346,7 @@ function clearReview() {
 }
 
 function inspectStep(step) {
-  if (busy || daily.loading) return;
+  if (tutorialBlocked() || busy || daily.loading) return;
   clearReview();
   reviewStep = step;
   picking = false;
@@ -314,7 +358,7 @@ function inspectStep(step) {
 }
 
 function replaySolution() {
-  if (busy || daily.loading || !sequence) return;
+  if (tutorialBlocked() || busy || daily.loading || !sequence) return;
   inspectStep(0);
   function next(from) {
     if (reviewStep === sequence.length) return;
@@ -330,7 +374,7 @@ function replaySolution() {
 }
 
 function undo() {
-  if (busy || daily.loading || !sequence) return;
+  if (tutorialBlocked() || busy || daily.loading || !sequence) return;
   clearReview();
   resetScores();
   sequence = sequence.slice(0, -1);
@@ -364,21 +408,22 @@ onClick('previous-level', () => {
   if (!busy && campaign() && level.id > 1) selectLevel(level.id - 1);
 });
 onClick('mode-campaign', () => {
+  if (tutorialMode) { selectLevel(campaignLevel.id); return; }
   if (busy) return;
   if (campaign()) { daily.cancel(); update(); }
   else selectLevel(campaignLevel.id);
 });
 onClick('mode-random', () => {
+  if (tutorialMode) { selectLevel('infinite'); return; }
   if (busy) return;
   if (level) selectLevel('infinite');
   else { daily.cancel(); update(); }
 });
+onClick('mode-tutorial', () => tutorial.enter());
 bindDailyControls(daily, get);
 for (const id of ['next-level', 'result-next']) onClick(id, nextLevel);
 onClick('try-again', reset);
-onClick('close-win', () => dialog.close());
-onClick('show-rules', () => { if (!busy && !rulesDialog.open) rulesDialog.showModal(); });
-onClick('close-rules', () => rulesDialog.close());
+bindGameDialogs(get);
 onClick('show-results', openWin);
 get('score-form').addEventListener('submit', submitScore);
 onClick('gate-h', () => apply('H'));
@@ -431,9 +476,11 @@ get('coordinate-form').addEventListener('submit', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (dialog.open || rulesDialog.open || shareDialog.open || daily.loading) return;
-  if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName) || event.target.isContentEditable) return;
+  if (tutorialMode || ignoresGameShortcut(event) || daily.loading) return;
+  if (event.ctrlKey || event.metaKey) {
+    if (!event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); undo(); }
+    return;
+  }
   const key = event.key.toLowerCase();
   if (key === 'h' || key === 't') { event.preventDefault(); apply(key.toUpperCase()); }
   else if (key === 'backspace') { event.preventDefault(); undo(); }
@@ -447,12 +494,14 @@ document.addEventListener('keydown', event => {
 });
 
 window.addEventListener('pagehide', () => {
-  daily.cancel(); scores.dispose(); clearReview();
+  tutorial.leave(); cancelGate();
+  daily.cancel(); scores.dispose(); clearReview(); customJson.close();
   if (worker) { worker.terminate(); worker = null; get('best-count').textContent = 'Optimum unavailable'; }
   sharing.close();
 });
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;
+  if (tutorialMode) { tutorial.enter(); return; }
   update(); daily.refresh(); scores.load();
 });
-reset();
+tutorial.enter();

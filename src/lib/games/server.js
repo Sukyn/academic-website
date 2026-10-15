@@ -2,9 +2,11 @@ import { getBoard as golfBoard, validateSubmission as golfSubmission } from '../
 import { DAILY_START as GOLF_START, dailyPuzzle as golfDaily } from '../quantum-golf/daily.js';
 import { getBoard as reductionBoard, validateSubmission as reductionSubmission, MAX_SUBMISSION_BYTES as REDUCTION_BYTES } from '../circuit-reduction/leaderboard.js';
 import { DAILY_START as REDUCTION_START, dailyPuzzle as reductionDaily } from '../circuit-reduction/puzzles.js';
+import { DAILY_START as SIGNALS_START, dailyPuzzle as signalsDaily } from '../quantum-signals/puzzles.js';
+import { getBoard as signalsBoard, validateSubmission as signalsCompletion, MAX_SUBMISSION_BYTES as SIGNALS_BYTES } from '../quantum-signals/completions.js';
 import { MAX_SUBMISSION_BYTES, SubmissionError } from './submission.js';
 
-// One registry for the two APIs. Each game owns its rules and public puzzle shape.
+// Games share transport; each validates its own score or completion record.
 const games = {
   'quantum-golf': {
     getBoard: golfBoard, validateSubmission: golfSubmission,
@@ -20,6 +22,14 @@ const games = {
     dailyPuzzle(date) {
       const { circuit, optimalMoves } = reductionDaily(date);
       return { circuit, optimalMoves };
+    },
+  },
+  'quantum-signals': {
+    getBoard: signalsBoard, validateSubmission: signalsCompletion, completionOnly: true,
+    startDate: SIGNALS_START, maxBytes: SIGNALS_BYTES,
+    dailyPuzzle(date) {
+      const { wires, columns, target } = signalsDaily(date);
+      return { wires, columns, target };
     },
   },
 };

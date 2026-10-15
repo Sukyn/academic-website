@@ -4,8 +4,12 @@ import LEVELS from '../../lib/quantum-golf/levels.json';
 import GameShell from '../../components/games/GameShell.astro';
 import GameModeMenu from '../../components/games/GameModeMenu.astro';
 import GameToolbar from '../../components/games/GameToolbar.astro';
+import GameTutorial from '../../components/games/GameTutorial.astro';
 import GameLeaderboard from '../../components/games/GameLeaderboard.astro';
 import GameDialogs from '../../components/games/GameDialogs.astro';
+import GameJsonActions from '../../components/games/GameJsonActions.astro';
+import GameRoundControls from '../../components/games/GameRoundControls.astro';
+import GameReviewControls from '../../components/games/GameReviewControls.astro';
 ---
 
 <BaseLayout title="Quantum golf" description="Reach a Bloch-sphere target using H and T gates.">
@@ -18,6 +22,7 @@ import GameDialogs from '../../components/games/GameDialogs.astro';
 
     <div class="game-content">
       <GameToolbar levels={LEVELS} />
+      <GameTutorial />
 
   <section aria-label="Quantum golf">
     <div class="sphere-view">
@@ -36,8 +41,8 @@ import GameDialogs from '../../components/games/GameDialogs.astro';
       </label>
     </div>
 
-    <div class="round-controls">
-      <div class="free-controls" id="free-controls" hidden>
+    <GameRoundControls>
+      <div class="free-controls" id="free-controls" slot="before" hidden>
         <button class="button ghost" id="new-hole" type="button" title="New random target · N">New hole</button>
         <button class="button ghost" id="pick-target" type="button" aria-pressed="false">Pick target</button>
         <button class="button ghost" id="toggle-precision" type="button" aria-pressed="false" title="Keep the target and shrink the hole after each win">Precision</button>
@@ -50,12 +55,10 @@ import GameDialogs from '../../components/games/GameDialogs.astro';
           </form>
         </details>
       </div>
-      <button class="button ghost" id="undo" type="button" title="Undo · Backspace" disabled>Undo</button>
-      <button class="button ghost" id="restart" type="button" title="Restart · R">Reset</button>
       <button class="button ghost" id="toggle-trace" type="button" aria-pressed="true" title="Show gate history">Trace</button>
       <button class="button ghost" id="precision-next" type="button" hidden>Smaller hole</button>
-      <button class="button ghost" id="show-results" type="button" hidden>Scores</button>
-    </div>
+    </GameRoundControls>
+    <GameJsonActions />
     <div id="daily-replay-actions" class="daily-replay-actions" hidden></div>
     <details class="advanced-features" id="advanced-features">
       <summary>Advanced</summary>
@@ -78,10 +81,7 @@ import GameDialogs from '../../components/games/GameDialogs.astro';
       </div>
     </details>
     <div id="sequence" role="group" aria-label="Gate sequence in chronological order"></div>
-    <div class="review-controls" id="review-controls" hidden>
-      <p class="message" id="review-note" role="status"></p>
-      <button class="button ghost" id="resume-round" type="button">Back to game</button>
-    </div>
+    <GameReviewControls />
     <p id="best-count" role="status" hidden></p>
     <noscript>Enable JavaScript to play.</noscript>
   </section>

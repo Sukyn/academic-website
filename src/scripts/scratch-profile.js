@@ -182,6 +182,8 @@
     };
 
     const finishTransition = () => {
+      // Earlier portraits are never revisited; the active cover keeps its own reference.
+      assetCache.delete(coverSource);
       ready = true;
       transitioning = false;
       root.dataset.ready = "true";
@@ -307,9 +309,7 @@
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", finishScratch);
     canvas.addEventListener("pointercancel", finishScratch);
-    canvas.addEventListener("pointerleave", () => {
-      if (scratching) finishScratch();
-    });
+    canvas.addEventListener("pointerleave", finishScratch);
 
     if (image.complete) {
       if (image.naturalWidth) prepare();

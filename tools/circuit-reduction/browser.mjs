@@ -40,6 +40,9 @@ async function pageFor(options) {
   else await fixture.install(page);
   await page.goto(`${base}/games/circuit-reduction/`);
   await page.locator('.circuit-cell').first().waitFor();
+  assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true', 'The game opens in Tutorial mode');
+  await activate(page, page.locator('#mode-campaign'));
+  assert.equal(await page.locator('#advanced-features, #toggle-trace, #sequence').count(), 0, 'The main game has no Advanced or trace controls');
   return page;
 }
 async function openDetails(page, selector) {
@@ -104,20 +107,23 @@ async function removeSpace(page, row, column) {
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 async function arrange(page, target) {
-  for (const move of layoutMoves(await boardCircuit(page), target)) await apply(page, move);
+  let steps = 0;
+  for (const move of layoutMoves(await boardCircuit(page), target)) steps += await apply(page, move);
   assert.deepEqual(await boardCircuit(page), target, 'Public wire-space controls reproduce the witness layout');
+  return steps;
 }
 async function apply(page, move) {
   if (move.rule === 'arrange') {
-    await arrange(page, move.circuit);
+    return arrange(page, move.circuit);
   } else if (move.rule === 'compact-identities') {
     await activate(page, page.locator('#compact-identities'));
   } else if (move.rule === 'insert-space') {
-    await arrange(page, applyMove(await boardCircuit(page), move));
+    return arrange(page, applyMove(await boardCircuit(page), move));
   } else if (move.rule === 'remove-space') {
     await removeSpace(page, move.row, move.column);
   } else if (move.rule === 'insert-column') {
     await addSpace(page, 0, move.column, move.count ?? 1);
+    return move.count ?? 1;
   } else if (move.rule.endsWith('column')) {
     await removeSpace(page, 0, move.column);
   } else {
@@ -127,10 +133,13 @@ async function apply(page, move) {
     for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) await activate(page, page.locator(`[data-cell="${move.row + y}:${move.column + x}"]`));
     await activate(page, page.locator(`[data-rule="${move.rule}"]`));
   }
+  return 1;
 }
 async function finish(page, sequence, { optimalMoves = sequenceCost(sequence), parMoves = null } = {}) {
-  for (const move of sequence) await apply(page, move);
+  let replaySteps = 0;
+  for (const move of sequence) replaySteps += await apply(page, move);
   await page.locator('#win-dialog[open]').waitFor();
+  await page.waitForFunction(() => document.getElementById('score-status').textContent !== 'Saving…');
   const moves = sequenceCost(sequence);
   assert.match(await page.locator('#move-count').innerText(), new RegExp(`^${moves} moves?$`));
   if (optimalMoves !== null) assert.match(await page.locator('#win-summary').innerText(), /Optimal solution/);
@@ -139,6 +148,16 @@ async function finish(page, sequence, { optimalMoves = sequenceCost(sequence), p
     const benchmark = page.locator('#leaderboard-body .benchmark');
     assert.match(await benchmark.innerText(), new RegExp(`Best known\\s+${parMoves}`), 'Uncertified missions advertise a known solution honestly');
   }
+  return replaySteps;
+}
+
+async function registerScore(page, name) {
+  await page.waitForFunction(() => document.getElementById('score-status').textContent !== 'Saving…');
+  if (await page.locator('#score-form').isVisible()) {
+    await page.locator('#player-name').fill(name);
+    await activate(page, page.locator('#submit-score'));
+  } else assert.equal(await page.locator('#nickname-value').inputValue(), name, 'Automatic scores use the remembered nickname');
+  await page.getByText('Score saved.', { exact: true }).waitFor();
 }
 async function noOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, 'No horizontal page overflow');
@@ -153,6 +172,155 @@ async function fullRulePalette(page) {
       return rect.left < bounds.left - 1 || rect.right > bounds.right + 1;
     });
   }).map(button => button.dataset.rule)), [], 'Rule diagrams fit inside their buttons');
+}
+
+async function openJson(page, action = 'input-json') {
+  if (!await page.locator('#puzzle-json-dialog').evaluate(dialog => dialog.open)) await activate(page, page.locator('#' + action));
+  await page.locator('#puzzle-json-dialog[open]').waitFor();
+}
+
+async function importJson(page, puzzle) {
+  await openJson(page);
+  await page.locator('#puzzle-json-text').fill(JSON.stringify(puzzle));
+  await activate(page, page.locator('#puzzle-json-apply'));
+  await page.locator('#puzzle-json-dialog').waitFor({ state: 'hidden' });
+}
+
+async function exportJson(page, game) {
+  await openJson(page, 'share-json');
+  const data = JSON.parse(await page.locator('#puzzle-json-text').inputValue());
+  assert.deepEqual(Object.keys(data).sort(), game === 'quantum-golf' ? ['epsilon', 'target'] : ['circuit'], 'Custom JSON contains only the puzzle data');
+  await page.screenshot({ path: resolve(output, `custom-json-${game}-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  const pending = page.waitForEvent('download');
+  await activate(page, page.locator('#puzzle-json-download'));
+  const download = await pending;
+  assert.match(download.suggestedFilename(), /\.json$/);
+  assert.deepEqual(JSON.parse(await readFile(await download.path(), 'utf8')), data, 'Downloaded JSON preserves the complete exported puzzle');
+  await page.keyboard.press('Escape');
+  return data;
+}
+
+async function customBuilder(page) {
+  await activate(page, page.locator('#mode-random'));
+  await activate(page, page.locator('#create-circuit'));
+  await fullRulePalette(page);
+  const identity = () => boardCircuit(page).then(rows => rows.every(row => row.every(gate => gate === '.')));
+  assert.equal(await identity(), true, 'Creating a circuit starts from identity');
+  assert.equal(await page.locator('#save-circuit').isDisabled(), true, 'Empty identity cannot be saved as a puzzle');
+  assert.equal(await page.locator('#share-json').isDisabled(), true, 'Empty identity cannot be shared as a puzzle');
+  assert.equal(await page.locator('#input-json').isEnabled(), true);
+  assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Identity construction does not open a victory dialog');
+  await page.screenshot({ path: resolve(output, `custom-identity-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  await page.locator('#editor-wires').selectOption('3');
+  assert.equal((await boardCircuit(page)).length, 3);
+  await page.locator('#editor-wires').selectOption('2');
+  await addSpace(page, 0, 1);
+  assert.equal((await boardCircuit(page))[0].length, 7);
+  await activate(page, page.locator('#undo'));
+  assert.equal((await boardCircuit(page))[0].length, 6);
+  const construction = [{ rule: 'cancel-x', row: 0, column: 1 }, { rule: 'cancel-h', row: 1, column: 3 }];
+  for (const move of construction) await apply(page, move);
+  assert.equal(await page.locator('#save-circuit').isEnabled(), true, 'Inverse rewrite rules build a saveable identity circuit');
+  await page.keyboard.press('r');
+  assert.equal(await identity(), true, 'Reset returns construction to its initial identity');
+  assert.equal(await page.locator('#circuit-editor-controls').isVisible(), true);
+  for (const move of construction) await apply(page, move);
+  const built = await boardCircuit(page);
+  await noOverflow(page);
+  await page.screenshot({ path: resolve(output, `custom-builder-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  await activate(page, page.locator('#save-circuit'));
+  await page.locator('#custom-status').filter({ hasText: 'Shortest solution: 2 moves.' }).waitFor();
+  assert.equal(await page.locator('#circuit-editor-controls').isVisible(), false);
+  assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+  assert.equal(await page.locator('#replay').isDisabled(), true, 'Construction history is not a gameplay replay');
+  await page.screenshot({ path: resolve(output, `custom-saved-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  const exported = await exportJson(page, 'circuit-reduction');
+  assert.deepEqual(exported.circuit, built, 'Play and JSON export preserve the constructed circuit');
+  await openJson(page);
+  for (const invalid of ['{', JSON.stringify({ circuit: [['H', '.']] }), JSON.stringify({ circuit: [['X', 'X'], ['.']] })]) {
+    await page.locator('#puzzle-json-text').fill(invalid);
+    await activate(page, page.locator('#puzzle-json-apply'));
+    assert.ok(await page.locator('#puzzle-json-status').innerText(), 'Malformed and nonidentity circuits receive a readable error');
+    assert.deepEqual(await boardCircuit(page), built, 'Rejected imports preserve the active circuit');
+  }
+  await page.keyboard.press('Escape'); await openJson(page);
+  assert.deepEqual(JSON.parse(await page.locator('#puzzle-json-text').inputValue()), { circuit: [['X', 'X'], ['.']] }, 'Closing and reopening Input JSON preserves the raw draft');
+  await importJson(page, exported);
+  await page.locator('#custom-status').filter({ hasText: 'Shortest solution: 2 moves.' }).waitFor();
+  await finish(page, construction);
+  assert.equal(await page.locator('#score-form').isVisible(), false, 'Custom puzzle scores are not submitted');
+  await activate(page, page.locator('#close-win'));
+  await importJson(page, { circuit: [['H', 'Z', 'H', 'X']] });
+  await page.locator('#custom-status').filter({ hasText: 'Shortest solution: 2 moves.' }).waitFor();
+  const custom = solveShortest([['H', 'Z', 'H', 'X']]);
+  assert.equal(custom.status, 'optimal'); assert.equal(custom.optimalMoves, 2);
+  await finish(page, custom.solution, custom); await activate(page, page.locator('#close-win'));
+  console.log('Custom reduction: identity construction, inverse rules, reset/spacing, play, raw JSON download/import and invalid circuits verified.');
+}
+
+async function focusedCustom() {
+  for (const options of [{ viewport: { width: 1440, height: 1050 } }, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {
+    const page = await pageFor(options);
+    await customBuilder(page);
+    await openJson(page);
+    await page.locator('#mode-daily').evaluate(button => button.click());
+    await page.locator('#daily-heading:not([hidden])').waitFor();
+    assert.equal(await page.locator('#puzzle-json-dialog').isVisible(), false, 'Entering daily mode closes a stale JSON dialog');
+    for (const selector of ['#custom-controls', '#circuit-editor-controls', '#share-json', '#input-json']) assert.equal(await page.locator(selector).isVisible(), false);
+    await page.goto(`${base}/games/quantum-golf/`);
+    await activate(page, page.locator('#mode-campaign'));
+    await golfCustomJson(page);
+  }
+  assert.deepEqual(errors, [], 'No uncaught custom puzzle errors');
+}
+
+async function focusedRegistration() {
+  for (const options of [{ viewport: { width: 1440, height: 1050 } }, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {
+    const page = await pageFor(options), name = options.hasTouch ? 'Remembered mobile' : 'Remembered desktop';
+    for (const level of LEVELS.slice(0, 2)) {
+      await page.locator('#level').selectOption(String(level.id));
+      await finish(page, level.solution, level);
+      await registerScore(page, name); await activate(page, page.locator('#close-win'));
+    }
+    await activate(page, page.locator('#mode-daily'));
+    await page.locator('#daily-heading:not([hidden])').waitFor();
+    const info = fixture.getDaily('circuit-reduction'), puzzle = dailyPuzzle(info.date);
+    await finish(page, puzzle.solution, puzzle); await registerScore(page, name);
+    await activate(page, page.locator('#close-win'));
+  }
+  assert.deepEqual(errors, [], 'No uncaught score registration errors');
+  console.log('Remembered Reduction nickname: manual first level, automatic next level and current daily score verified on desktop/mobile.');
+}
+
+async function golfCustomJson(page) {
+  await activate(page, page.locator('#mode-random'));
+  await importJson(page, { target: [2, 2, 0], epsilon: 0.1 });
+  const exported = await exportJson(page, 'quantum-golf');
+  assert.ok(Math.abs(exported.target[0] - Math.SQRT1_2) < 1e-9 && Math.abs(exported.target[1] - Math.SQRT1_2) < 1e-9);
+  assert.equal(exported.epsilon, 0.1);
+  await openJson(page);
+  const angles = await page.locator('#target-theta, #target-phi, #epsilon').evaluateAll(nodes => nodes.map(node => node.value));
+  for (const invalid of ['{', JSON.stringify({ target: [0, 0, 0], epsilon: 0.1 }), JSON.stringify({ target: [1, 0, 0], epsilon: 2 })]) {
+    await page.locator('#puzzle-json-text').fill(invalid);
+    await activate(page, page.locator('#puzzle-json-apply'));
+    assert.ok(await page.locator('#puzzle-json-status').innerText());
+    assert.deepEqual(await page.locator('#target-theta, #target-phi, #epsilon').evaluateAll(nodes => nodes.map(node => node.value)), angles, 'Rejected Golf imports preserve the active target');
+  }
+  await page.locator('#puzzle-json-file').setInputFiles({ name: 'custom-golf.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
+  await page.waitForFunction(data => JSON.stringify(JSON.parse(document.querySelector('#puzzle-json-text').value)) === JSON.stringify(data), exported);
+  await activate(page, page.locator('#puzzle-json-apply'));
+  await page.locator('#puzzle-json-dialog').waitFor({ state: 'hidden' });
+  await activate(page, page.locator('#gate-t'));
+  await page.locator('#win-dialog[open]').waitFor();
+  assert.equal(await page.locator('#score-form').isVisible(), false, 'Imported Golf puzzles are unranked');
+  await activate(page, page.locator('#close-win'));
+  await openJson(page);
+  await page.locator('#mode-daily').evaluate(button => button.click());
+  await page.locator('#daily-heading:not([hidden])').waitFor();
+  assert.equal(await page.locator('#puzzle-json-dialog').isVisible(), false);
+  for (const selector of ['#share-json', '#input-json', '#custom-json-actions']) assert.equal(await page.locator(selector).isVisible(), false);
+  await noOverflow(page);
+  console.log('Golf custom JSON: normalized target, file round trip, playable unranked import and daily hiding verified.');
 }
 async function desktopSelection(page) {
   const selected = () => page.locator('[data-cell][aria-pressed="true"]').evaluateAll(cells => cells.map(cell => cell.dataset.cell));
@@ -211,6 +379,9 @@ async function columnSpacing(page) {
   await page.locator('#level').selectOption('1');
 }
 try {
+  if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
+  else if (process.env.GAME_TEST_SCOPE === 'registration') await focusedRegistration();
+  else {
   let desktop, beforeRemoval;
   if (process.env.GAME_TEST_SCOPE !== 'mobile') {
     desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
@@ -242,14 +413,11 @@ try {
       if (level.id === LEVELS.at(-1).id) await desktop.screenshot({ path: resolve(output, 'desktop-advanced.png'), fullPage: true });
       await finish(desktop, level.solution, level);
       if (level.id === 1) {
-        await desktop.locator('#player-name').fill('Desktop test');
-        await desktop.locator('#score-form button').click();
-        await desktop.getByText('Score saved.', { exact: true }).waitFor();
+        await registerScore(desktop, 'Desktop test');
         assert.match(await desktop.locator('#player-rank').innerText(), /Your rank:/);
       }
       await desktop.locator('#close-win').click();
       if (level.id === 1) {
-        await openDetails(desktop, '#advanced-features');
         await desktop.locator('#replay').click();
         await desktop.locator('#review-note').filter({ hasText: 'Step 1 / 1' }).waitFor();
         await desktop.locator('#resume-round').click();
@@ -275,20 +443,10 @@ try {
       }
     }
     console.log(`Desktop: all ${LEVELS.length} campaign levels completed with progressive rules; final two Best known benchmarks, free 100-slot spacing, compaction, replay/undo/reset/share verified`);
-    await desktop.locator('#mode-random').click();
-    await fullRulePalette(desktop);
-    await desktop.locator('#custom-controls details > summary').click();
-    await desktop.locator('#custom-circuit').fill('H .'); await desktop.locator('#custom-form button').click();
-    assert.match(await desktop.locator('#custom-status').innerText(), /not the identity/);
-    await desktop.locator('#custom-circuit').fill('H Z H X'); await desktop.locator('#custom-form button').click();
-    await desktop.locator('#custom-status').filter({ hasText: 'Shortest solution: 2 moves.' }).waitFor();
-    const custom = solveShortest([['H', 'Z', 'H', 'X']]);
-    assert.equal(custom.status, 'optimal'); assert.equal(custom.optimalMoves, 2);
-    await finish(desktop, custom.solution, custom);
-    assert.ok(await desktop.locator('#score-form').evaluate(form => form.hidden), 'Custom scores are not submitted');
-    await desktop.locator('#close-win').click();
+    await customBuilder(desktop);
     await desktop.locator('#mode-daily').click();
     await desktop.locator('#daily-heading:not([hidden])').waitFor();
+    assert.equal(await desktop.locator('#custom-json-actions').isVisible(), false, 'Daily mode hides JSON exchange');
     await fullRulePalette(desktop);
     assert.ok(await desktop.locator('.circuit-cell').count() >= 30);
     await desktop.screenshot({ path: resolve(output, 'desktop-daily.png'), fullPage: true });
@@ -296,12 +454,9 @@ try {
       const data = api ? await (await desktop.request.get(`${api}/api/daily?game=circuit-reduction`)).json() : fixture.getDaily('circuit-reduction');
       const puzzle = dailyPuzzle(data.date);
       assert.ok(puzzle.optimalMoves >= 10 && puzzle.optimalMoves <= 14);
-      await finish(desktop, puzzle.solution, puzzle);
-      await desktop.locator('#player-name').fill('Daily test'); await desktop.locator('#score-form button').click();
-      await desktop.getByText('Score saved.', { exact: true }).waitFor();
+      const replaySteps = await finish(desktop, puzzle.solution, puzzle);
+      await registerScore(desktop, 'Desktop test');
       await desktop.locator('#close-win').click();
-      const replaySteps = await desktop.locator('#sequence [data-step]').count();
-      await openDetails(desktop, '#advanced-features');
       await desktop.locator('#replay').click();
       await desktop.locator('#review-note').filter({ hasText: `Step ${replaySteps} / ${replaySteps}` }).waitFor({ timeout: Math.max(20000, replaySteps * 800) });
       await desktop.locator('#resume-round').click();
@@ -324,7 +479,6 @@ try {
   assert.equal(await mobile.locator('#move-count').innerText(), '0 moves');
   await mobile.locator('#restart').click();
   await finish(mobile, LEVELS[0].solution); await mobile.locator('#close-win').click();
-  await openDetails(mobile, '#advanced-features');
   await downloadReplay(mobile);
   for (const lesson of [15, 20, 22].map(id => LEVELS.find(level => level.id === id))) {
     console.log(`Mobile: playing campaign level ${lesson.id}`);
@@ -334,7 +488,9 @@ try {
     await finish(mobile, lesson.solution, lesson);
     await activate(mobile, mobile.locator('#close-win'));
   }
+  await customBuilder(mobile);
   await mobile.locator('#mode-daily').click(); await mobile.locator('#daily-heading:not([hidden])').waitFor(); await noOverflow(mobile);
+  assert.equal(await mobile.locator('#custom-json-actions').isVisible(), false, 'Daily mode hides JSON exchange');
   await fullRulePalette(mobile);
   await mobile.screenshot({ path: resolve(output, 'mobile-daily.png'), fullPage: true });
   {
@@ -342,8 +498,7 @@ try {
     const puzzle = dailyPuzzle(info.date);
     assert.ok(puzzle.optimalMoves >= 10 && puzzle.optimalMoves <= 14);
     await finish(mobile, puzzle.solution, puzzle);
-    await mobile.locator('#player-name').fill('Mobile test'); await mobile.locator('#score-form button').click();
-    await mobile.getByText('Score saved.', { exact: true }).waitFor(); await mobile.locator('#close-win').click();
+    await registerScore(mobile, 'Mobile test'); await mobile.locator('#close-win').click();
     console.log(`Mobile daily: solved through touch input and score accepted through ${scoreTransport}`);
   }
   await mobile.screenshot({ path: resolve(output, 'mobile-daily-completed.png'), fullPage: true });
@@ -351,13 +506,16 @@ try {
   await mobile.setViewportSize({ width: 390, height: 844 });
   console.log('Mobile: three complex PDF missions completed using touch, advanced commutation, Hadamard changes of basis, identity spacing, daily horizontal scrolling and responsive page layout verified');
   for (const page of [desktop, mobile].filter(Boolean)) {
-    await page.goto(`${base}/games/quantum-golf/`); await page.locator('#gate-t').waitFor();
+    await page.goto(`${base}/games/quantum-golf/`); await activate(page, page.locator('#mode-campaign')); await page.locator('#gate-t').waitFor();
     await noOverflow(page); await page.locator('#gate-t').click(); await page.locator('#win-dialog[open]').waitFor();
+    await page.waitForFunction(() => document.getElementById('score-status').textContent !== 'Saving…');
     assert.match(await page.locator('#win-summary').innerText(), /Optimal solution in 1 move/);
     await activate(page, page.locator('#close-win'));
     await openDetails(page, '#advanced-features');
     await downloadReplay(page);
+    await golfCustomJson(page);
   }
   console.log(`Golf: ${desktop ? 'desktop/mobile' : 'mobile'} winning gate, shared overlays and lazy replay downloads verified`);
   assert.deepEqual(errors, [], 'No uncaught browser errors');
+  }
 } finally { await browser.close(); }

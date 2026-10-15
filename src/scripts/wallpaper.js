@@ -303,8 +303,12 @@
         centerVeil.addColorStop(1, "rgba(24, 35, 30, 0)");
       }
 
+      // Fade the wallpaper ink while preserving the page's background gradient.
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
       ctx.fillStyle = centerVeil;
       ctx.fillRect(x0, 0, veilWidth, cssH);
+      ctx.restore();
     }
 
     function drawSystem(system, time) {
@@ -380,10 +384,6 @@
         : window.setTimeout(paint, 25);
     }
 
-    function updateRunning() {
-      queuePaint();
-    }
-
     function handleResize() {
       resize();
       init();
@@ -396,8 +396,8 @@
 
     window.addEventListener("resize", handleResize);
     window.addEventListener("pagehide", stopLoop);
-    reduceMotion.addEventListener("change", updateRunning);
-    document.addEventListener("visibilitychange", updateRunning);
+    reduceMotion.addEventListener("change", queuePaint);
+    document.addEventListener("visibilitychange", queuePaint);
 
     window.__chalkWallpaperState = {
       canvas,
@@ -410,8 +410,8 @@
         stopLoop();
         window.removeEventListener("resize", handleResize);
         window.removeEventListener("pagehide", stopLoop);
-        reduceMotion.removeEventListener("change", updateRunning);
-        document.removeEventListener("visibilitychange", updateRunning);
+        reduceMotion.removeEventListener("change", queuePaint);
+        document.removeEventListener("visibilitychange", queuePaint);
       },
     };
   }

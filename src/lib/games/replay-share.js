@@ -50,18 +50,18 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     download.disabled = true;
     get('share-status').textContent = 'Preparing your replay…';
     try {
+      const canCopy = Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined');
+      const copyGif = canCopy && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('image/gif');
+      const copyImage = canCopy && (typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports('image/png'));
       const blob = await createGif(replay.round, {
         signal: job.signal,
-        onImage: png => { if (request === job) copyBlob = png; },
+        onImage: copyImage && !copyGif ? png => { if (request === job) copyBlob = png; } : undefined,
         onProgress: progress => {
           if (request === job) get('share-status').textContent = `Preparing your replay… ${Math.round(progress * 100)}%`;
         },
       });
       if (request !== job) return;
       url = URL.createObjectURL(blob);
-      const canCopy = Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined');
-      const copyGif = canCopy && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('image/gif');
-      const copyImage = canCopy && (typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports('image/png'));
       copyBlob = copyGif ? blob : copyImage ? copyBlob : null;
       previewUrl = copyBlob?.type === 'image/png' ? URL.createObjectURL(copyBlob) : url;
       get('share-preview').src = previewUrl;

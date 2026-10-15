@@ -17,6 +17,7 @@ export default {
       if (!(error instanceof SubmissionError || error instanceof RangeError)) throw error;
       return Response.json({ error: error.message }, { status: error instanceof SubmissionError ? error.status : 400, headers });
     }
-    return Response.json({ ...metadata, puzzle: game.dailyPuzzle(metadata.date) }, { headers });
+    return Response.json({ ...metadata, acceptingScores: metadata.acceptingScores && !('completionOnly' in game),
+      puzzle: game.dailyPuzzle(metadata.date) }, { headers });
   },
 };

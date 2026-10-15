@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { website, websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { expandGameControls } from '../games/markup.mjs';
 const { applyGate, traceDistance, START_STATE } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
@@ -14,6 +15,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
     constructor(tagName = 'DIV') {
       this.tagName = tagName;
       this.listeners = new Map();
+      this.captureListeners = new Map();
       this.attrs = {};
       this.children = [];
       this.hidden = false;
@@ -27,16 +29,22 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
         contains: (name) => this.className.split(/\s+/).includes(name),
       };
     }
-    addEventListener(name, callback) {
-      this.listeners.set(name, [...(this.listeners.get(name) || []), callback]);
+    addEventListener(name, callback, capture = false) {
+      const listeners = capture === true ? this.captureListeners : this.listeners;
+      listeners.set(name, [...(listeners.get(name) || []), callback]);
     }
     dispatch(name, extra = {}) {
-      const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
+      const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; },
+        stopImmediatePropagation() { this.stopped = true; }, ...extra };
       const path = [this];
       if (name === 'click') {
         for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
       }
       const callbacks = [];
+      if (name === 'click') for (const callback of globalThis.document.captureListeners.get(name) || []) {
+        callbacks.push(callback(event));
+        if (event.stopped) return Promise.all(callbacks);
+      }
       for (const node of path) {
         event.currentTarget = node;
         for (const callback of node.listeners.get(name) || []) callbacks.push(callback(event));
@@ -45,12 +53,33 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
       if (name === 'cancel' && this.tagName === 'DIALOG' && !event.defaultPrevented) this.close();
       return result;
     }
+    matches(selector) {
+      const simple = (node, token) => {
+        if (token.startsWith('#')) return node.getAttribute('id') === token.slice(1);
+        if (token.startsWith('.')) return node.classList.contains(token.slice(1));
+        const match = token.match(/^([a-z]+)?(?:\[([\w-]+)\])?$/i);
+        return Boolean(match && (!match[1] || node.tagName === match[1].toUpperCase()) &&
+          (!match[2] || node.getAttribute(match[2]) !== null));
+      };
+      return selector.split(',').some(part => {
+        const tokens = part.trim().split(/\s+/);
+        if (!simple(this, tokens.pop())) return false;
+        let node = this.parentElement;
+        while (tokens.length) {
+          const token = tokens.pop();
+          while (node && !simple(node, token)) node = node.parentElement;
+          if (!node) return false;
+          node = node.parentElement;
+        }
+        return true;
+      });
+    }
     closest(selector) {
-      assert.equal(selector, 'button[data-step]');
-      for (let node = this; node; node = node.parentElement) {
-        if (node.tagName === 'BUTTON' && node.getAttribute('data-step') !== null) return node;
-      }
+      for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node;
       return null;
+    }
+    querySelectorAll(selector) {
+      return this.children.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
     }
     setAttribute(name, value) { this.attrs[name] = String(value); }
     getAttribute(name) { return this.attrs[name] ?? null; }
@@ -84,6 +113,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
     showModal() { this.open = true; this.showCount++; }
     close() { if (this.open) { this.open = false; this.dispatch('close'); } }
     focus() {}
+    select() { this.selected = true; }
     reportValidity() { return true; }
     querySelector(selector) {
       if (selector.startsWith('.')) {
@@ -108,9 +138,10 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   let html = await readFile(new URL('src/pages/games/quantum-golf.astro', website), 'utf8');
   const component = async name => (await readFile(new URL(`src/components/games/${name}.astro`, website), 'utf8'))
     .replace(/^---[\s\S]*?---/, '');
-  for (const name of ['GameModeMenu', 'GameToolbar', 'GameLeaderboard']) {
+  for (const name of ['GameModeMenu', 'GameToolbar', 'GameLeaderboard', 'GameJsonActions']) {
     html = html.replace(new RegExp(`<${name}\\b[^>]*\\/>`), await component(name));
   }
+  html = await expandGameControls(html, component);
   const dialogs = html.match(/<GameDialogs\b[^>]*>([\s\S]*?)<\/GameDialogs>/);
   assert.ok(dialogs, 'Golf uses the shared result, rules and share overlays');
   const rules = dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '';
@@ -148,6 +179,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
     element.open = /\sopen(?:[\s=>])/.test(match[0]);
     for (const attr of match[0].matchAll(/\b(aria-[\w-]+)="([^"]*)"/g)) element.setAttribute(attr[1], attr[2]);
     elements.set(match[2], element);
+    element.setAttribute('id', match[2]);
   }
   // Retain ID-bearing parents so moving one group updates the real controls.
   const ancestors = [];
@@ -176,7 +208,13 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   doc.body = body;
   doc.documentElement = new MockElement('HTML');
   doc.getElementById = get;
+  doc.querySelectorAll = selector => {
+    const all = new Set(), visit = node => { if (all.has(node)) return; all.add(node); node.children.forEach(visit); };
+    for (const node of elements.values()) visit(node);
+    return [...all].filter(node => node.matches(selector));
+  };
   doc.querySelector = selector => {
+    if (selector === 'dialog[open]') return [...elements.values()].find(node => node.tagName === 'DIALOG' && node.open) ?? null;
     const [id, child] = selector.split(/\s+/);
     const node = get(id.slice(1));
     return child ? node.querySelector(child) : node;
@@ -210,6 +248,18 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   browser.navigator = mockNavigator;
   browser.ClipboardItem = globalThis.ClipboardItem;
   browser.isSecureContext = true;
+  const nicknameStorage = new Map(), storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const localStorage = {
+    getItem: key => nicknameStorage.get(key) ?? null,
+    setItem: (key, value) => nicknameStorage.set(key, String(value)),
+    removeItem: key => nicknameStorage.delete(key),
+  };
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: localStorage });
+  browser.localStorage = localStorage;
+  context.after(() => {
+    if (storageDescriptor) Object.defineProperty(globalThis, 'localStorage', storageDescriptor);
+    else delete globalThis.localStorage;
+  });
   const originalComputedStyle = globalThis.getComputedStyle;
   globalThis.getComputedStyle = () => ({ getPropertyValue: name => ({
     '--color-bg': '#18231e', '--color-text': '#ccd7ce', '--color-heading': '#edf4ee',
@@ -345,9 +395,10 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
     return request;
   }
   async function completeShare(request, blob = new Blob(['GIF89a'], { type: 'image/gif' })) {
-    request.imageBlob = new Blob([`Final image ${gifRequests.indexOf(request)}: ${request.args[0].label}; ${request.args[0].sequence}`], { type: 'image/png' });
-    assert.equal(typeof request.args[1].onImage, 'function', 'The exporter supplies the final traced state for image copying');
-    request.args[1].onImage(request.imageBlob);
+    if (request.args[1].onImage) {
+      request.imageBlob = new Blob([`Final image ${gifRequests.indexOf(request)}: ${request.args[0].label}; ${request.args[0].sequence}`], { type: 'image/png' });
+      request.args[1].onImage(request.imageBlob);
+    }
     request.resolve(blob);
     await request.completion;
     await settle();
@@ -384,6 +435,85 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   }
   const finishLevel = index => finishHole(LEVELS[index]);
 
+  assert.equal(get('mode-tutorial').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('tutorial-panel').hidden, false);
+  assert.equal(get('leaderboard-section').hidden, true);
+  assert.equal(get('campaign-controls').hidden, true);
+  assert.equal(requests.length, 0, 'The default tutorial does not fetch leaderboards');
+  assert.equal(workers.length, 0, 'The fixed walkthrough does not run a solver');
+  click('gate-h'); click('restart');
+  await doc.dispatch('keydown', { key: 't', target: get('sphere') });
+  assert.equal(strokes(), 0, 'Manual controls cannot skip tutorial steps');
+  assert.equal(frames.size, 0);
+  await click('tutorial-start');
+  assert.equal(get('gate-t').disabled, false);
+  assert.equal(get('gate-h').disabled, true);
+  assert.equal(get('gate-t').getAttribute('data-tutorial-focus'), '');
+  const firstGuidedGate = click('gate-t'); flushFrames(); await firstGuidedGate; await settle();
+  assert.equal(sphere.model.sequence, 'T', 'Clicking the highlighted gate advances exactly once');
+  for (let step = 1; step < 10; step++) {
+    const next = click('tutorial-next'); flushFrames(); await next;
+  }
+  assert.equal(sphere.model.sequence, 'THTHTHTTTT');
+  samePoint(sphere.model.target, LEVELS[7].target);
+  assert.equal(winning(), true);
+  assert.equal(get('tutorial-heading').textContent, 'Tutorial complete');
+  assert.equal(dialog.open, false, 'A guided win does not open the normal result popup');
+  await get('score-form').dispatch('submit');
+  assert.equal(requests.length, 0, 'Tutorial completion cannot fetch or submit a score');
+
+  await click('tutorial-start');
+  const tutorialDailyLoad = click('mode-daily'), tutorialDailyRequest = requests.at(-1);
+  assert.match(tutorialDailyRequest.url, /^\/api\/daily\?/);
+  assert.equal(get('tutorial-panel').hidden, false, 'The current guide stays visible while Daily loads');
+  assert.equal(get('tutorial-next').disabled, true);
+  assert.equal(get('tutorial-start').disabled, true);
+  assert.equal(get('gate-t').disabled, true);
+  await click('tutorial-next'); click('gate-t');
+  assert.equal(strokes(), 0, 'Loading cannot silently skip a guided move');
+  assert.equal(get('tutorial-heading').textContent, 'Step 1 of 10');
+  await reply(tutorialDailyRequest, {}, 503); await tutorialDailyLoad;
+  assert.equal(get('mode-tutorial').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('tutorial-panel').hidden, false);
+  assert.equal(get('tutorial-heading').textContent, 'Step 1 of 10');
+  assert.equal(get('tutorial-next').disabled, false);
+  assert.equal(get('gate-t').disabled, false, 'A failed Daily request restores the same tutorial step');
+  const resumedStep = click('tutorial-next'); flushFrames(); await resumedStep;
+  assert.equal(sphere.model.sequence, 'T');
+  reducedMotion = false;
+  const movingStep = click('tutorial-next');
+  const movingDailyLoad = click('mode-daily'), movingDailyRequest = requests.at(-1);
+  assert.notEqual(movingDailyRequest, tutorialDailyRequest, 'Daily navigation remains usable during guided animation');
+  await reply(movingDailyRequest, {}, 503); await movingDailyLoad;
+  flushFrames(); await movingStep;
+  assert.equal(sphere.model.sequence, 'TH');
+  assert.equal(get('tutorial-heading').textContent, 'Step 3 of 10');
+  assert.equal(get('tutorial-panel').hidden, false);
+  assert.equal(requests.length, 2, 'Tutorial outage handling makes only the two requested Daily calls');
+  assert.equal(workers.length, 0);
+  // Start the normal-round request audit below with its own transport history.
+  requests.length = 0;
+
+  reducedMotion = false;
+  await click('tutorial-start');
+  const hiddenStep = click('tutorial-next'), hiddenFrame = frames.values().next().value;
+  await browser.dispatch('pagehide');
+  assert.equal(frames.size, 0);
+  hiddenFrame(performance.now() + 1000); await hiddenStep;
+  assert.equal(strokes(), 0, 'A cancelled animation cannot commit a tutorial gate');
+  await browser.dispatch('pageshow', { persisted: true });
+  assert.equal(get('mode-tutorial').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('tutorial-heading').textContent, 'Guided example');
+  assert.equal(requests.length, 0, 'Returning to a tutorial still avoids score requests');
+  await click('tutorial-start');
+  const abandonedStep = click('tutorial-next'), abandonedFrame = frames.values().next().value;
+  await click('mode-campaign');
+  abandonedFrame(performance.now() + 1000); await abandonedStep;
+  assert.equal(frames.size, 0);
+  assert.equal(get('tutorial-panel').hidden, true);
+  assert.equal(requests.length, 1, 'Entering Levels loads only the selected campaign leaderboard');
+  reducedMotion = true;
+
   assert.equal(strokes(), 0);
   assert.equal(get('advanced-features').open, false);
   assert.equal(get('result-advanced-features').open, false);
@@ -402,6 +532,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(get('mode-daily').getAttribute('aria-pressed'), 'false');
   assert.equal(get('campaign-controls').hidden, false);
   assert.equal(get('daily-heading').hidden, true);
+  assert.equal(get('custom-json-actions').hidden, true);
   assert.equal(get('daily-archive').hidden, true);
   assert.equal(winning(), false);
   samePoint(sphere.model.state, START_STATE);
@@ -513,6 +644,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.notEqual(firstSnapshot.target, sphere.model.target, 'The exporter receives its own target snapshot');
   assert.equal(firstSnapshot.epsilon, LEVELS[0].epsilon);
   assert.equal(firstExport.signal.aborted, false);
+  assert.equal(firstExport.onImage, undefined, 'GIF-capable browsers skip the unused PNG export');
   assert.equal(shareDialog.open, true);
   assert.equal(dialog.open, true, 'Closing sharing returns to the existing result popup');
   const beforeRepeatedShare = gifRequests.length;
@@ -633,6 +765,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(dialog.open, true);
   assert.equal(get('score-form').hidden, true);
   assert.equal(get('win-results').hidden, false);
+  assert.equal(nicknameStorage.get('games.nickname.v1'), 'Ada', 'The first validated registration remembers its canonical nickname.');
   assert.equal(get('result-actions').hidden, false);
   assert.equal(get('result-next').hidden, false);
   assert.match(get('player-rank').textContent, /19/);
@@ -664,17 +797,25 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(strokes(), 0);
   samePoint(sphere.model.target, LEVELS[0].target);
 
-  // A user may close while saving. The server response updates the remembered
-  // result, and only the explicit Scores button opens that result afterward.
+  // A remembered nickname automatically registers the next solved attempt.
+  // Closing its result while saving must leave it closed after success.
   finishLevel(0);
-  const closedSubmission = get('score-form').dispatch('submit');
   const closedPost = requests.at(-1);
+  assert.equal(closedPost.options.method, 'POST');
+  assert.deepEqual(JSON.parse(closedPost.options.body), { level: 1, name: 'Ada', sequence: firstSolution });
+  assert.equal(get('score-form').hidden, true, 'Automatic registration skips the repeated name form.');
+  assert.equal(get('next-level').disabled, true);
+  assert.equal(get('result-next').disabled, true, 'A pending registration cannot be skipped accidentally.');
+  const beforeAutomaticDuplicate = requests.length;
+  await get('score-form').dispatch('submit');
+  click('show-results');
+  assert.equal(requests.length, beforeAutomaticDuplicate, 'A pending automatic save cannot be posted twice.');
   click('close-win');
   assert.equal(dialog.open, false);
   const smallOwn = player(9, 'Ada');
   await reply(closedPost, board(Array.from({ length: 9 }, (_, index) => index === 8 ? smallOwn : player(index + 1)), smallOwn, 9));
-  await closedSubmission;
   assert.equal(dialog.open, false, 'A completed save must not reopen a dialog the player closed');
+  assert.equal(get('next-level').disabled, false);
   click('show-results');
   assert.equal(dialog.open, true);
   assert.equal(get('win-results').hidden, false);
@@ -685,6 +826,8 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   // Reset while the personal leaderboard is loading. Its late response must
   // not restore the previous round's saved result or prevent another save.
   click('try-again');
+  await click('nickname-forget');
+  assert.equal(nicknameStorage.has('games.nickname.v1'), false, 'Forgetting restores manual registration on later wins.');
   assert.equal(reopenedGet.options.signal.aborted, true);
   await reply(reopenedGet, board([smallOwn], smallOwn, 9));
 
@@ -692,6 +835,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(get('score-form').hidden, false, 'A late personal GET cannot replace the next round\'s entry form');
   assert.equal(get('win-results').hidden, true);
   assert.equal(get('player-name').disabled, false);
+  get('player-name').value = 'Ada';
   const resetSubmission = get('score-form').dispatch('submit');
   const resetPost = requests.at(-1);
   assert.equal(resetPost.options.method, 'POST', 'The next round can submit a new score');
@@ -711,6 +855,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(strokes(), 0);
   finishLevel(1);
   assert.equal(winning(), true);
+  get('player-name').value = 'Ada';
   const staleSubmission = get('score-form').dispatch('submit');
   const stalePost = requests.at(-1);
   assert.equal(stalePost.options.method, 'POST');
@@ -741,6 +886,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(winning(), true);
   assert.equal(get('win-summary').textContent, `Optimal solution in ${LEVELS.at(-1).optimalMoves} moves.`);
   assert.equal(get('next-level').disabled, false);
+  get('player-name').value = 'Ada';
   const finalSubmission = get('score-form').dispatch('submit');
   assert.deepEqual(JSON.parse(requests.at(-1).options.body), { level: LEVELS.length, name: 'Ada', sequence: finalSolution });
   const finalPlayer = player(1, 'Ada', LEVELS.at(-1).optimalMoves);
@@ -749,11 +895,13 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(dialog.open, true);
   assert.equal(get('win-results').hidden, false);
   click('result-next');
+  await click('nickname-forget');
   assert.equal(get('mode-random').getAttribute('aria-pressed'), 'true', 'Completing the final campaign level leads to Random / Custom');
   assert.equal(get('campaign-controls').hidden, true);
   assert.equal(dialog.open, false, 'Next closes the finished campaign dialog');
   assert.equal(get('epsilon').disabled, false);
   assert.equal(get('free-controls').hidden, false);
+  assert.equal(get('custom-json-actions').hidden, false);
   assert.equal(get('leaderboard-section').hidden, true);
   assert.equal(get('show-results').hidden, true);
   assert.ok(workers.length > 0);
@@ -772,6 +920,46 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.doesNotMatch(get('best-count').textContent, /NaN/);
   assert.equal(get('gate-h').disabled, false, 'Solver failure leaves the game playable');
 
+  // Custom JSON exchanges only target geometry and epsilon. Native overlays
+  // suspend game shortcuts, and rejected imports leave the round unchanged.
+  const jsonTarget = [...sphere.model.target], jsonEpsilon = sphere.model.epsilon;
+  await click('share-json');
+  assert.equal(get('puzzle-json-dialog').open, true);
+  assert.equal(get('puzzle-json-text').readOnly, true);
+  const exportedJson = JSON.parse(get('puzzle-json-text').value);
+  assert.deepEqual(exportedJson, { target: jsonTarget, epsilon: jsonEpsilon });
+  for (const key of ['h', 't', 'r', 'n', 'Backspace']) await doc.dispatch('keydown', { key, target: get('puzzle-json-close') });
+  assert.equal(frames.size, 0);
+  samePoint(sphere.model.target, jsonTarget);
+  await click('puzzle-json-copy');
+  assert.equal(get('puzzle-json-status').textContent, 'Copy the selected JSON.');
+  assert.equal(get('puzzle-json-text').selected, true, 'Unavailable clipboard keeps the JSON manually copyable.');
+  await click('puzzle-json-close');
+  await click('input-json');
+  assert.equal(get('puzzle-json-text').readOnly, false);
+  for (const source of ['{', JSON.stringify({ target: [0, 1], epsilon: .2 }),
+    JSON.stringify({ target: [0, 0, 0], epsilon: .2 }), JSON.stringify({ target: [0, 1, 0], epsilon: .8 })]) {
+    get('puzzle-json-text').value = source;
+    await get('puzzle-json-form').dispatch('submit');
+    assert.equal(get('puzzle-json-dialog').open, true);
+    assert.ok(get('puzzle-json-status').textContent);
+    samePoint(sphere.model.target, jsonTarget);
+    assert.equal(sphere.model.epsilon, jsonEpsilon);
+  }
+  get('puzzle-json-text').value = JSON.stringify({ target: [0, -2, 0], epsilon: .125 });
+  await get('puzzle-json-form').dispatch('submit');
+  assert.equal(get('puzzle-json-dialog').open, false);
+  samePoint(sphere.model.target, [0, -1, 0]);
+  samePoint(sphere.model.state, START_STATE);
+  assert.equal(sphere.model.epsilon, .125);
+  assert.equal(strokes(), 0);
+  assert.equal(get('mode-random').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('leaderboard-section').hidden, true);
+  assert.equal(get('score-form').hidden, true);
+  await click('share-json');
+  assert.deepEqual(JSON.parse(get('puzzle-json-text').value), { target: [0, -1, 0], epsilon: .125 });
+  await click('puzzle-json-close');
+
   // Busy handlers cannot queue gates, reset the round, or move its target.
   place(90, 270);
   const firstTarget = [...sphere.model.target];
@@ -781,6 +969,8 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   click('show-rules');
   assert.equal(rulesDialog.open, false, 'An animation finishes before Rules can open');
   assert.equal(get('epsilon').disabled, true);
+  assert.equal(get('share-json').disabled, true);
+  assert.equal(get('input-json').disabled, true);
   assert.equal(submitButton.disabled, true);
   click('gate-h');
   click('new-hole');
@@ -918,6 +1108,15 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(strokes(), 1);
   doc.dispatch('keydown', { key: 'Backspace', target: body });
   assert.equal(strokes(), 0);
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    doc.dispatch('keydown', { key: 'h', target: body }); flushFrames();
+    doc.dispatch('keydown', { key: 'z', [modifier]: true, target: get('target-theta') });
+    assert.equal(strokes(), 1, 'Undo shortcuts leave editable fields alone');
+    doc.dispatch('keydown', { key: 'z', [modifier]: true, shiftKey: true, target: body });
+    assert.equal(strokes(), 1, 'Redo is not interpreted as undo');
+    doc.dispatch('keydown', { key: 'z', [modifier]: true, target: body });
+    assert.equal(strokes(), 0, 'Ctrl/Cmd+Z uses the same undo action as the button');
+  }
 
   // H also has stationary states away from the poles.
   for (const gate of ['T', 'H', 'T', 'T']) {
@@ -1132,6 +1331,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
 
   pngClipboardSupported = false;
   const noImageClipboardShare = await startShare('share-result');
+  assert.equal(noImageClipboardShare.args[1].onImage, undefined);
   await completeShare(noImageClipboardShare);
   assert.equal(get('copy-gif').disabled, true, 'Unsupported image formats leave the GIF download available');
   const copiesBeforeNoImage = clipboardWrites.length;
@@ -1144,6 +1344,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const clipboard = mockNavigator.clipboard;
   delete mockNavigator.clipboard;
   const noClipboardShare = await startShare('share-result');
+  assert.equal(noClipboardShare.args[1].onImage, undefined);
   await completeShare(noClipboardShare);
   assert.equal(get('copy-gif').disabled, true, 'Clipboard API absence does not create a broken copy action');
   await click('copy-gif');
@@ -1154,6 +1355,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
 
   delete globalThis.ClipboardItem;
   const noClipboardItemShare = await startShare('share-result');
+  assert.equal(noClipboardItemShare.args[1].onImage, undefined);
   await completeShare(noClipboardItemShare);
   assert.equal(get('copy-gif').disabled, true, 'Missing ClipboardItem also disables copying without breaking the export');
   await click('copy-gif');
@@ -1171,6 +1373,11 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   await reply(dailyPost, board([dailyPlayer], dailyPlayer), 201);
   await dailySubmission;
   assert.equal(get('win-results').hidden, false);
+  assert.equal(get('nickname-form').hidden, false);
+  assert.equal(get('nickname-value').value, 'Ada');
+  assert.equal(get('result-advanced-features').hidden, false, 'Daily results keep saved nickname management accessible.');
+  assert.equal(get('replay-actions').parentElement, get('daily-replay-actions'));
+  assert.equal(get('result-replay-actions').parentElement, get('daily-result-actions'), 'Daily replay actions stay outside nickname management.');
   assert.equal(get('win-practice').hidden, true);
   assert.equal(get('result-next').hidden, true);
   assert.equal(get('result-actions').hidden, false);
@@ -1195,6 +1402,11 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const afterClosing = requests.length;
   await get('score-form').dispatch('submit');
   assert.equal(requests.length, afterClosing, 'Closed daily scoring stays disabled');
+  get('result-advanced-features').open = true;
+  await click('nickname-forget');
+  assert.equal(get('nickname-form').hidden, true);
+  assert.equal(get('result-advanced-features').hidden, true, 'Daily Advanced can hide once its saved nickname is forgotten.');
+  assert.equal(get('result-replay-actions').parentElement, get('daily-result-actions'));
   click('try-again');
 
   // An open tab crosses Paris midnight without losing its circuit. The new
@@ -1268,6 +1480,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
 
   // Reviewing and replaying a finished round never changes the circuit being
   // scored, even when the leaderboard returns an earlier, better personal score.
+  await click('nickname-forget');
   selectLevel(2);
   const reviewedWord = 'TTTTTTTTH';
   for (const gate of reviewedWord) { click(`gate-${gate.toLowerCase()}`); flushFrames(); }
@@ -1305,6 +1518,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   // Sharing an inspected attempt exports its full circuit and this attempt's
   // score, while leaving the sphere, review position and saved board intact.
   click('close-win');
+  await click('nickname-forget');
   await gateButtons()[2].dispatch('click');
   const inspectedPoint = [...sphere.model.state];
   const inspectedBoard = get('result-leaderboard-body').textContent;
@@ -1340,10 +1554,10 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.match(get('share-status').textContent, /could|failed|unable|unavailable/i);
   click('close-share');
 
+  clipboardSupported = false;
   const cancelledShare = await startShare();
   click('close-share');
   assert.equal(cancelledShare.args[1].signal.aborted, true);
-  clipboardSupported = false;
   const replacementShare = await startShare();
   const replacementStatus = get('share-status').textContent;
   cancelledShare.args[1].onProgress(0.9);
@@ -1594,4 +1808,51 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(get('sequence').children[0], firstGateButton);
   click('restart');
   assert.equal(get('sequence').children.length, 0);
+
+  // A nickname saved in another game is refreshed without storing player IDs.
+  nicknameStorage.set('games.nickname.v1', '  Grace  ');
+  click('restart');
+  assert.equal(get('nickname-value').value, 'Grace');
+  get('nickname-value').value = '  Emmy   Noether  ';
+  await get('nickname-form').dispatch('submit');
+  assert.equal(nicknameStorage.get('games.nickname.v1'), 'Emmy Noether');
+  assert.equal(get('nickname-status').textContent, 'Nickname saved.');
+  selectLevel(2);
+  const editedWord = finishLevel(1), automaticPost = requests.at(-1);
+  assert.deepEqual(JSON.parse(automaticPost.options.body), { level: 2, name: 'Emmy Noether', sequence: editedWord });
+  assert.equal(get('score-form').hidden, true);
+  assert.equal(get('next-level').disabled, true);
+  await reply(automaticPost, { error: 'Unavailable' }, 503);
+  assert.equal(get('score-form').hidden, false, 'Failed automatic registration restores a manual retry.');
+  assert.equal(get('player-name').value, 'Emmy Noether');
+  assert.equal(get('submit-score').disabled, false);
+  const afterAutomaticFailure = requests.length;
+  click('close-win'); click('show-results');
+  assert.equal(requests.length, afterAutomaticFailure, 'Reopening a failed result does not create a retry loop.');
+  const manualRetry = get('score-form').dispatch('submit'), retryPost = requests.at(-1);
+  assert.deepEqual(JSON.parse(retryPost.options.body), { level: 2, name: 'Emmy Noether', sequence: editedWord });
+  const rememberedPlayer = player(1, 'Emmy Noether', editedWord.length);
+  await reply(retryPost, board([rememberedPlayer], rememberedPlayer)); await manualRetry;
+  assert.equal(get('next-level').disabled, false);
+  click('try-again'); finishLevel(1);
+  const forgottenPost = requests.at(-1);
+  get('result-advanced-features').open = true;
+  await click('nickname-forget');
+  assert.equal(nicknameStorage.has('games.nickname.v1'), false);
+  await reply(forgottenPost, board([rememberedPlayer], rememberedPlayer));
+  assert.equal(nicknameStorage.has('games.nickname.v1'), false, 'Late success cannot remember a forgotten nickname.');
+  click('try-again'); finishLevel(1);
+  assert.equal(get('score-form').hidden, false);
+  assert.equal(get('player-name').value, '');
+  assert.equal(requests.at(-1).options.method, undefined, 'A forgotten identity leaves the next win unregistered.');
+
+  await click('mode-tutorial'); await click('tutorial-start');
+  reducedMotion = false;
+  const switchedStep = click('tutorial-next'), switchedFrame = frames.values().next().value;
+  await loadPuzzle('2026-10-14', Date.parse('2026-10-14T12:00:00Z'), true);
+  switchedFrame(performance.now() + 1000); await switchedStep;
+  assert.equal(get('mode-daily').getAttribute('aria-pressed'), 'true');
+  assert.equal(get('tutorial-panel').hidden, true, 'Only a valid Daily response leaves the guide');
+  assert.equal(strokes(), 0, 'Successful Daily selection cancels the pending tutorial animation');
+  samePoint(sphere.model.state, START_STATE);
 });

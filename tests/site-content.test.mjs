@@ -123,7 +123,7 @@ function events(object = {}) {
   });
 }
 
-test('shared content dialogs bind once, open nested triggers, and close only on a close button or backdrop', async () => {
+test('shared content dialogs open nested triggers and close only on a close button or backdrop', async () => {
   class Element {
     constructor(attributes = {}, parent = null) { this.attributes = attributes; this.parent = parent; }
     getAttribute(name) { return this.attributes[name] ?? null; }
@@ -142,15 +142,12 @@ test('shared content dialogs bind once, open nested triggers, and close only on 
     getBoundingClientRect() { return { left: 10, right: 100, top: 10, bottom: 100 }; }
   }
   const dialog = new Dialog();
-  const trigger = new HTMLElement({ 'data-content-trigger': 'detail' });
+  const trigger = new HTMLElement({ 'data-content-dialog': 'detail' });
   const child = new Element({}, trigger);
   const document = events({ getElementById: id => id === 'detail-dialog' ? dialog : null });
   const sandbox = vm.createContext({ window: {}, document, Element, HTMLElement, HTMLDialogElement: Dialog });
-  const source = (await moduleSource('../src/scripts/dialogs.ts')).replace('export function', 'function');
+  const source = await moduleSource('../src/scripts/dialogs.ts');
   vm.runInContext(source, sandbox);
-  const options = { marker: '__contentBound', triggerAttribute: 'data-content-trigger' };
-  sandbox.bindDialogControls(options);
-  sandbox.bindDialogControls(options);
   assert.equal(document.listenerCount('click'), 1);
   const click = (target, coordinates = {}) => document.emit('click', { target, preventDefault() {}, ...coordinates });
   click(child);
@@ -163,7 +160,7 @@ test('shared content dialogs bind once, open nested triggers, and close only on 
   click(child);
   click(new Element({}, new HTMLElement({ 'data-modal-close': '' }, dialog)));
   assert.equal(dialog.open, false);
-  click(new HTMLElement({ 'data-content-trigger': 'missing' }));
+  click(new HTMLElement({ 'data-content-dialog': 'missing' }));
   click({});
   assert.equal(dialog.openCount, 2);
 });

@@ -1,6 +1,7 @@
 import * as gifenc from 'gifenc';
 import { RULES, applyMove, isSolved, validateCircuit, moveCost } from '../lib/circuit-reduction/engine.js';
-import { CIRCUIT_COLORS, drawCircuit } from '../lib/circuit-reduction/rendering.js';
+import { CIRCUIT_COLORS } from '../lib/games/circuit-graphics.js';
+import { drawCircuit } from '../lib/circuit-reduction/rendering.js';
 import { installReplayEncoder } from '../lib/games/replay-gif.js';
 const { GIFEncoder, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
 const WIDTH = 960;

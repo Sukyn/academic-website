@@ -8,7 +8,7 @@ const { offer } = Astro.props as { offer: OfferSummary };
 <button
   class="offer-preview-card"
   type="button"
-  data-offer-modal-trigger={offer.id}
+  data-content-dialog={offer.id}
   aria-haspopup="dialog"
   aria-controls={`${offer.id}-dialog`}
 >

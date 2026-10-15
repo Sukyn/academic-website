@@ -36,6 +36,8 @@ test('Remove all identities compacts each wire while retaining shared endpoints 
   assert.deepEqual(compactCircuit(compact), compact);
   assert.deepEqual(applyMove(original, { rule: 'compact-identities', row: 0, column: 0 }), compact);
   assert.deepEqual(compactCircuit([Array(50).fill('.'), Array(50).fill('.')]), [['.', '.'], ['.', '.']]);
+  const long = Array(150_000).fill('X');
+  assert.deepEqual(compactCircuit([long]), [long], 'Unbounded layouts do not pass every gate as a function argument');
 });
 
 test('Removing one wire identity closes its gap without shifting independent wires', () => {

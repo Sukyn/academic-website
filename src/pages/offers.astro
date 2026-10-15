@@ -58,7 +58,7 @@ for (const offer of offerSummaries) {
           <button
             class="spotlight-card"
             type="button"
-            data-offer-modal-trigger={item.offerId}
+            data-content-dialog={item.offerId}
             aria-haspopup="dialog"
             aria-controls={`${item.offerId}-dialog`}
           >
@@ -160,15 +160,6 @@ for (const offer of offerSummaries) {
     ))}
 
   </article>
-
-  <script>
-    import { bindDialogControls } from "../scripts/dialogs";
-
-    bindDialogControls({
-      marker: "__offerDialogBindings",
-      triggerAttribute: "data-offer-modal-trigger",
-    });
-  </script>
 
   <style>
     .ideas {

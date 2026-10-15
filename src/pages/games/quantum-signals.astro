@@ -1,0 +1,99 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import GameShell from '../../components/games/GameShell.astro';
+import GameModeMenu from '../../components/games/GameModeMenu.astro';
+import GameToolbar from '../../components/games/GameToolbar.astro';
+import GameTutorial from '../../components/games/GameTutorial.astro';
+import GameLeaderboard from '../../components/games/GameLeaderboard.astro';
+import GameDialogs from '../../components/games/GameDialogs.astro';
+import GameJsonActions from '../../components/games/GameJsonActions.astro';
+import GameRoundControls from '../../components/games/GameRoundControls.astro';
+import GameReviewControls from '../../components/games/GameReviewControls.astro';
+import { LEVELS } from '../../lib/quantum-signals/puzzles.js';
+import { GATES } from '../../lib/quantum-signals/engine.js';
+import { gateLabel } from '../../lib/quantum-signals/rendering.js';
+import '../../styles/quantum-signals.css';
+---
+
+<BaseLayout title="Quantum signals" description="Fill the holes in a quantum circuit. Follow superposition, interference and entanglement to reach the target state.">
+  <GameShell>
+    <a class="back" href="/games/">← Games</a>
+    <h1>Quantum signals <span class="signal-prototype">Prototype</span></h1>
+    <div class="game-layout">
+      <GameModeMenu />
+      <div class="game-content">
+        <GameToolbar levels={LEVELS} />
+        <GameTutorial />
+        <section aria-label="Quantum signals">
+          <div class="game-scroll signal-scroll" id="signal-scroll" role="region" aria-label="Circuit board. Scroll horizontally for longer circuits." tabindex="0">
+            <div id="signal-board" aria-label="Circuit with gate holes"></div>
+          </div>
+          <div class="signal-palette" role="group" aria-label="Gate choices for the selected hole">
+            {GATES.map(gate => <button class="button ghost" type="button" data-choice={gate} aria-label={gateLabel(gate)} title={gateLabel(gate)}></button>)}
+            <button class="button ghost" id="erase-gate" type="button" title="Clear selected hole · Delete" disabled>Erase</button>
+          </div>
+          <div class="game-scroll signal-scroll signal-flow-scroll" id="flow-scroll" role="region" aria-label="Joint-state paths. Scroll to explore the states and circuit columns." tabindex="0">
+            <svg id="signal-flow" role="img" aria-label="Quantum state paths through the circuit, with the target at the right"></svg>
+          </div>
+          <GameRoundControls resultLabel="Results" />
+          <div class="custom-controls" id="custom-controls" hidden>
+            <label for="difficulty">Difficulty</label>
+            <select id="difficulty"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select>
+            <button class="button ghost" id="new-puzzle" type="button">New puzzle</button>
+            <GameJsonActions />
+          </div>
+          <details class="advanced-features" id="advanced-features">
+            <summary>Advanced</summary>
+            <div class="advanced-panel">
+              <div class="replay-actions" id="replay-actions">
+                <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
+                <button class="button ghost" id="share-replay" type="button" hidden>Share your replay</button>
+              </div>
+            </div>
+            <div id="sequence" role="group" aria-label="Gate placements in chronological order"></div>
+            <div id="circuit-editor-controls">
+              <div class="replay-actions">
+                <button class="button ghost" id="edit-circuit" type="button" aria-controls="custom-details">Edit this circuit</button>
+                <button class="button ghost" id="new-circuit" type="button" aria-controls="custom-details">Start from scratch</button>
+              </div>
+              <div id="custom-details" hidden>
+                <form id="puzzle-editor-form" class="puzzle-editor" aria-label="Circuit editor">
+                  <div class="editor-dimensions">
+                    <label>Wires<select id="editor-wires">{[1, 2, 3, 4].map(value => <option value={value}>{value}</option>)}</select></label>
+                    <label>Columns<select id="editor-columns">{Array.from({ length: 16 }, (_, index) => <option value={index + 1}>{index + 1}</option>)}</select></label>
+                  </div>
+                  <div class="editor-workspace" id="editor-workspace">
+                    <div class="editor-scroll" id="editor-scroll" role="region" aria-label="Circuit editor. Select a cell to change it." tabindex="0">
+                      <div id="editor-board" class="editor-board" role="group" aria-label="Circuit cells"></div>
+                    </div>
+                    <div id="editor-menu" class="editor-menu" role="group" aria-label="Circuit cell options" hidden>
+                      <div id="editor-tools" class="editor-tools"></div>
+                      <div id="editor-choices" role="group" aria-label="Gates offered by this hole" hidden><div id="editor-gates"></div></div>
+                    </div>
+                  </div>
+                  <fieldset class="editor-target-field"><legend>Target</legend><div id="editor-targets" class="editor-targets" role="group" aria-label="Target states"></div></fieldset>
+                  <button class="button" type="submit">Play puzzle</button>
+                </form>
+                <p class="message" id="custom-status" role="status"></p>
+              </div>
+            </div>
+          </details>
+          <GameReviewControls />
+          <p class="message" id="status" role="status"></p>
+          <noscript>Enable JavaScript to play.</noscript>
+        </section>
+        <GameLeaderboard completionOnly />
+      </div>
+    </div>
+    <GameDialogs gameTitle="Quantum signals" completionOnly>
+      <Fragment slot="rules">
+        <p>Fill each hole to make the output match the target. Choose a hole, then a gate. The straight wire leaves the state unchanged.</p>
+        <p>The white wires show the circuit. Below, each lane is a complete state of its qubits. Lit paths show amplitudes splitting, moving and interfering. Black dots with white outlines mean + phase; white dots with black outlines mean − phase. Larger dots mean a greater chance of that result.</p>
+        <p>Match the output dots to the target, including their relative phases. Empty lanes stay dark.</p>
+        <p>Yellow squares are H, red ⊕ gates are X, and green dots are Z. Linked dots are CZ. The two CNOT choices swap the control dot and ⊕.</p>
+        <p>Arrow keys move between holes. H, X, Z, I or 1–4 place gates. Right-click or Delete clears a hole; Ctrl/Cmd+Z undoes.</p>
+      </Fragment>
+    </GameDialogs>
+  </GameShell>
+</BaseLayout>
+<script>import '../../scripts/quantum-signals.js';</script>

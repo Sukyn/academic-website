@@ -6,6 +6,8 @@ import { LEVELS, dailyPuzzle } from '../../tools/circuit-reduction/witnesses.js'
 import { layoutMoves } from '../../tools/circuit-reduction/layout-moves.js';
 import { DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
 import { dailyBounds, dailyDate } from '../../src/lib/games/daily-calendar.js';
+import { expandGameControls } from '../games/markup.mjs';
+import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../../src/lib/circuit-reduction/tutorial.js';
 
 const root = new URL('../../', import.meta.url);
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -13,7 +15,8 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 async function gameMarkup() {
   let html = await readFile(new URL('src/pages/games/circuit-reduction.astro', root), 'utf8');
   const component = async name => (await readFile(new URL(`src/components/games/${name}.astro`, root), 'utf8')).replace(/^---[\s\S]*?---/, '');
-  for (const name of ['GameModeMenu', 'GameToolbar', 'GameLeaderboard']) html = html.replace(new RegExp(`<${name}\\b[^>]*\\/>`), await component(name));
+  for (const name of ['GameModeMenu', 'GameToolbar', 'GameLeaderboard', 'GameJsonActions']) html = html.replace(new RegExp(`<${name}\\b[^>]*\\/>`), await component(name));
+  html = await expandGameControls(html, component);
   const dialogs = html.match(/<GameDialogs\b[^>]*>([\s\S]*?)<\/GameDialogs>/);
   assert.ok(dialogs, 'The circuit game uses the same overlays as Golf');
   html = html.replace(dialogs[0], (await component('GameDialogs'))
@@ -30,14 +33,21 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
       this.tagName = tag; this.children = []; this.attrs = {}; this.dataset = {}; this.listeners = new Map();
       this.style = { setProperty() {} }; this.hidden = this.disabled = this.open = false; this.value = ''; this._text = '';
     }
-    addEventListener(name, callback) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), callback]); }
+    addEventListener(name, callback, options) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), { callback, capture: options === true || Boolean(options?.capture) }]); }
     async dispatch(name, extra = {}) {
-      const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
+      const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stopped = true; }, ...extra };
       const path = [this]; if (['click', 'contextmenu', 'pointerdown', 'pointerup', 'pointermove', 'pointercancel', 'lostpointercapture'].includes(name)) for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
       const promises = [];
-      for (const node of path) {
-        event.currentTarget = node;
-        for (const callback of node.listeners.get(name) ?? []) promises.push(callback(event));
+      for (const capture of [true, false]) {
+        for (const node of capture ? [...path].reverse() : path) {
+          event.currentTarget = node;
+          for (const listener of node.listeners.get(name) ?? []) {
+            if (listener.capture === capture) promises.push(listener.callback(event));
+            if (event.stopped) break;
+          }
+          if (event.stopped) break;
+        }
+        if (event.stopped) break;
       }
       await Promise.all(promises);
       return event;
@@ -54,8 +64,9 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
       if (selector === 'dialog[open]') return this.tagName === 'DIALOG' && this.open;
       if (selector.startsWith('#')) return this.attrs.id === selector.slice(1);
       if (selector.startsWith('.')) return (this.className ?? '').split(/\s+/).includes(selector.slice(1));
-      const match = selector.match(/^(button)?\[data-([\w-]+)\]$/);
-      return Boolean(match && (!match[1] || this.tagName === 'BUTTON') && Object.hasOwn(this.dataset, match[2].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())));
+      const match = selector.match(/^(button)?\[data-([\w-]+)(?:="([^"]*)")?\]$/);
+      const key = match?.[2].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      return Boolean(match && (!match[1] || this.tagName === 'BUTTON') && Object.hasOwn(this.dataset, key) && (match[3] === undefined || this.dataset[key] === match[3]));
     }
     closest(selector) { for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node; return null; }
     querySelectorAll(selector) {
@@ -75,6 +86,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     showModal() { this.open = true; }
     close() { if (this.open) { this.open = false; this.dispatch('close'); } }
     focus() { document.activeElement = this; }
+    select() { this.selected = true; }
     setPointerCapture(id) { (this.capturedPointers ??= new Set()).add(id); }
     releasePointerCapture(id) { this.capturedPointers?.delete(id); }
     hasPointerCapture(id) { return this.capturedPointers?.has(id) ?? false; }
@@ -109,7 +121,8 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     return query(selector);
   };
   get('difficulty').value = '6';
-  const globals = ['document', 'window', 'navigator', 'fetch', 'performance', 'Worker', 'setTimeout', 'clearTimeout', '__circuitGif'];
+  get('editor-wires').value = '2';
+  const globals = ['document', 'window', 'navigator', 'fetch', 'performance', 'Worker', 'setTimeout', 'clearTimeout', 'localStorage', '__circuitGif'];
   const descriptors = new Map(globals.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   context.after(() => { for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } });
   const originalDateNow = Date.now;
@@ -121,6 +134,12 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   Object.defineProperty(globalThis, 'window', { configurable: true, value: windowMock });
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
   Object.defineProperty(globalThis, 'performance', { configurable: true, value: { now: () => monotonic } });
+  const nicknames = new Map();
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: key => nicknames.get(key) ?? null,
+    setItem: (key, value) => nicknames.set(key, String(value)),
+    removeItem: key => nicknames.delete(key),
+  } });
   globalThis.fetch = (url, options) => new Promise((resolve, reject) => requests.push({ url: String(url), options, resolve, reject }));
   globalThis.setTimeout = (callback, delay) => { const timer = { callback, delay }; timers.set(timer, timer); return timer; };
   globalThis.clearTimeout = timer => timers.delete(timer);
@@ -167,6 +186,12 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   async function reply(request, data, status = 200) { assert.ok(request); request.replied = true; request.resolve({ ok: status >= 200 && status < 300, status, json: async () => data }); await settle(); }
   async function boards() { for (const request of requests.filter(request => requestPath(request) === '/api/leaderboard' && request.options.method !== 'POST' && !request.replied)) await reply(request, boardData()); }
   async function chooseLevel(id) { get('level').value = id; await get('level').dispatch('change'); await boards(); }
+  async function inputJson(value) {
+    await click('input-json');
+    get('puzzle-json-text').value = typeof value === 'string' ? value : JSON.stringify(value);
+    await get('puzzle-json-form').dispatch('submit');
+  }
+  const importCircuit = circuit => inputJson({ circuit });
   async function addSpace(row, column, count = 1) {
     for (let index = 0; index < count; index++) {
       const gap = get('circuit-board').querySelectorAll('[data-space]').find(node => node.dataset.space === `${row}:${column}`);
@@ -215,7 +240,40 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     await reply(pendingDaily(), metadata(date, serverNow)); await loading; await boards();
   }
 
-  await boards();
+  assert.equal(get('mode-tutorial').getAttribute('aria-pressed'), 'true', 'The game opens with the guided example');
+  assert.deepEqual(boardCircuit(), TUTORIAL_CIRCUIT);
+  assert.equal(get('tutorial-panel').hidden, false);
+  assert.equal(get('leaderboard-section').hidden, true);
+  assert.equal(requests.length, 0, 'Tutorials do not load rankings or daily puzzles');
+  assert.equal(workers.length, 0, 'The worked example needs no runtime solver');
+  await cellAt(0, 0).dispatch('click');
+  await documentMock.dispatch('keydown', { key: 'r', target: cellAt(0, 0) });
+  assert.equal(selected().length, 0, 'Tutorial rejects manual circuit edits and shortcuts');
+  await click('tutorial-start');
+  for (const [index, step] of TUTORIAL_STEPS.entries()) {
+    const target = rules.find(button => button.dataset.rule === step.move.rule);
+    assert.equal(target.disabled, false);
+    assert.equal(target.getAttribute('data-tutorial-focus'), '', 'Only the prepared rewrite is highlighted');
+    assert.equal(moveCount(), index);
+    assert.ok(selected().length, 'Each step selects the actual rewrite window');
+    if (index % 2) await click('tutorial-next'); else await target.click();
+    await settle();
+    assert.equal(moveCount(), index + 1, 'A target click performs exactly one rewrite');
+    assert.equal(get('win-dialog').open, false, 'Tutorial completion never opens scoring');
+  }
+  assert.ok(isSolved(boardCircuit()));
+  assert.equal(get('tutorial-heading').textContent, 'Tutorial complete');
+  assert.equal(get('tutorial-levels').hidden, false);
+  assert.equal(requests.length, 0);
+  await click('tutorial-start');
+  assert.equal(moveCount(), 0, 'Restart returns to the prepared first step');
+  await click('mode-campaign'); await boards();
+  await chooseLevel(4);
+  const rememberedCampaign = boardSignature();
+  await click('mode-tutorial'); await click('mode-campaign'); await boards();
+  assert.equal(boardSignature(), rememberedCampaign, 'Tutorial leaves the selected campaign lesson intact');
+  await chooseLevel(1);
+  assert.equal(get('tutorial-panel').hidden, true);
   // A first metadata request can be cancelled before any server clock exists.
   // Back/forward restoration unlocks the same round and restarts its ranks.
   const beforeRestoreBoard = boardSignature();
@@ -230,18 +288,13 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(boardSignature(), beforeRestoreBoard, 'A cancelled Daily response preserves the restored board');
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true');
 
-  // Advanced remains available before the first move, so its Trace control
-  // can be used without needing to discover it after a completed round.
-  assert.equal(get('advanced-features').hidden, false);
-  assert.equal(get('toggle-trace').closest('.advanced-features'), get('advanced-features'));
-  assert.equal(get('sequence').closest('.advanced-features'), get('advanced-features'));
-  assert.equal(get('review-controls').closest('.advanced-features'), null, 'Replay navigation remains reachable outside collapsed Advanced');
-  assert.equal(get('replay').closest('.advanced-features'), get('advanced-features'));
+  for (const id of ['advanced-features', 'toggle-trace', 'sequence']) assert.equal(elements.has(id), false, 'The main game has no Advanced disclosure or Trace interface');
+  assert.equal(get('review-controls').closest('.advanced-features'), null, 'Replay navigation is directly reachable');
+  assert.equal(get('replay').closest('.advanced-features'), null);
+  assert.equal(get('replay-actions').hidden, true, 'An untouched round has no empty replay row');
   assert.equal(get('replay-result').closest('.advanced-features'), get('result-advanced-features'));
   assert.equal(get('share-score').parentElement, get('replay-actions'));
   assert.equal(get('share-result').parentElement, get('result-replay-actions'));
-  await click('toggle-trace'); assert.equal(get('sequence').hidden, true);
-  await click('toggle-trace'); assert.equal(get('sequence').hidden, false);
   // Tutorial rules and their reference cards unlock only when introduced.
   for (const button of rules) {
     assert.equal(button.hidden, !LEVELS[0].allowedRules.includes(button.dataset.rule));
@@ -387,7 +440,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     assert.equal(boardSignature(), beforeShortcut, `${modifier} + Z undoes spacing too`);
   }
   await addSpace(0, 0); const guardedUndoBoard = boardSignature();
-  for (const extra of [{ shiftKey: true }, { altKey: true }, { repeat: true }, { defaultPrevented: true }, { target: get('custom-circuit') }]) {
+  for (const extra of [{ shiftKey: true }, { altKey: true }, { repeat: true }, { defaultPrevented: true }, { target: get('puzzle-json-text') }]) {
     const ignored = await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'z', ctrlKey: true, ...extra });
     assert.equal(boardSignature(), guardedUndoBoard, 'Native or modified shortcuts do not undo the circuit');
     if (!extra.defaultPrevented) assert.equal(ignored.defaultPrevented, false);
@@ -446,10 +499,18 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.deepEqual(JSON.parse(post.options.body), { game: 'circuit-reduction', level: 1, name: 'Ada', sequence: LEVELS[0].solution });
   await reply(post, boardData({ id: 1, rank: 1, name: 'Ada', moves: 1 }), 201); await saving;
   assert.equal(get('win-results').hidden, false); assert.match(get('player-rank').textContent, /Your rank: 1/);
+  assert.equal(nicknames.get('games.nickname.v1'), 'Ada');
   await click('try-again'); await boards(); assert.equal(moveCount(), 0);
 
   // Empty layouts remain editable after a win without inflating the score.
-  await finish(LEVELS[0]); await click('close-win');
+  await finish(LEVELS[0]);
+  const automaticPost = requests.at(-1);
+  assert.deepEqual(JSON.parse(automaticPost.options.body), { game: 'circuit-reduction', level: 1, name: 'Ada', sequence: LEVELS[0].solution });
+  assert.equal(get('score-form').hidden, true, 'A remembered nickname skips repeated registration.');
+  assert.equal(get('next-level').disabled, true);
+  await reply(automaticPost, {}, 503);
+  assert.equal(get('score-form').hidden, false, 'A failed automatic save permits manual retry.');
+  await click('close-win');
   await addSpace(0, 0, 100); assert.equal(boardCircuit()[0].length, 104); assert.equal(moveCount(), 1);
   await click('compact-identities'); assert.deepEqual(boardCircuit(), [['.', '.']]); assert.equal(moveCount(), 1);
   assert.equal(get('score-form').hidden, false);
@@ -482,37 +543,60 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await reply(staleBoard, boardData({ id: 3, rank: 1, name: 'Stale', moves: 1 }));
   assert.equal(get('win-results').hidden, true, 'A previous leaderboard cannot attach a player to a random round');
   const randomSignature = boardSignature(); await click('mode-random'); assert.equal(boardSignature(), randomSignature);
-  get('custom-circuit').value = '. X X .'; await get('custom-form').dispatch('submit');
+  assert.equal(get('custom-json-actions').hidden, false);
+
+  // Identity construction reuses the ordinary reversible rule palette.
+  await click('create-circuit');
+  assert.equal(get('circuit-editor-controls').hidden, false);
+  assert.deepEqual(boardCircuit(), Array.from({ length: 2 }, () => Array(6).fill('.')));
+  assert.equal(get('save-circuit').disabled, true);
+  assert.equal(get('share-json').disabled, true, 'An empty identity is not a custom puzzle.');
+  assert.equal(get('input-json').disabled, false);
+  get('editor-wires').value = '1'; await get('editor-wires').dispatch('change');
+  await play({ rule: 'cancel-x', row: 0, column: 0, reverse: true });
+  assert.deepEqual(boardCircuit(), [['X', 'X', '.', '.', '.', '.']]);
+  assert.equal(get('win-dialog').open, false, 'Constructing an identity does not finish a game.');
+  assert.equal(get('save-circuit').disabled, false);
+  await click('share-json');
+  assert.deepEqual(JSON.parse(get('puzzle-json-text').value), { circuit: [['X', 'X', '.', '.', '.', '.']] });
+  await click('puzzle-json-close');
+  await click('save-circuit');
+  assert.equal(get('circuit-editor-controls').hidden, true);
+  assert.equal(moveCount(), 0);
+  workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
+  await finish({ solution: [{ rule: 'cancel-x', row: 0, column: 0 }] });
+  assert.equal(get('score-form').hidden, true);
+  await click('close-win');
+  await importCircuit([['.', 'X', 'X', '.']]);
   workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
   await finish({ solution: LEVELS[0].solution }); assert.equal(get('score-form').hidden, true);
   const beforeRandomSubmit = requests.length; await get('score-form').dispatch('submit'); assert.equal(requests.length, beforeRandomSubmit, 'Random/custom wins never create a ranked score');
 
   // Replay reviews snapshots, permits undo, and cannot mutate a later round.
   await click('close-win');
-  const traceStep = get('sequence').children[0]; traceStep.focus(); await traceStep.click();
-  assert.equal(get('sequence').children[0], traceStep, 'Inspecting a step retains its live Trace button');
-  assert.equal(documentMock.activeElement, traceStep, 'Keyboard focus remains on the inspected Trace step');
-  assert.equal(traceStep.getAttribute('aria-current'), 'step');
+  assert.equal(get('replay-actions').hidden, false, 'The replay row is visible once a move exists');
+  await click('replay');
+  assert.equal(get('review-note').textContent, 'Step 0 / 1');
+  assert.deepEqual(boardCircuit(), [['.', 'X', 'X', '.']], 'Replay begins with the original circuit');
   const inspectedBoard = boardSignature();
   await cellAt(0, 0).dispatch('pointerdown', mouse(0, 0));
   await get('circuit-board').dispatch('pointermove', mouse(0, 1));
   await documentMock.dispatch('keydown', { target: get('circuit-scroll'), key: 'Enter' });
   assert.deepEqual(selectedKeys(), [], 'Review snapshots cannot be selected by dragging');
   assert.equal(boardSignature(), inspectedBoard, 'Enter cannot rewrite an inspected snapshot');
-  await click('resume-round'); assert.equal(traceStep.getAttribute('aria-current'), 'false');
+  await click('resume-round'); assert.equal(get('review-controls').hidden, true);
+  const finishedBoard = boardCircuit();
   await addSpace(0, 0);
-  assert.equal(get('sequence').children[0], traceStep, 'Appending a free layout step retains earlier Trace buttons');
-  assert.equal(get('sequence').children[1].textContent, '·');
+  assert.equal(boardCircuit()[0].length, finishedBoard[0].length + 1);
+  assert.equal(moveCount(), 1, 'Free layout history does not add a rewrite');
   await click('undo'); await boards();
-  assert.equal(get('sequence').children.length, 1);
-  assert.equal(get('sequence').children[0], traceStep, 'Undo removes only the last Trace button');
+  assert.deepEqual(boardCircuit(), finishedBoard, 'Undo restores the circuit before the free layout step');
+  assert.equal(moveCount(), 1);
   await click('replay-result'); assert.equal(get('win-dialog').open, false); assert.equal(get('review-note').textContent, 'Step 0 / 1');
   const replayTimer = [...timers.values()].find(timer => timer.delay === 650); timers.delete(replayTimer); replayTimer.callback();
   assert.equal(get('review-note').textContent, 'Step 1 / 1');
   await click('undo'); await boards(); assert.equal(moveCount(), 0); assert.equal(get('review-controls').hidden, true);
-  const invalid = new Element('BUTTON'); invalid.dataset.step = 'nope'; get('sequence').appendChild(invalid);
-  await invalid.dispatch('click'); assert.equal(get('review-controls').hidden, true);
-  invalid.remove();
+  assert.equal(get('replay-actions').hidden, true, 'Undoing the final move hides the empty replay row');
   await finish({ solution: LEVELS[0].solution });
   const beforeExport = gifs.length;
   await click('share-result'); await settle();
@@ -524,7 +608,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
 
   // An interrupted advisory search leaves an honest status on return and
   // cannot publish an optimum after its worker has been terminated.
-  get('custom-circuit').value = 'H Z H X'; await get('custom-form').dispatch('submit');
+  await importCircuit([['H', 'Z', 'H', 'X']]);
   const interruptedSearch = workers.at(-1), beforeSearchRestore = boardSignature();
   assert.match(get('custom-status').textContent, /Finding a shortest solution/);
   await windowMock.dispatch('pagehide');
@@ -537,49 +621,48 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.match(get('custom-status').textContent, /Identity verified.*unavailable/);
 
   // A custom worker is advisory and stale results cannot change another level.
-  get('custom-circuit').value = 'H Z H X'; await get('custom-form').dispatch('submit'); const staleWorker = workers.at(-1);
+  await importCircuit([['H', 'Z', 'H', 'X']]); const staleWorker = workers.at(-1);
   await click('mode-campaign'); staleWorker.respond({ status: 'optimal', optimalMoves: 99 }); assert.equal(staleWorker.terminated, true);
   assert.equal(get('custom-status').textContent, ''); await boards();
-  globalThis.Worker = undefined; await get('custom-form').dispatch('submit'); assert.match(get('custom-status').textContent, /Identity verified.*unavailable/);
+  await click('mode-random');
+  globalThis.Worker = undefined; await importCircuit([['H', 'Z', 'H', 'X']]); assert.match(get('custom-status').textContent, /Identity verified.*unavailable/);
   globalThis.Worker = WorkerMock;
-  get('custom-circuit').value = '. X . .'; const validCustom = boardSignature(); await get('custom-form').dispatch('submit');
-  assert.match(get('custom-status').textContent, /not the identity/); assert.equal(boardSignature(), validCustom);
+  const validCustom = boardSignature(); await importCircuit([['.', 'X', '.', '.']]);
+  assert.match(get('puzzle-json-status').textContent, /implement the identity/); assert.equal(boardSignature(), validCustom);
 
   // Import budgets protect parsing, identity evaluation and DOM construction,
   // while the paper game's interactive horizontal layout remains unlimited.
-  const pasteLimit = Number(get('custom-circuit').getAttribute('maxlength'));
-  assert.equal(pasteLimit, 16_384);
+  const pasteLimit = Number(get('puzzle-json-text').getAttribute('maxlength'));
+  assert.equal(pasteLimit, 65_536);
   const beforeLargePaste = boardSignature(), beforeLargePasteMoves = moveCount(), beforeLargePasteWorkers = workers.length;
-  get('custom-circuit').value = '!'.repeat(pasteLimit + 1);
-  await get('custom-form').dispatch('submit');
-  assert.match(get('custom-status').textContent, /up to 16,384 characters/);
+  await inputJson('!'.repeat(pasteLimit + 1));
+  assert.match(get('puzzle-json-status').textContent, /64 KB/);
   assert.equal(boardSignature(), beforeLargePaste, 'An excessive import preserves the current circuit');
   assert.equal(moveCount(), beforeLargePasteMoves);
   assert.equal(workers.length, beforeLargePasteWorkers, 'Excessive imports never start searches');
-  get('custom-circuit').value = 'H H'.padEnd(pasteLimit, ' ');
-  await get('custom-form').dispatch('submit');
+  await inputJson(JSON.stringify({ circuit: [['H', 'H']] }).padEnd(pasteLimit, ' '));
   assert.deepEqual(workers.at(-1).message.circuit, [['H', 'H']], 'Imports at the advertised boundary remain valid');
   workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
   assert.match(get('custom-status').textContent, /Shortest solution: 1 moves/);
   for (const result of [null, undefined, [], {}, 'bad', { status: 'optimal' },
     ...[0, -1, .5, NaN, Infinity, '1'].map(optimalMoves => ({ status: 'optimal', optimalMoves }))]) {
-    get('custom-circuit').value = 'H H'; await get('custom-form').dispatch('submit');
+    await importCircuit([['H', 'H']]);
     const worker = workers.at(-1);
     assert.doesNotThrow(() => worker.respond(result));
     assert.equal(worker.terminated, true, 'Malformed terminal replies release their search worker');
     assert.match(get('custom-status').textContent, /Identity verified.*search limit/);
   }
-  await get('custom-form').dispatch('submit');
+  await importCircuit([['H', 'H']]);
   const unreadableMessage = workers.at(-1);
   unreadableMessage.onmessageerror();
   assert.equal(unreadableMessage.terminated, true);
   assert.match(get('custom-status').textContent, /Identity verified.*search limit/);
   failPosting = true;
-  await get('custom-form').dispatch('submit');
+  await importCircuit([['H', 'H']]);
   assert.equal(workers.at(-1).terminated, true, 'A synchronous posting failure releases its worker');
   assert.match(get('custom-status').textContent, /Identity verified.*search limit/);
   failPosting = false;
-  await get('custom-form').dispatch('submit');
+  await importCircuit([['H', 'H']]);
   workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
   assert.match(get('custom-status').textContent, /Shortest solution: 1 moves/, 'A search failure does not prevent the next import');
 
@@ -603,6 +686,9 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(boardSignature(), savedBoard); assert.equal(moveCount(), savedMoves);
   assert.equal(get('win-dialog').open, true); assert.equal(get('score-form').hidden, true);
   assert.equal(get('win-results').hidden, false, 'A BFCache return preserves the saved score');
+  get('result-advanced-features').open = true;
+  await click('nickname-forget');
+  assert.equal(nicknames.has('games.nickname.v1'), false);
 
   // Every PDF lesson is playable using only its unlocked rules and public layout controls.
   for (const lesson of LEVELS) {
@@ -615,12 +701,9 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   // Server time is authoritative, and reopening today's puzzle preserves play.
   const today = '2026-10-14', beforeMidnight = dailyBounds(today).closesAt - 1000;
   await loadDaily(today, beforeMidnight, true); const puzzle = dailyPuzzle(today);
-  assert.equal(get('advanced-features').hidden, false, 'Daily mode keeps Advanced available for Trace');
-  assert.equal(get('toggle-trace').closest('.advanced-features'), get('advanced-features'));
-  await click('toggle-trace'); assert.equal(get('sequence').hidden, true);
-  await click('toggle-trace'); assert.equal(get('sequence').hidden, false);
   Date.now = () => Date.parse('2036-01-01T12:00:00Z');
-  assert.equal(get('replay').closest('.advanced-features'), get('advanced-features'), 'Daily replay remains in main Advanced');
+  assert.equal(get('replay').closest('.advanced-features'), null, 'Daily replay is directly reachable');
+  assert.equal(get('replay-actions').hidden, true, 'An untouched daily has no replay row');
   assert.equal(get('replay-result').closest('.advanced-features'), get('result-advanced-features'), 'Daily result replay remains in result Advanced');
   assert.equal(get('result-advanced-features').hidden, false);
   assert.equal(get('share-score').parentElement, get('daily-replay-actions'));
@@ -628,10 +711,12 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(get('daily-replay-actions').hidden, true, 'An unwon daily has no empty share-action block');
   assert.equal(get('daily-result-actions').hidden, true);
   await play(puzzle.solution[0]); const dailyProgress = boardSignature();
-  await get('sequence').querySelectorAll('[data-step]')[0].click();
-  assert.equal(get('review-controls').hidden, false, 'A daily Trace step opens replay inspection');
+  assert.equal(get('replay-actions').hidden, false);
+  await click('replay');
+  assert.equal(get('review-controls').hidden, false, 'The direct daily replay button opens inspection');
+  assert.deepEqual(boardCircuit(), puzzle.circuit);
   await click('resume-round'); assert.equal(get('review-controls').hidden, true);
-  assert.equal(boardSignature(), dailyProgress, 'Leaving daily Trace inspection preserves the round');
+  assert.equal(boardSignature(), dailyProgress, 'Leaving daily replay inspection preserves the round');
   await loadDaily(today, beforeMidnight, true); assert.equal(moveCount(), 1); assert.equal(boardSignature(), dailyProgress);
   for (const move of puzzle.solution.slice(1)) await play(move);
   assert.equal(get('daily-replay-actions').hidden, false);
@@ -652,6 +737,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   // An API rejection at midnight turns an already-won round into practice.
   await loadDaily('2026-10-15', dailyBounds('2026-10-15').opensAt + 100, true);
   const next = dailyPuzzle('2026-10-15'); await finish(next);
+  get('player-name').value = 'Ada';
   const expiring = get('score-form').dispatch('submit'), expired = requests.at(-1);
   await reply(expired, { error: 'This puzzle’s leaderboard is closed.' }, 409); await expiring;
   assert.equal(get('score-form').hidden, true); assert.equal(get('win-practice').hidden, false);
@@ -666,7 +752,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   documentMock.hidden = false; const resumed = documentMock.dispatch('visibilitychange'); await reply(pendingDaily(), metadata(today)); await resumed; await boards();
   assert.equal(get('daily-status').textContent, '');
   await click('mode-campaign'); await boards();
-  assert.equal(get('share-score').parentElement, get('replay-actions'), 'Leaving daily restores main Share to Advanced');
+  assert.equal(get('share-score').parentElement, get('replay-actions'), 'Leaving daily restores main Share to the replay row');
   assert.equal(get('share-result').parentElement, get('result-replay-actions'), 'Leaving daily restores result Share to Advanced');
   assert.equal(get('daily-replay-actions').hidden, true);
   assert.equal(get('daily-result-actions').hidden, true);

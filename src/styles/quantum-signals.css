@@ -1,0 +1,78 @@
+.signal-prototype { display: inline-block; vertical-align: middle; font: .7rem var(--font-ui); font-weight: 500; letter-spacing: .04em; color: var(--color-muted); border: 1px solid var(--color-border); border-radius: 3px; padding: .25rem .4rem; }
+.signal-scroll { margin-top: .8rem; scrollbar-gutter: stable; padding: .5rem 0; border-radius: 5px; }
+#signal-board { position: relative; margin-inline: auto; user-select: none; font-family: var(--font-mono); }
+#signal-board .signal-wires { position: absolute; inset: 0; pointer-events: none; }
+#signal-board .signal-hole, #signal-board .signal-fixed { position: absolute; width: 48px; padding: 0; transform: translate(-50%, -22px); }
+#signal-board .signal-hole { border: 0; border-radius: 6px; color: var(--color-heading); background: rgba(154,217,209,.05); cursor: pointer; min-height: 44px; touch-action: manipulation; }
+#signal-board .signal-hole::before { content: ''; position: absolute; inset: 0; border: 1.5px dashed var(--color-accent); border-radius: inherit; pointer-events: none; }
+#signal-board .signal-hole[data-filled="true"]::before { border-style: solid; border-color: var(--color-border); }
+#signal-board .signal-hole[aria-pressed="true"] { outline: 2px solid var(--color-accent); outline-offset: 3px; background: rgba(154,217,209,.12); }
+#signal-board .signal-hole:focus-visible { outline: 3px solid var(--color-heading); outline-offset: 3px; }
+#signal-board .signal-hole:disabled { cursor: default; opacity: .7; }
+#signal-board .signal-fixed { pointer-events: none; }
+#signal-board .signal-endpoint { position: absolute; top: var(--endpoint-top); left: 50%; transform: translateX(-50%); width: 44px; height: 44px; display: grid; place-items: center; }
+#signal-board .signal-link { position: absolute; left: 50%; transform: translateX(-50%); width: 2px; background: #9ad9d1; }
+.signal-palette { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; }
+.signal-palette [data-choice] { display: grid; place-items: center; min-width: 52px; min-height: 52px; padding: 3px; }
+.signal-palette [data-choice][aria-pressed="true"] { background: #273c32; border-color: var(--color-accent); }
+.signal-palette .gate-glyph { width: 38px; height: 38px; }
+.signal-twin { position: relative; width: 36px; height: 44px; display: flex; flex-direction: column; align-items: center; }
+.signal-twin::before { content: ''; position: absolute; left: 17px; top: 10px; bottom: 10px; width: 2px; background: #9ad9d1; }
+.signal-twin .gate-glyph { position: relative; width: 22px; height: 22px; }
+.signal-empty { font-size: 1.6rem; color: var(--color-muted); }
+.signal-flow-scroll { max-height: 420px; overflow-y: auto; }
+#signal-flow { display: block; max-width: none; margin-inline: auto; }
+.signal-flow-lane { stroke: #6d7b71; stroke-opacity: .3; stroke-width: 1; }
+.signal-flow-divider { stroke: var(--color-border); stroke-width: 1; }
+.signal-flow-path { fill: none; stroke-linecap: round; stroke-opacity: .85; }
+.signal-flow-node, .signal-flow-target { stroke-width: 1.4; }
+.signal-flow-target { stroke-width: 2; }
+#signal-flow[data-match="true"] .signal-flow-target { stroke-width: 3; }
+.signal-flow-label { fill: var(--color-muted); font: 11px var(--font-mono); }
+.signal-flow-gutter { pointer-events: none; }
+.signal-flow-gutter rect { fill: var(--color-surface-2); }
+.signal-flow-heading { fill: var(--color-muted); font: 11px var(--font-ui); }
+.signal-flow-selection { fill: #9ad9d1; fill-opacity: .06; stroke: #9ad9d1; stroke-opacity: .25; }
+#custom-details { margin-top: .5rem; }
+.puzzle-editor { display: grid; gap: .8rem; margin-top: .7rem; text-align: left; }
+.puzzle-editor label { display: grid; gap: .35rem; min-width: 0; }
+.puzzle-editor select { width: 100%; max-width: none; min-height: 44px; }
+.editor-dimensions { display: flex; flex-wrap: wrap; gap: .7rem; }
+.editor-dimensions > label { flex: 1; min-width: 7rem; }
+.editor-workspace { position: relative; min-width: 0; }
+.editor-scroll { overflow: auto; max-width: 100%; border: 1px solid var(--color-border); border-radius: 4px; padding-block: .6rem; }
+.editor-board { position: relative; display: grid; grid-auto-rows: 64px; width: max-content; margin-inline: auto; }
+.quantum-game .editor-cell { position: relative; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px; background: transparent; cursor: pointer; }
+.editor-cell::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1.8px; transform: translateY(-50%); background: #f5f5f2; }
+.editor-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--color-accent); }
+.editor-cell[data-connectable] { background: var(--color-accent-soft); outline: 1px dashed var(--color-accent); outline-offset: -5px; cursor: crosshair; }
+.editor-cell[data-endpoint] { outline: 1px dashed var(--color-accent); outline-offset: -5px; }
+.editor-cell:focus-visible { outline: 2px solid var(--color-heading); outline-offset: -3px; }
+.editor-cell > .gate-glyph, .editor-hole { position: relative; z-index: 2; width: 34px; height: 34px; }
+.editor-hole { border: 1.5px dashed var(--color-accent); border-radius: 5px; background: rgba(154,217,209,.08); }
+.editor-link { position: absolute; z-index: 1; width: 2px; transform: translateX(-50%); background: #9ad9d1; pointer-events: none; }
+.editor-endpoint-icon { position: relative; z-index: 2; display: grid; place-items: center; width: 34px; height: 34px; }
+.editor-endpoint-icon::after { content: ''; position: absolute; left: 50%; top: 50%; height: 23px; border-left: 2px dashed var(--color-accent); transform: translateX(-50%); }
+.editor-endpoint-icon > .gate-glyph, .editor-endpoint-icon > .editor-hole { position: relative; z-index: 1; width: 34px; height: 34px; }
+.editor-menu { position: absolute; z-index: 10; max-width: 100%; max-height: calc(100dvh - 16px); overflow-y: auto; padding: .4rem; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-surface); box-shadow: var(--shadow-soft); }
+.editor-tools { display: grid; grid-template-columns: repeat(3, 44px); gap: .3rem; }
+.quantum-game .editor-tool { display: grid; place-items: center; width: 44px; height: 48px; padding: 2px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--color-text); cursor: pointer; }
+.editor-tool:hover, .editor-tool[aria-pressed="true"] { background: var(--color-accent-soft); border-color: var(--color-accent); }
+.editor-tool > .gate-glyph { width: 34px; height: 34px; }
+.editor-erase { font-size: 1.8rem; line-height: 1; }
+.editor-pair-hole { position: relative; height: 42px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+.editor-pair-hole::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--color-accent); transform: translateX(-50%); }
+.editor-pair-hole .editor-hole { width: 17px; height: 17px; background: var(--color-surface); }
+.puzzle-editor fieldset { min-width: 0; margin: 0; padding: .65rem; border: 1px solid var(--color-border); border-radius: 4px; }
+.puzzle-editor legend { padding-inline: .3rem; color: var(--color-muted); }
+#editor-choices { margin-top: .4rem; padding-top: .4rem; border-top: 1px solid var(--color-border); }
+#editor-gates { display: grid; grid-template-columns: repeat(2, 44px); justify-content: center; gap: .3rem; }
+.editor-targets { display: flex; flex-direction: column; max-width: 14rem; max-height: 23rem; overflow-y: auto; }
+.quantum-game .editor-target { display: grid; grid-template-columns: max-content 1fr 24px; align-items: center; gap: .7rem; min-height: 44px; flex-shrink: 0; padding: .3rem .6rem; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--color-muted); font: .85rem var(--font-mono); cursor: pointer; }
+.editor-target:hover { background: var(--color-accent-soft); }
+.editor-target-line { height: 1px; background: var(--color-border-strong); }
+.editor-target-dot { justify-self: center; width: 20px; height: 20px; border: 1.5px solid var(--color-border-strong); border-radius: 50%; }
+.puzzle-editor > .button { justify-self: start; }
+.custom-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: center; max-width: 37rem; margin: 1rem auto 0; font: .9rem var(--font-ui); }
+.custom-controls select { min-height: 44px; }
+.quantum-game .ranking input[type="checkbox"] { accent-color: var(--color-accent); opacity: 1; }

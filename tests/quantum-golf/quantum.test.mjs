@@ -158,10 +158,13 @@ test('random targets exclude the initial hole without rejection and retain unifo
 
 test('invalid geometry is rejected instead of introducing NaN into rendering', () => {
   assert.throws(() => normalize([0, 0, 0]), RangeError);
+  assert.throws(() => normalize([1.7e308, 1.7e308, 1.7e308]), RangeError);
+  assert.throws(() => normalize([1, , 0]), RangeError);
   assert.throws(() => normalize([NaN, 0, 1]), TypeError);
   assert.throws(() => applyGate(START_STATE, 'X'), RangeError);
   assert.throws(() => gateRotation(START_STATE, 'X'), RangeError);
   assert.throws(() => gateRotation([0, 0, 0], 'H'), RangeError);
   assert.throws(() => targetCap(START_STATE, -0.1), RangeError);
+  for (const steps of [0, -1, 1.5, Infinity]) assert.throws(() => targetCap(START_STATE, .1, steps), RangeError);
   assert.throws(() => randomTarget(1), RangeError);
 });

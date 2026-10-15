@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createDailySession } from '../../src/lib/games/daily-session.js';
 import { dailyBounds } from '../../src/lib/games/daily-calendar.js';
 import { validateCircuit } from '../../src/lib/circuit-reduction/engine.js';
+import { validatePuzzle as validateSignalsPuzzle } from '../../src/lib/quantum-signals/engine.js';
 
 function metadata(date = '2026-10-14', overrides = {}) {
   const today = overrides.today ?? date;
@@ -155,6 +156,22 @@ test('Retries wait for gameplay to settle and cancellation clears deferred work'
   h.session.cancel();
   assert.equal(h.timers.size, 0);
   assert.equal(h.status.textContent, '');
+});
+
+test('Unranked daily puzzles recover from offline fallback without benchmark metadata', async context => {
+  const puzzle = { wires: 1, columns: [[{ id: 'a', wires: [0], choices: ['I', 'X'] }]], target: [0, 1] };
+  const h = harness(context, { ranked: false, validatePuzzle: validateSignalsPuzzle, offlineMessage: 'Offline puzzle.',
+    fallback: date => metadata(date, { puzzle, acceptingScores: false, offline: true }) });
+  const load = h.session.load('2026-10-14');
+  h.respond(h.requests.at(-1), {}, 503); await load;
+  assert.equal(h.status.textContent, 'Offline puzzle.');
+  assert.deepEqual(h.puzzles.at(-1).response.puzzle, puzzle);
+  assert.equal(Object.hasOwn(h.puzzles.at(-1).response.puzzle, 'optimalMoves'), false);
+  const retry = h.runTimer(h.timerAt(60_000));
+  h.respond(h.requests.at(-1), metadata('2026-10-14', { puzzle, acceptingScores: false })); await retry;
+  assert.equal(h.status.textContent, '');
+  assert.equal(h.puzzles.at(-1).select, false);
+  h.session.cancel();
 });
 
 test('Invalid archive dates never retry or enter offline fallback', async context => {

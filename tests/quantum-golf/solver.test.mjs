@@ -23,6 +23,8 @@ function bruteMinimum(target, epsilon, maxDepth) {
 
 test('campaign holes have fixed, independently verified nondecreasing shortest move counts', () => {
   assert.deepEqual(LEVELS.map((level) => level.id), Array.from({ length: LEVELS.length }, (_, index) => index + 1));
+  assert.ok(LEVELS.every(level => typeof level.title === 'string' && level.title.trim().length > 3));
+  assert.equal(new Set(LEVELS.map(level => level.title)).size, LEVELS.length, 'Built-in level names are unique');
   assert.ok(LEVELS.at(-1).optimalMoves >= 24, 'The final hole needs a substantially longer circuit');
   assert.ok(LEVELS.at(-1).epsilon <= 0.003, 'The final hole demands fine precision');
   const verification = runPython([fileURLToPath(websiteFile('tools/quantum-golf/precompute.py')), '--check']);
@@ -42,7 +44,6 @@ test('campaign holes have fixed, independently verified nondecreasing shortest m
     assert.equal(solution.sequence.length, level.optimalMoves);
     assert.match(solution.sequence, /^[HT]+$/);
     assert.ok(traceDistance(replay(solution.sequence), level.target) < level.epsilon);
-    assert.ok(level.title);
     assert.equal('sequence' in level, false, 'Campaign metadata must not ship the benchmark circuit');
     assert.equal('witness' in level, false);
   }
@@ -126,4 +127,6 @@ test('campaign runtime data omits circuits and offline generation fixtures', asy
   const source = await readFile(websiteFile('src/lib/quantum-golf/levels.json'), 'utf8');
   assert.doesNotMatch(source, /["'](?:witness|generationWitness|sequence)["']\s*:/);
   assert.doesNotMatch(source, /witnesses\.json/);
+  const server = JSON.parse(await readFile(websiteFile('src/lib/quantum-golf/campaign.json'), 'utf8'));
+  assert.deepEqual(server.levels, LEVELS.map(({ title, ...level }) => level), 'Server data keeps only scoring metadata');
 });

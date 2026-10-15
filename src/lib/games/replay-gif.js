@@ -7,9 +7,10 @@ export function installReplayEncoder(encodeReplay) {
   globalThis.onmessage = async ({ data }) => {
     try {
       let finalFrame, image;
-      const bytes = encodeReplay(data, progress => globalThis.postMessage({ progress }), canvas => { finalFrame = canvas; });
+      const bytes = encodeReplay(data.round, progress => globalThis.postMessage({ progress }),
+        data.image ? canvas => { finalFrame = canvas; } : undefined);
       // PNG support is optional: a conversion failure must preserve the GIF.
-      try { image = await finalFrame.convertToBlob({ type: 'image/png' }); } catch {}
+      if (data.image) try { image = await finalFrame.convertToBlob({ type: 'image/png' }); } catch {}
       globalThis.postMessage({ bytes, ...(image ? { image } : {}) }, [bytes.buffer]);
     } catch (error) {
       globalThis.postMessage({ error: error.message || failed, name: error.name });
@@ -56,7 +57,7 @@ export function createWorkerReplayGif(round, createWorker, { signal, onProgress,
       worker.onmessageerror = () => finish(new Error(failed));
       signal?.addEventListener('abort', cancel, { once: true });
       if (signal?.aborted) return cancel();
-      worker.postMessage(round);
+      worker.postMessage({ round, image: typeof onImage === 'function' });
     } catch {
       finish(new Error(failed));
     }

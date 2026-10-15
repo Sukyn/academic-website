@@ -142,16 +142,15 @@ try {
           if (url.origin === base.origin && url.pathname !== '/__quality-missing__/') links.set(url.href, url);
         }
         const audit = await accessibility(page, `${profile}:${pathname}`);
-        for (const trigger of ['[data-cite-modal-trigger]', '[data-offer-modal-trigger]']) {
-          const button = page.locator(trigger).first();
-          if (!await button.count()) continue;
-          await button.click();
+        const contentTrigger = page.locator('[data-content-dialog]').first();
+        if (await contentTrigger.count()) {
+          await contentTrigger.click();
           const dialog = page.locator('dialog[open]');
           await dialog.waitFor();
           assert.equal(await dialog.evaluate(element => element.contains(document.activeElement)), true, 'Focus enters dialog');
           await accessibility(page, `${profile}:${pathname}:dialog`);
           await page.keyboard.press('Escape');
-          assert.equal(await button.evaluate(element => element === document.activeElement), true, 'Focus returns to trigger');
+          assert.equal(await contentTrigger.evaluate(element => element === document.activeElement), true, 'Focus returns to trigger');
         }
         assert.deepEqual(errors, [], `${pathname}: browser errors`);
         const metrics = await page.evaluate(() => ({
@@ -264,6 +263,7 @@ try {
       await page.route('**/api/**', route => route.fulfill({ status: 503,
         contentType: 'application/json', body: '{"error":"Service unavailable"}' }));
       await page.goto(new URL(`games/${game}/?unexpected=%00#%E0%A4%A`, base).href);
+      await page.locator('#mode-campaign').click();
       await page.locator('#leaderboard-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
       if (game === 'quantum-golf') await page.locator('#gate-t').click();
       else {

@@ -204,7 +204,7 @@ const talkTimeline = talks
                     <button
                       type="button"
                       class="cite-trigger"
-                      data-cite-modal-trigger={`${publication.id}-cite`}
+                      data-content-dialog={`${publication.id}-cite`}
                       aria-haspopup="dialog"
                       aria-controls={`${publication.id}-cite-dialog`}
                     >
@@ -295,49 +295,26 @@ const talkTimeline = talks
   </section>
 
   <script>
-    import { bindDialogControls } from "../scripts/dialogs";
+    for (const button of document.querySelectorAll<HTMLButtonElement>("[data-citation-copy]")) {
+      const targetId = button.dataset.citationTarget;
+      const citation = targetId ? document.getElementById(targetId)?.textContent : undefined;
+      const status = button.parentElement?.querySelector<HTMLElement>("[data-citation-copy-status]");
+      let timer: ReturnType<typeof setTimeout>;
 
-    bindDialogControls({
-      marker: "__publicationDialogBindings",
-      triggerAttribute: "data-cite-modal-trigger",
-    });
-
-    (() => {
-      const marker = "__citationCopyBindings";
-      const state = window as typeof window & { [key: string]: boolean };
-      if (state[marker]) return;
-      state[marker] = true;
-
-      document.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-
-        const copyButton = target.closest("[data-citation-copy]");
-        if (copyButton instanceof HTMLButtonElement) {
-          event.preventDefault();
-
-          const targetId = copyButton.dataset.citationTarget;
-          const citation = targetId ? document.getElementById(targetId)?.textContent : undefined;
-          const status = copyButton.parentElement?.querySelector("[data-citation-copy-status]");
-
-          if (!citation) return;
-
-          try {
-            await navigator.clipboard.writeText(citation);
-            if (status instanceof HTMLElement) status.textContent = "Copied";
-          } catch {
-            if (status instanceof HTMLElement) status.textContent = "Copy failed";
-          }
-
-          if (status instanceof HTMLElement) {
-            window.setTimeout(() => {
-              status.textContent = "";
-            }, 1800);
-          }
-          return;
+      button.addEventListener("click", async () => {
+        if (!citation) return;
+        try {
+          await navigator.clipboard.writeText(citation);
+          if (status) status.textContent = "Copied";
+        } catch {
+          if (status) status.textContent = "Copy failed";
+        }
+        if (status) {
+          clearTimeout(timer);
+          timer = setTimeout(() => { status.textContent = ""; }, 1800);
         }
       });
-    })();
+    }
   </script>
 
   <style>

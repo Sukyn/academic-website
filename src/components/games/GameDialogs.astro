@@ -1,6 +1,8 @@
 ---
-interface Props { gameTitle: string; unit?: string }
-const { gameTitle, unit = 'Moves' } = Astro.props;
+interface Props { gameTitle: string; unit?: string; completionOnly?: boolean }
+const { gameTitle, unit = 'Moves', completionOnly = false } = Astro.props;
+const ranked = !completionOnly;
+const shareTitle = ranked ? 'Share your score' : 'Share your replay';
 ---
 
 <dialog class="game-dialog rules-dialog" id="rules-dialog" aria-labelledby="rules-title">
@@ -9,43 +11,66 @@ const { gameTitle, unit = 'Moves' } = Astro.props;
   <slot name="rules" />
 </dialog>
 
+<dialog class="game-dialog puzzle-json-dialog" id="puzzle-json-dialog" aria-labelledby="puzzle-json-title">
+  <button class="close-dialog" id="puzzle-json-close" type="button" aria-label="Close JSON">×</button>
+  <h2 id="puzzle-json-title">Input a json</h2>
+  <form id="puzzle-json-form">
+    <label for="puzzle-json-text">Puzzle JSON</label>
+    <textarea id="puzzle-json-text" rows="10" maxlength="65536" spellcheck="false" autocapitalize="off" autocomplete="off" required></textarea>
+    <label id="puzzle-json-file-label">JSON file<input id="puzzle-json-file" type="file" accept=".json,application/json" /></label>
+    <div class="share-actions">
+      <button class="button" id="puzzle-json-apply" type="submit">Play puzzle</button>
+      <button class="button" id="puzzle-json-copy" type="button" hidden>Copy</button>
+      <button class="button ghost" id="puzzle-json-download" type="button" hidden>Download JSON</button>
+    </div>
+  </form>
+  <p class="message" id="puzzle-json-status" role="status"></p>
+</dialog>
+
 <dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
   <button class="close-dialog" id="close-win" type="button" aria-label="Close popup">×</button>
   <h2 id="win-title">GG</h2>
   <p id="win-summary" role="status"></p>
-  <p id="win-practice" hidden>Practice completed.</p>
+  {ranked && <p id="win-practice" hidden>Practice completed.</p>}
   <form class="score-form" id="score-form">
     <label for="player-name">Name or nickname</label>
     <input id="player-name" name="name" type="text" maxlength="48" pattern=".{1,24}" required autocomplete="nickname" autofocus />
-    <button class="button" id="submit-score" type="submit">Validate</button>
+    <button class="button" id="submit-score" type="submit">{completionOnly ? 'Save completion' : 'Validate'}</button>
   </form>
   <div id="win-results" hidden>
-    <p id="player-rank" role="status"></p>
-    <div class="ranking" tabindex="0" role="region" aria-label="Your leaderboard position">
-      <table><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">{unit}</th></tr></thead><tbody id="result-leaderboard-body"></tbody></table>
+    {ranked && <p id="player-rank" role="status"></p>}
+    <div class="ranking" tabindex="0" role="region" aria-label={completionOnly ? 'Completed players for this result' : 'Your leaderboard position'}>
+      <table><thead><tr>{!completionOnly && <th scope="col">Rank</th>}<th scope="col">Player</th><th scope="col">{completionOnly ? 'Completed' : unit}</th></tr></thead><tbody id="result-leaderboard-body"></tbody></table>
     </div>
   </div>
-  <div class="result-actions" id="result-actions" hidden>
+  <div class="result-actions" id="result-actions" hidden={ranked}>
     <button class="button ghost" id="try-again" type="button">Try again</button>
     <button class="button" id="result-next" type="button">Next level</button>
     <slot name="result-actions" />
   </div>
-  <div id="daily-result-actions" class="daily-replay-actions" hidden></div>
+  {ranked && <div id="daily-result-actions" class="daily-replay-actions" hidden></div>}
   <details class="advanced-features" id="result-advanced-features">
     <summary>Advanced</summary>
     <div class="replay-actions" id="result-replay-actions">
       <button class="button ghost" id="replay-result" type="button">See the replay</button>
-      <button class="button ghost" id="share-result" type="button" hidden>Share your score</button>
+      <button class="button ghost" id="share-result" type="button" hidden>{shareTitle}</button>
     </div>
+    <form class="score-form" id="nickname-form" hidden>
+      <label for="nickname-value">Saved nickname</label>
+      <input id="nickname-value" type="text" maxlength="48" pattern=".{1,24}" required autocomplete="nickname" />
+      <button class="button ghost" id="nickname-save" type="submit">Save</button>
+      <button class="button ghost" id="nickname-forget" type="button">Forget</button>
+      <p class="message" id="nickname-status" role="status"></p>
+    </form>
   </details>
   <p class="message" id="score-status" role="status" aria-live="polite"></p>
 </dialog>
 
 <dialog class="game-dialog share-dialog" id="share-dialog" aria-labelledby="share-title">
   <button class="close-dialog" id="close-share" type="button" aria-label="Close sharing">×</button>
-  <h2 id="share-title">Share your score</h2>
+  <h2 id="share-title">{shareTitle}</h2>
   <p class="message" id="share-status" role="status"></p>
-  <img id="share-preview" hidden alt={`Replay of your ${gameTitle.toLowerCase()} score`} />
+  <img id="share-preview" hidden alt={`Replay of your ${gameTitle.toLowerCase()} ${ranked ? 'score' : 'circuit'}`} />
   <div class="share-actions">
     <button class="button" id="copy-gif" type="button" disabled>Copy image</button>
     <button class="button ghost" id="download-gif" type="button">Download the replay</button>
