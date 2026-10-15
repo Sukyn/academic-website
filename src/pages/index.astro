@@ -8,6 +8,22 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 const highlights = parseBibtexToPubs(bibtex).filter(publication =>
   publication.id === "blake:LIPIcs.MFCS.2026.6" || publication.id === "blake:LIPIcs.FSCD.2026.6");
+
+const namesakes = [
+  { role: "the hockey player", href: "https://www.eliteprospects.com/player/240742/colin-blake" },
+  { role: "the production designer", href: "https://www.imdb.com/name/nm2072003/" },
+  { role: "the American football player", href: "https://www.sports-reference.com/cfb/players/colin-blake-1.html" },
+  { role: "the baseball pitcher", href: "https://scsuowls.com/sports/baseball/roster/colin-blake/11534" },
+  { role: "the motion designer", href: "https://www.colinblake.co.uk/" },
+  { role: "the ambient musician", href: "https://weareallghosts.bandcamp.com/album/all-is-bright-2023-waag-com006" },
+  { role: "the molecular biophysicist", href: "https://www.nature.com/articles/306535a0" },
+  { role: "the membrane researcher", href: "https://kusoglulab.lbl.gov/publications?author=Colin+Blake" },
+  { role: "the applications engineer", href: "https://www.linkedin.com/in/colinblake" },
+  { role: "the psychometrist", href: "https://za.linkedin.com/in/cbpractice" },
+  { role: "the vicar", href: "https://zephaniah.org.uk/2017/11/08/sparks-of-hope-the-christmas-resource/" },
+  { role: "the snowboard coach", href: "https://www.generalassemb.ly/instructors/colin-blake/4754" },
+  { role: "the film festival organiser", href: "https://www.alamedafilmfest.com/about" },
+];
 ---
 
 <BaseLayout
@@ -59,41 +75,25 @@ const highlights = parseBibtexToPubs(bibtex).filter(publication =>
     <aside class="disambiguation" aria-labelledby="disambiguation-title">
       <h2 id="disambiguation-title">Disambiguation</h2>
 
-      <p>
-        Because &quot;Colin Blake&quot; turns out not to be a unique identifier, a brief
-        clarification may help. I am not
-        <a
-          href="https://www.eliteprospects.com/player/240742/colin-blake"
-          target="_blank"
-          rel="noopener noreferrer"
-        >the hockey player Colin Blake</a>, nor
-        <a
-          href="https://www.imdb.com/name/nm2072003/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >the production designer Colin Blake.</a>
-      </p>
+      <p>&quot;Colin Blake&quot; is not a primary key. I am not:</p>
+      <ul>
+        {namesakes.map(person => (
+          <li>
+            <a href={person.href} target="_blank" rel="noopener noreferrer">Colin Blake, {person.role}</a>.
+          </li>
+        ))}
+      </ul>
+
+      <p>(P.S. Please let me know if you know of any other Colin Blakes.)</p>
 
       <p>
-        Genealogically, I cannot currently prove that I am related to
-        <a
-          href="https://en.wikipedia.org/wiki/Blake_(surname)"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          William Blake
-        </a>
-        , but the surname is at least suggestive enough to keep the joke alive.
         For further information on the wider Blake line, I can only recommend
         the impeccably reliable
         <a
           href="https://seanceofblakemanor.wiki.gg/wiki/Blake_Family"
           target="_blank"
           rel="noopener noreferrer"
-        >
-          Blake Family records from <em>The Seance at Blake Manor</em>
-        </a>
-        .
+        >Blake Family records from <em>The Seance at Blake Manor</em></a>.
       </p>
 
       <figure class="colin-barbu" lang="fr">

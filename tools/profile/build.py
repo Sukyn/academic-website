@@ -188,7 +188,6 @@ def cv():
 
     story += section("Invited talks and selected presentations")
     story += [
-        p("<b>Invited seminar, Université de Rouen Normandie</b>, scheduled 15 October 2026: <i>Equations for quantum circuits: from qubits to qudits.</i>"),
         p("<b>MFCS 2026</b>, Paris, 27 August 2026; <b>QPL 2026</b>, Amsterdam, 17 August 2026; <b>FSCD 2026</b>, Lisbon, 23 July 2026: presentations of the papers listed above."),
         p("<b>Invited seminar, Marne-la-Vallée</b>, 26 November 2025: <i>Quantum computing and ZX-calculus.</i>"),
     ]
