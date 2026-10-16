@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { RULES, applyMove, cloneCircuit, isSolved, sequenceCost } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, applyMove, cloneCircuit, compactCircuit, isSolved, moveCost, sequenceCost } from '../../src/lib/circuit-reduction/engine.js';
 import { LEVELS, dailyPuzzle } from '../../tools/circuit-reduction/witnesses.js';
 import { layoutMoves } from '../../tools/circuit-reduction/layout-moves.js';
 import { DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
@@ -250,17 +250,27 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await documentMock.dispatch('keydown', { key: 'r', target: cellAt(0, 0) });
   assert.equal(selected().length, 0, 'Tutorial rejects manual circuit edits and shortcuts');
   await click('tutorial-start');
+  let tutorialMoves = 0;
   for (const [index, step] of TUTORIAL_STEPS.entries()) {
-    const target = rules.find(button => button.dataset.rule === step.move.rule);
+    const target = step.target ? documentMock.querySelector(step.target) : rules.find(button => button.dataset.rule === step.move.rule);
+    assert.ok(target, 'The tutorial highlights an actual game control');
     assert.equal(target.disabled, false);
-    assert.equal(target.getAttribute('data-tutorial-focus'), '', 'Only the prepared rewrite is highlighted');
-    assert.equal(moveCount(), index);
-    assert.ok(selected().length, 'Each step selects the actual rewrite window');
-    if (index % 2) await click('tutorial-next'); else await target.click();
+    assert.equal(target.getAttribute('data-tutorial-focus'), '', 'Only the current action is highlighted');
+    assert.equal(moveCount(), tutorialMoves);
+    assert.equal(Boolean(selected().length), !step.target, 'Only rewrite steps select a gate window');
+    const before = boardCircuit();
+    if (step.target || index % 2 === 0) await target.click(); else await click('tutorial-next');
     await settle();
-    assert.equal(moveCount(), index + 1, 'A target click performs exactly one rewrite');
+    tutorialMoves += moveCost(step.move);
+    assert.equal(moveCount(), tutorialMoves, 'Only rewrites count as moves');
+    if (step.target) {
+      assert.deepEqual(compactCircuit(boardCircuit()), compactCircuit(before), 'Spacing keeps every gate and its wire order');
+      assert.equal(boardCircuit()[0].length, step.move.rule === 'insert-column' ? before[0].length + 1 : 2,
+        'The inserted space or Tidy result remains visible for the next step');
+    }
     assert.equal(get('win-dialog').open, false, 'Tutorial completion never opens scoring');
   }
+  assert.equal(tutorialMoves, 7, 'Layout lessons preserve the seven-rewrite solution');
   assert.ok(isSolved(boardCircuit()));
   assert.equal(get('tutorial-heading').textContent, 'Tutorial complete');
   assert.equal(get('tutorial-levels').hidden, false);

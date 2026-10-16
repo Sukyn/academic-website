@@ -18,7 +18,7 @@ import '../../styles/quantum-signals.css';
 <BaseLayout title="Quantum signals" description="Fill the holes in a quantum circuit. Follow superposition, interference and entanglement to reach the target state.">
   <GameShell>
     <a class="back" href="/games/">← Games</a>
-    <h1>Quantum signals <span class="signal-prototype">Prototype</span></h1>
+    <h1>Quantum signals</h1>
     <div class="game-layout">
       <GameModeMenu />
       <div class="game-content">
@@ -88,7 +88,7 @@ import '../../styles/quantum-signals.css';
     <GameDialogs gameTitle="Quantum signals" completionOnly>
       <Fragment slot="rules">
         <p>Fill each hole to make the output match the target. Choose a hole, then a gate. The straight wire leaves the state unchanged.</p>
-        <p>The white wires show the circuit. Below, each lane is a complete state of its qubits. Lit paths show amplitudes splitting, moving and interfering. Black dots with white outlines mean + phase; white dots with black outlines mean − phase. Larger dots mean a greater chance of that result.</p>
+        <p>The white wires show the circuit. Below, each lane is a complete state of its qubits. Lit paths show amplitudes splitting, moving and interfering. Black dots mean + phase; white dots mean − phase. Larger dots mean a greater chance of that result.</p>
         <p>Match the output dots to the target, including their relative phases. Empty lanes stay dark.</p>
         <p>Yellow squares are H, red ⊕ gates are X, and green dots are Z. Linked dots are CZ. The two CNOT choices swap the control dot and ⊕.</p>
         <p>Arrow keys move between holes. H, X, Z, I or 1–4 place gates. Right-click or Delete clears a hole; Ctrl/Cmd+Z undoes.</p>

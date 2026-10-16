@@ -1,4 +1,6 @@
 /* Shared game navigation, overlays, rankings and responsive controls. */
+  .quantum-game { --golf-h: #ee9f86; --golf-t: #b5a2ea; }
+  .quantum-game button { -webkit-appearance: none; appearance: none; background-image: none; touch-action: manipulation; }
   .quantum-game [hidden] { display: none !important; }
   .quantum-game .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .quantum-game .back { font-family: var(--font-ui); font-size: .85rem; text-decoration: none; }
@@ -22,8 +24,16 @@
   .quantum-game #tutorial-heading { margin-bottom: .3rem; color: var(--color-accent); font-size: .8rem; }
   .quantum-game .tutorial-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; }
   .quantum-game .tutorial-actions .button { padding: .4rem .65rem; font-size: .85rem; }
+  .quantum-game .tutorial-gate { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; line-height: 1; }
+  .quantum-game .tutorial-gate > .gate-glyph { display: block; width: 24px; height: 24px; }
+  .quantum-game .tutorial-letter { min-width: 1.2em; font-family: var(--font-mono); font-weight: 700; }
+  .quantum-game .tutorial-letter[data-gate="H"] { color: var(--golf-h); }
+  .quantum-game .tutorial-letter[data-gate="T"] { color: var(--golf-t); }
+  .quantum-game .tutorial-pair { position: relative; display: inline-flex; flex-direction: column; align-items: center; width: 24px; height: 36px; }
+  .quantum-game .tutorial-pair::before { content: ''; position: absolute; left: 50%; top: 9px; bottom: 9px; width: 2px; transform: translateX(-50%); background: var(--color-accent); }
+  .quantum-game .tutorial-pair > .gate-glyph { position: relative; display: block; flex-shrink: 0; width: 18px; height: 18px; }
   .quantum-game [data-tutorial-focus] { outline: 3px solid var(--color-accent); outline-offset: 4px; scroll-margin-block: 12rem 2rem; }
-  .quantum-game .rule-palette [data-tutorial-focus] { order: -1; }
+  .quantum-game #circuit-board [data-tutorial-focus] .space-glyph { opacity: 1; color: var(--color-accent); }
   .quantum-game .level-bar { display: flex; flex: 1; align-items: center; gap: .5rem; max-width: 24rem; }
   .quantum-game .level-bar button, .quantum-game .level-bar select { height: 2.5rem; line-height: normal; }
   .quantum-game .level-bar button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2rem; padding: 0; }

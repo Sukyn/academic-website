@@ -70,9 +70,9 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
     const targets = surface.frames.at(-1).filter(command => command.name === 'arc' && command.args[0] === targetX && command.lineWidth === 2);
     const expected = puzzle.target.flatMap((amplitude, basis) => Math.abs(amplitude) < 1e-9 ? [] :
       [{ y: flowTop + basis * 28, radius: Math.min(6, 16 * Math.abs(amplitude)), color: amplitude < 0 ? '#ffffff' : '#000000',
-        outline: amplitude < 0 ? '#000000' : '#ffffff' }]);
+        outline: '#ffffff' }]);
     assert.deepEqual(targets.map(command => ({ y: command.args[1], radius: command.args[2], color: command.fillStyle, outline: command.strokeStyle })), expected,
-      'The target keeps fixed basis positions, bounded marker sizes and contrasting phase outlines');
+      'The target keeps fixed basis positions, bounded marker sizes and white outlines');
     if (index === 11) assert.ok(targets.every(command => Math.abs(command.args[2] - 4 * Math.SQRT2) < 1e-9),
       'Level 12 keeps its original target size below the six-pixel cap');
     const emptyTargets = surface.frames.at(-1).filter(command => command.name === 'arc' && command.args[0] === targetX && command.strokeStyle === colors.wire);
@@ -96,8 +96,8 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
       const commands = surface.frames.at(-1);
       assert.ok(commands.some(command => command.name === 'arc' && command.fillStyle === '#ffffff' && command.strokeStyle === '#000000' && command.lineWidth === 1.4),
         'Negative boundary amplitudes are white with black outlines');
-      assert.ok(targets.some(command => command.fillStyle === '#ffffff' && command.strokeStyle === '#000000' && command.lineWidth === 2),
-        'Negative target amplitudes use the same phase styling');
+      assert.ok(targets.some(command => command.fillStyle === '#ffffff' && command.strokeStyle === '#ffffff' && command.lineWidth === 2),
+        'Negative target amplitudes remain solid white');
     }
     assert.ok(surface.frames.every(frame => !texts(frame).includes('⊕')), 'X gates use geometry independent of fonts');
     assert.equal(progress[0], 0); assert.equal(progress.at(-1), 1);
@@ -265,8 +265,8 @@ test('replay keeps sixteen fixed outcomes within the canvas and ignores a global
   assert.ok(targets.every(command => command.args[2] === 4), 'Even sixteen equal outcomes retain an eight-pixel target diameter');
   assert.deepEqual(targets.map(command => command.fillStyle), [...Array(8).fill('#000000'), ...Array(8).fill('#ffffff')],
     'Dense targets keep a black or white center without changing phase');
-  assert.deepEqual(targets.map(command => command.strokeStyle), [...Array(8).fill('#ffffff'), ...Array(8).fill('#000000')],
-    'Every dense target has an outline contrasting with its fill');
+  assert.deepEqual(targets.map(command => command.strokeStyle), Array(16).fill('#ffffff'),
+    'Every dense target retains a white outline for either phase');
   assert.ok(!denseFrame.some(command => command.name === 'arc' && command.args[0] === 666 && command.strokeStyle === colors.wire),
     'Filled target markers use their own border without a second empty-outcome ring');
 });

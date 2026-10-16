@@ -69,7 +69,7 @@ function drawFlow(ctx, puzzle, placements, top) {
   });
   const dot = (x, basis, amplitude, target = false) => {
     if (Math.abs(amplitude) < 1e-9) return;
-    ctx.fillStyle = phaseColor(amplitude); ctx.strokeStyle = phaseOutline(amplitude); ctx.lineWidth = target ? 2 : 1.4;
+    ctx.fillStyle = phaseColor(amplitude); ctx.strokeStyle = target ? PHASE_COLORS.negative : phaseOutline(amplitude); ctx.lineWidth = target ? 2 : 1.4;
     ctx.beginPath(); ctx.arc(x, y(basis), target ? targetRadius(amplitude) : 8 * Math.abs(amplitude), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   };
   snapshots.forEach((state, column) => state.forEach((amplitude, basis) => dot(left + column * step, basis, amplitude)));

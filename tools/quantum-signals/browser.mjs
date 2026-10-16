@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { getHoles, solvePuzzle, puzzleData, validateCustomPuzzle, simulate, stateEqual } from '../../src/lib/quantum-signals/engine.js';
 import { LEVELS, dailyPuzzle } from '../../src/lib/quantum-signals/puzzles.js';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
-import { phaseColor, phaseOutline, PHASE_PATH_COLOR } from '../../src/lib/quantum-signals/state-visuals.js';
+import { phaseColor, phaseOutline, PHASE_COLORS, PHASE_PATH_COLOR } from '../../src/lib/quantum-signals/state-visuals.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
@@ -277,9 +277,10 @@ async function basisFlow(page, puzzle, placements = {}) {
   assert.deepEqual(actual.lanes.map(lane => lane.basis), Array.from({ length: 2 ** puzzle.wires }, (_, basis) => basis), 'Every complete basis state has its own fixed lane');
   for (const item of [...actual.nodes, ...actual.targets]) {
     assert.equal(item.fill, phaseColor(item.amplitude), 'Positive phases have black dots; negative phases have white dots');
-    assert.equal(item.stroke, phaseOutline(item.amplitude), 'Every phase dot has the opposite black or white outline');
     assert.ok(item.strokeWidth > 0, 'The phase outline remains visible, including matched targets');
   }
+  for (const node of actual.nodes) assert.equal(node.stroke, phaseOutline(node.amplitude), 'Intermediate phase dots have the opposite black or white outline');
+  for (const target of actual.targets) assert.equal(target.stroke, PHASE_COLORS.negative, 'Both target phases have white outlines');
   for (const edge of actual.edges) {
     assert.equal(edge.stroke, PHASE_PATH_COLOR, 'Connecting paths stay neutral; dots carry the phase');
   }
@@ -427,6 +428,137 @@ async function horizontalNavigation(page) {
   await selectedInView(page);
   await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
   await pinnedBasisLabels(page);
+}
+
+async function centeredProgress(page, hole, column) {
+  await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
+  const report = await page.evaluate(hole => {
+    const circuit = document.getElementById('signal-scroll'), flow = document.getElementById('flow-scroll');
+    // A reserved scrollbar gutter can make scrollWidth - clientWidth exceed
+    // Chrome's native limit. Probe that limit and restore before the next frame.
+    const maximum = Math.min(...[circuit, flow].map(scroll => {
+      const left = scroll.scrollLeft; scroll.scrollLeft = scroll.scrollWidth;
+      const end = scroll.scrollLeft; scroll.scrollLeft = left; return end;
+    }));
+    return [[circuit, document.querySelector(`[data-hole="${hole}"]`)], [flow, document.querySelector('.signal-flow-selection')]].map(([scroll, node]) => {
+      const bounds = scroll.getBoundingClientRect(), target = node.getBoundingClientRect();
+      const center = target.left + target.width / 2;
+      const difference = center - (bounds.left + scroll.clientLeft + (40 + scroll.clientWidth) / 2);
+      return { left: scroll.scrollLeft, maximum, difference, visible: center >= bounds.left + 40 && center <= bounds.left + scroll.clientWidth };
+    });
+  }, hole);
+  const followed = report.every(({ left, maximum, difference, visible }) => visible &&
+    (Math.abs(difference) <= 1 || difference < 0 && left <= 1 || difference > 0 && Math.abs(left - maximum) <= 1));
+  if (!followed) await page.screenshot({ path: resolve(output, 'navigation-centering-failure.png'), fullPage: true });
+  assert.ok(followed,
+  `The active gate and mirrored column stay centered after the pinned labels, or reach the circuit edge: ${JSON.stringify(report)}`);
+  assert.equal(await page.locator('.signal-flow-selection').getAttribute('data-column'), String(column), 'The mirror follows the active or reviewed hole');
+  await pinnedBasisLabels(page);
+}
+
+async function actionKeepsPage(page, locator) {
+  // Playwright may first reveal the tapped control. Measure from pointerdown so
+  // this assertion covers the game's follow action rather than that setup.
+  await page.evaluate(() => document.addEventListener('pointerdown', () => { document.documentElement.dataset.navigationStartY = String(scrollY); }, { capture: true, once: true }));
+  await activate(page, locator);
+  assert.equal(await page.evaluate(() => scrollY), await page.evaluate(() => Number(document.documentElement.dataset.navigationStartY)), 'Following progress never moves the page vertically');
+}
+
+async function completionInView(page, columns) {
+  const report = await page.locator('#flow-scroll').evaluate((scroll, columns) => {
+    const bounds = scroll.getBoundingClientRect();
+    return [...scroll.querySelectorAll(`.signal-flow-target, .signal-flow-node[data-boundary="${columns}"]`)].every(node => {
+      const target = node.getBoundingClientRect();
+      return target.left >= bounds.left + 40 && target.right <= bounds.left + scroll.clientWidth;
+    });
+  }, columns);
+  assert.ok(report, 'Completion reveals the output and target beyond the pinned labels');
+  await pinnedBasisLabels(page);
+}
+
+async function progressNavigation(page) {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const holdBoard = async route => {
+    if (new URL(route.request().url()).searchParams.get('level') === '12') release(route);
+    else await route.fallback();
+  };
+  await page.route('**/api/leaderboard?**', holdBoard);
+  await page.locator('#level').selectOption('12');
+  const board = await held;
+  await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = (node.scrollWidth - node.clientWidth) * .4; node.dispatchEvent(new Event('scroll')); });
+  await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
+  const manual = await page.locator('#flow-scroll').evaluate(node => node.scrollLeft);
+  const response = page.waitForResponse(response => response.request().url() === board.request().url());
+  await board.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], currentPlayer: null, total: 0 }) });
+  await (await response).finished();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollLeft), manual, 'Completion metadata preserves manual exploration');
+  await page.unroute('**/api/leaderboard?**', holdBoard);
+  await activate(page, page.locator('#mode-campaign'));
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollLeft), manual, 'A board re-render preserves manual exploration');
+  const size = page.viewportSize();
+  await page.setViewportSize({ ...size, height: size.height - 70 });
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollLeft), manual, 'A mobile browser height change preserves manual exploration');
+  await page.setViewportSize(size);
+  await pinnedBasisLabels(page);
+
+  await activate(page, page.locator('#mode-random'));
+  await openDetails(page, '#advanced-features');
+  const columns = Array.from({ length: 16 }, () => []);
+  columns[0] = [0, 1, 2, 3].map(wire => ({ gate: 'H', wires: [wire] }));
+  for (const [index, column] of [3, 6, 9, 12].entries()) columns[column] = [{ id: 'h' + (index + 1), wires: [0], choices: ['I', 'X'] }];
+  const puzzle = { wires: 4, columns, target: Array(16).fill(.25) };
+  const load = () => importPuzzle(page, puzzleData(puzzle));
+  await load();
+  await centeredProgress(page, 'h1', 3);
+  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  assert.ok(await page.locator('#flow-scroll').evaluate(node => node.scrollTop > 0), 'The dense mirror is vertically scrollable');
+  await activate(page, page.locator('#restart'));
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollTop), 0, 'Reset returns the mirror to the first basis lane');
+  await centeredProgress(page, 'h1', 3);
+  for (const [index, column] of [6, 9, 12].entries()) {
+    await actionKeepsPage(page, page.locator('[data-choice="I"]'));
+    await centeredProgress(page, 'h' + (index + 2), column);
+  }
+  await actionKeepsPage(page, page.locator('#undo'));
+  await centeredProgress(page, 'h3', 9);
+  await actionKeepsPage(page, page.locator('[data-choice="I"]'));
+  await centeredProgress(page, 'h4', 12);
+  await activate(page, page.locator('[data-choice="I"]'));
+  await page.locator('#win-dialog[open]').waitFor();
+  await closeWin(page);
+  await completionInView(page, columns.length);
+  await page.locator('[data-hole="h2"]').evaluate(node => node.focus({ preventScroll: true }));
+  await centeredProgress(page, 'h2', 6);
+
+  await page.clock.pauseAt(new Date(process.env.GAME_TEST_TIME ?? '2026-10-15T10:00:00Z'));
+  await activate(page, page.locator('#replay'));
+  assert.equal(await page.locator('#review-note').innerText(), 'Placement 0 / 4');
+  assert.equal(await page.locator('.signal-flow-selection').count(), 0, 'Replay starts with no selected gate');
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollLeft), 0, 'Replay starts at the input');
+  const replayY = await page.evaluate(() => scrollY);
+  for (const [index, column] of [3, 6, 9].entries()) {
+    await page.clock.runFor(650);
+    assert.equal(await page.locator('#review-note').innerText(), `Placement ${index + 1} / 4`);
+    await centeredProgress(page, 'h' + (index + 1), column);
+    assert.equal(await page.evaluate(() => scrollY), replayY, 'Timed replay follows columns without moving the page vertically');
+  }
+  await page.clock.runFor(650);
+  await completionInView(page, columns.length);
+  await activate(page, page.locator('#sequence [data-step="2"]'));
+  await centeredProgress(page, 'h2', 6);
+  await activate(page, page.locator('#resume-round'));
+  await completionInView(page, columns.length);
+  await page.clock.resume();
+  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await load();
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollTop), 0, 'Loading another puzzle returns the mirror to the first basis lane');
+  await noOverflow(page); await accessibility(page);
+  await page.screenshot({ path: resolve(output, `navigation-${size.width}.png`), fullPage: true });
+  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await activate(page, page.locator('#new-puzzle'));
+  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollTop), 0, 'New puzzle returns the mirror to the first basis lane');
 }
 
 async function openDetails(page, selector) {
@@ -699,7 +831,7 @@ async function visualEditor(page) {
         return { fill, outline: context.fillStyle, width: parseFloat(style.borderTopWidth) };
       });
       assert.equal(appearance.fill, phaseColor(sign), 'Editor phase dots use the shared black and white fills');
-      assert.equal(appearance.outline, phaseOutline(sign), 'Editor phase dots use contrasting outlines');
+      assert.equal(appearance.outline, PHASE_COLORS.negative, 'Both editor target phases have white outlines');
       assert.ok(appearance.width > 0, 'Editor phase outlines remain visible');
     }
   };
@@ -921,9 +1053,9 @@ async function jointStateExamples(page) {
     await importPuzzle(page, puzzleData(puzzle));
     assert.deepEqual(await basisFlow(page, puzzle), active, 'The mirror distinguishes correlated, anticorrelated and interfering joint outcomes');
     const targetDots = await page.locator('.signal-flow-target').evaluateAll(nodes => nodes.map(node => [node.getAttribute('fill'), node.getAttribute('stroke')]));
-    const phaseDot = sign => [phaseColor(sign), phaseOutline(sign)];
-    if (screenshot === 'bell-paths') assert.deepEqual(targetDots, [phaseDot(1), phaseDot(1)], 'The 00 + 11 outcomes share black dots with white outlines');
-    if (screenshot === 'phase-paths') assert.deepEqual(targetDots, [phaseDot(1), phaseDot(-1)], 'The 00 − 11 target distinguishes phase by black and white fills with opposite outlines');
+    const targetDot = sign => [phaseColor(sign), PHASE_COLORS.negative];
+    if (screenshot === 'bell-paths') assert.deepEqual(targetDots, [targetDot(1), targetDot(1)], 'The 00 + 11 outcomes share black dots with white outlines');
+    if (screenshot === 'phase-paths') assert.deepEqual(targetDots, [targetDot(1), targetDot(-1)], 'The 00 − 11 target distinguishes phase by black and white fills with white outlines');
     await gateGeometry(page, puzzle);
     await noOverflow(page);
     await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = node.scrollWidth; });
@@ -1103,6 +1235,19 @@ async function focusedFlow() {
   console.log('Phase dots and target divider: desktop and 320/390/768 px touch layouts, synchronized scrolling, fixed labels, sixteen lanes, accessibility and lazy replay download verified.');
 }
 
+async function focusedNavigation() {
+  const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
+  await progressNavigation(desktop);
+  await desktop.context().close();
+  for (const width of [320, 390, 768]) {
+    const mobile = await pageFor({ viewport: { width, height: 900 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    await progressNavigation(mobile);
+    await mobile.context().close();
+  }
+  assert.deepEqual(errors, [], 'No uncaught navigation errors');
+  console.log('Progress navigation: desktop and 320/390/768 px touch layouts center auto-advance, undo and replay; reveal completed targets; preserve manual exploration and page position; reset the dense mirror to its first lane.');
+}
+
 async function focusedEditor() {
   const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
   await visualEditor(desktop);
@@ -1130,6 +1275,7 @@ async function focusedRegistration() {
 
 try {
   if (process.env.GAME_BROWSER_FOCUS === 'flow') await focusedFlow();
+  else if (process.env.GAME_BROWSER_FOCUS === 'navigation') await focusedNavigation();
   else if (process.env.GAME_BROWSER_FOCUS === 'editor') await focusedEditor();
   else if (process.env.GAME_BROWSER_FOCUS === 'registration') await focusedRegistration();
   else {

@@ -202,6 +202,7 @@ export function applyMove(circuit, move) {
 export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinity } = {}) {
   validateCircuit(circuit);
   const graph = circuitGraph(circuit), results = new Map();
+  const originalKey = circuitKey(circuit);
   const sourceKey = circuitKey(compactCircuit(circuit));
   const token = (id, row) => graph.nodes[id].cells.find(cell => cell.row === row)?.symbol;
   const initial = gateCounts(circuit);
@@ -270,7 +271,7 @@ export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinit
           const move = { rule: rule.id, row, column: starts[0] };
           const next = applyMove(layout, move), key = circuitKey(compactCircuit(next));
           if (key === sourceKey || results.has(key)) return;
-          const prefix = circuitKey(layout) === circuitKey(circuit) ? [] : [{ rule: 'arrange', row: 0, column: 0, circuit: layout }];
+          const prefix = circuitKey(layout) === originalKey ? [] : [{ rule: 'arrange', row: 0, column: 0, circuit: layout }];
           results.set(key, { move, next, prefix });
         }
         visit(0);

@@ -1,7 +1,7 @@
 import { controlWire, validatePlayablePuzzle } from './engine.js';
 import { draftFromPuzzle, resizeDraft, setDraftEntry, connectDraftEntry, puzzleFromDraft } from './editor.js';
 import { gateIcon, gateLabel } from './rendering.js';
-import { phaseColor, phaseOutline } from './state-visuals.js';
+import { PHASE_COLORS, phaseColor } from './state-visuals.js';
 
 const SINGLE = ['I', 'H', 'X', 'Z'], PAIR = ['I', 'CX', 'XC', 'CZ'], STEP = 64;
 const TOOLS = [['H', 'H'], ['X', 'X'], ['Z', 'Z'], ['hole', 'Hole'],
@@ -99,7 +99,7 @@ export function createPuzzleEditor({ get, onPlay }) {
       const text = element('span'); text.textContent = bits;
       const line = element('span', 'editor-target-line'), dot = element('span', 'editor-target-dot');
       line.setAttribute('aria-hidden', 'true'); dot.setAttribute('aria-hidden', 'true');
-      if (weight) { dot.style.background = phaseColor(weight); dot.style.borderColor = phaseOutline(weight); }
+      if (weight) { dot.style.background = phaseColor(weight); dot.style.borderColor = PHASE_COLORS.negative; }
       button.append(text, line, dot); return button;
     }));
   }

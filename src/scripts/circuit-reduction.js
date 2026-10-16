@@ -13,6 +13,7 @@ import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
 import { createTutorial } from '../lib/games/tutorial.js';
+import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../lib/circuit-reduction/tutorial.js';
 
 const GAME = 'circuit-reduction';
@@ -82,16 +83,18 @@ const review = createStepReplay({
 });
 guide = createTutorial({
   get, isBlocked: () => daily.loading,
+  renderText: (node, text) => renderCircuitInstruction(node, text, 'XC'),
   controls: '[data-cell], [data-space], [data-rule], #undo, #restart, #compact-identities, #replay, #replay-result, #share-score, #share-result, #show-results',
   intro: 'Remove every gate without changing the circuit’s effect. This tutorial selects the gate blocks for you.',
   onReset: () => setPuzzle('tutorial', { circuit: cloneCircuit(TUTORIAL_CIRCUIT), optimalMoves: null }),
   onLeave: () => { review.clear(); clearSelection(); },
-  steps: TUTORIAL_STEPS.map(({ text, layout, move }) => ({
-    text, target: `[data-rule="${move.rule}"]`,
+  steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => ({
+    text, target: target ?? `[data-rule="${move.rule}"]`,
     prepare() {
       if (layout) playMove({ rule: 'arrange', row: 0, column: 0, circuit: layout });
       clearSelection();
       const rule = rulesById[move.rule];
+      if (!rule) return;
       for (let row = 0; row < rule.left.length; row++) {
         for (let column = 0; column < rule.left[0].length; column++) selection.add(`${move.row + row}:${move.column + column}`);
       }
@@ -102,7 +105,7 @@ guide = createTutorial({
     action() {
       const before = sequence.length;
       playMove(move);
-      if (sequence.length === before) throw new Error('The tutorial rewrite could not be applied.');
+      if (sequence.length === before) throw new Error('The tutorial action could not be applied.');
     },
   })),
 });
@@ -125,9 +128,11 @@ function updateSelection() {
 }
 function selectRectangle(start, end) {
   const [firstRow, firstColumn] = start.split(':').map(Number), [lastRow, lastColumn] = end.split(':').map(Number);
+  const top = Math.min(firstRow, lastRow), bottom = Math.max(firstRow, lastRow);
+  const left = Math.min(firstColumn, lastColumn), right = Math.max(firstColumn, lastColumn);
   selection.clear();
-  for (let row = Math.min(firstRow, lastRow); row <= Math.max(firstRow, lastRow); row++) {
-    for (let column = Math.min(firstColumn, lastColumn); column <= Math.max(firstColumn, lastColumn); column++) selection.add(`${row}:${column}`);
+  for (let row = top; row <= bottom; row++) {
+    for (let column = left; column <= right; column++) selection.add(`${row}:${column}`);
   }
   updateSelection();
 }
@@ -170,7 +175,8 @@ function update({ board = true } = {}) {
   const scorable = canScore(), hasPlayer = Boolean(scores.player);
   if (board) renderCircuit();
   const scoreMoves = sequenceCost(sequence);
-  get('move-count').textContent = `${scoreMoves} ${scoreMoves === 1 ? 'move' : 'moves'}`;
+  const score = `${scoreMoves} ${scoreMoves === 1 ? 'move' : 'moves'}`;
+  get('move-count').textContent = score;
   get('move-count').hidden = editing;
   get('circuit-editor-controls').hidden = !editing;
   get('save-circuit').disabled = locked || solved;
@@ -222,7 +228,6 @@ function update({ board = true } = {}) {
   get('win-practice').hidden = mode !== 'daily' || scorable || hasPlayer;
   get('result-actions').hidden = showForm;
   for (const id of ['player-name', 'submit-score']) get(id).disabled = daily.loading || Boolean(scores.submitting) || !showForm;
-  const score = `${scoreMoves} ${scoreMoves === 1 ? 'move' : 'moves'}`;
   get('win-summary').textContent = scoreMoves === level?.optimalMoves ? `Optimal solution in ${score}.`
     : level?.optimalMoves != null ? `${score} : optimum+${scoreMoves - level.optimalMoves}` : `Circuit reduced in ${score}.`;
   if (mode === 'daily') {

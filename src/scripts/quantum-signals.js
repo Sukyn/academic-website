@@ -8,6 +8,7 @@ import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
+import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
 import { dailyMetadata } from '../lib/games/daily-calendar.js';
@@ -36,7 +37,7 @@ const sharing = createReplayShare({ get, createGif: async (round, options) => {
   return createReplayGif(round, options);
 } });
 const completions = createScoreboard({
-  get, selector, completionOnly: true, sequence: () => sequence, update: () => update(false),
+  get, selector, completionOnly: true, sequence: () => sequence, update: () => update({ board: false }),
   canSubmit: () => !daily.loading && canRecord() && isWon(),
 });
 const daily = createDailySession({
@@ -59,30 +60,36 @@ const daily = createDailySession({
 });
 const review = createStepReplay({
   length: () => sequence.length, canReview: () => !tutorial.active && !daily.loading,
-  onEnter: () => get('win-dialog').close(), onChange: () => update(),
+  onEnter: () => get('win-dialog').close(), onChange: () => update({ follow: true }),
 });
 
 function closeResult() { sharing.close(); get('win-dialog').close(); }
-const selectedButton = () => get('signal-board').querySelector('[data-hole="' + selected + '"]');
-function focusSelected() { selectedButton()?.focus({ preventScroll: true }); }
-function revealSelected() {
-  const button = selectedButton();
-  if (!button) return;
-  const scroll = get('signal-scroll'), bounds = scroll.getBoundingClientRect(), hole = button.getBoundingClientRect();
-  if (hole.left < bounds.left + 48) scroll.scrollLeft += hole.left - bounds.left - 48;
-  else if (hole.right > bounds.right - 8) scroll.scrollLeft += hole.right - bounds.right + 8;
-  // Keep focus navigation aligned before the browser dispatches scroll events.
-  get('flow-scroll').scrollLeft = scroll.scrollLeft;
-  pinFlowLabels(get('signal-flow'), scroll.scrollLeft);
+const holeButton = id => id ? get('signal-board').querySelector('[data-hole="' + id + '"]') : null;
+function focusSelected() { holeButton(selected)?.focus({ preventScroll: true }); }
+function scrollTogether(left) {
+  const circuit = get('signal-scroll'), flow = get('flow-scroll');
+  // Native clamping includes reserved scrollbar gutters on touch and desktop.
+  circuit.scrollLeft = left; flow.scrollLeft = circuit.scrollLeft;
+  circuit.scrollLeft = flow.scrollLeft;
+  pinFlowLabels(get('signal-flow'), flow.scrollLeft);
+}
+function followProgress(hole, finished) {
+  const scroll = get('signal-scroll');
+  if (finished) { scrollTogether(scroll.scrollWidth); return; }
+  const button = holeButton(hole);
+  if (!button) { scrollTogether(0); return; }
+  const bounds = scroll.getBoundingClientRect(), target = button.getBoundingClientRect();
+  // Leave the pinned basis labels clear and show both sides of the active gate.
+  scrollTogether(scroll.scrollLeft + target.left + target.width / 2 - bounds.left - scroll.clientLeft - (40 + scroll.clientWidth) / 2);
 }
 function selectHole(id) {
   if (tutorialBlocked() || daily.loading || review.step !== null || selected === id) return;
   selected = id;
   for (const button of get('signal-board').querySelectorAll('[data-hole]')) button.setAttribute('aria-pressed', String(button.dataset.hole === id));
-  update(false); revealSelected();
+  update({ board: false }); followProgress(selected, false);
 }
 function navigateHole(key) {
-  const origin = selectedButton()?.getBoundingClientRect();
+  const origin = holeButton(selected)?.getBoundingClientRect();
   if (!origin) return;
   const horizontal = key === 'ArrowLeft' || key === 'ArrowRight', direction = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
   const candidates = [...get('signal-board').querySelectorAll('[data-hole]')].map(button => {
@@ -106,23 +113,24 @@ function renderTimeline() {
   });
   get('sequence').replaceChildren(fragment);
 }
-function update(board = true) {
+// Only play/navigation actions follow progress; network updates preserve exploration.
+function update({ board = true, follow = false } = {}) {
   const visible = review.step === null ? placements : states[review.step];
   const holes = getHoles(puzzle), locked = daily.loading || review.step !== null, won = isWon();
+  const activeHole = review.step === null ? selected : sequence[review.step - 1]?.hole;
   if (board) {
     const focused = document.activeElement?.closest('[data-hole]');
-    renderBoard(get('signal-board'), puzzle, visible, { selected, locked });
+    renderBoard(get('signal-board'), puzzle, visible, { selected: activeHole, locked });
     if (focused) focusSelected();
-    renderFlow(get('signal-flow'), puzzle, visible, selected);
-    revealSelected();
-  } else highlightFlow(get('signal-flow'), puzzle, selected);
-  const hole = holes.find(entry => entry.id === selected);
+    renderFlow(get('signal-flow'), puzzle, visible, activeHole);
+  } else highlightFlow(get('signal-flow'), puzzle, activeHole);
+  const hole = holes.find(entry => entry.id === (activeHole ?? selected));
   const focusedControl = document.activeElement?.closest('.signal-palette button');
   let shortcut = 0;
   for (const button of choices) {
     button.hidden = !hole?.choices.includes(button.dataset.choice);
     button.disabled = locked;
-    button.setAttribute('aria-pressed', String(visible[selected] === button.dataset.choice));
+    button.setAttribute('aria-pressed', String(visible[activeHole ?? selected] === button.dataset.choice));
     if (!button.hidden) {
       const key = String(++shortcut), gate = button.dataset.choice;
       const label = gateLabel(gate, hole.wires);
@@ -163,11 +171,13 @@ function update(board = true) {
     get('daily-title').textContent = 'Daily puzzle · ' + formatPuzzleDate(puzzle.date);
   }
   tutorial.render();
+  if (follow) followProgress(activeHole, won && (review.step === null || review.step === sequence.length));
 }
 function reset() {
   if (tutorialBlocked() || daily.loading) return;
   review.clear(); closeResult(); placements = {}; sequence = []; states = [placements]; selected = getHoles(puzzle)[0].id;
-  get('status').textContent = ''; update(); completions.load();
+  get('flow-scroll').scrollTop = 0;
+  get('status').textContent = ''; update({ follow: true }); completions.load();
 }
 function setPuzzle(nextMode, next) {
   if (nextMode !== 'tutorial') tutorial.leave();
@@ -195,7 +205,7 @@ function place(gate) {
     const next = applyPlacement(puzzle, placements, move);
     closeResult(); placements = next; sequence.push(move); states.push(next);
     if (gate !== null) selected = getHoles(puzzle).find(hole => !Object.hasOwn(next, hole.id))?.id ?? selected;
-    get('status').textContent = ''; update();
+    get('status').textContent = ''; update({ follow: true });
     if (isWon()) openWin();
   } catch (error) { get('status').textContent = error.message; }
 }
@@ -209,15 +219,11 @@ function share(source) {
 for (const button of choices) button.addEventListener('click', () => place(button.dataset.choice));
 for (const [source, target] of [['signal-scroll', 'flow-scroll'], ['flow-scroll', 'signal-scroll']]) {
   get(source).addEventListener('scroll', () => {
-    if (Math.abs(get(target).scrollLeft - get(source).scrollLeft) > 1) get(target).scrollLeft = get(source).scrollLeft;
-    pinFlowLabels(get('signal-flow'), get('flow-scroll').scrollLeft);
+    if (Math.abs(get(target).scrollLeft - get(source).scrollLeft) > 1) scrollTogether(get(source).scrollLeft);
+    else pinFlowLabels(get('signal-flow'), get('flow-scroll').scrollLeft);
   }, { passive: true });
 }
-get('signal-board').addEventListener('click', event => {
-  const hole = event.target.closest('[data-hole]');
-  if (hole && !hole.disabled) selectHole(hole.dataset.hole);
-});
-get('signal-board').addEventListener('focusin', event => {
+for (const type of ['click', 'focusin']) get('signal-board').addEventListener(type, event => {
   const hole = event.target.closest('[data-hole]');
   if (hole && !hole.disabled) selectHole(hole.dataset.hole);
 });
@@ -230,7 +236,7 @@ get('signal-board').addEventListener('contextmenu', event => {
 onClick('erase-gate', () => place(null));
 onClick('undo', () => {
   if (tutorialBlocked() || daily.loading || !sequence.length) return;
-  review.clear(); closeResult(); const move = sequence.pop(); states.pop(); placements = states.at(-1); selected = move.hole; update();
+  review.clear(); closeResult(); const move = sequence.pop(); states.pop(); placements = states.at(-1); selected = move.hole; update({ follow: true });
 });
 onClick('restart', reset); onClick('try-again', reset); onClick('show-results', openWin);
 onClick('mode-tutorial', () => tutorial.enter());
@@ -240,7 +246,7 @@ bindDailyControls(daily, get);
 get('level').addEventListener('change', event => selectLevel(event.target.value));
 onClick('previous-level', () => selectLevel(campaignIndex)); onClick('next-level', () => selectLevel(campaignIndex + 2)); onClick('result-next', () => selectLevel(campaignIndex + 2));
 onClick('new-puzzle', randomPuzzle); get('difficulty').addEventListener('change', randomPuzzle);
-onClick('replay', review.play); onClick('replay-result', review.play); onClick('resume-round', () => { review.clear(); update(); });
+onClick('replay', review.play); onClick('replay-result', review.play); onClick('resume-round', () => { review.clear(); update({ follow: true }); });
 get('sequence').addEventListener('click', event => {
   const button = event.target.closest('[data-step]'); if (button && !button.disabled) review.inspect(Number(button.dataset.step));
 });
@@ -274,7 +280,7 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;
-  review.clear(); update();
+  review.clear(); update({ follow: true });
   daily.refresh(); completions.load();
 });
 window.addEventListener('pagehide', () => { review.clear(); daily.cancel(); completions.dispose(); sharing.close(); customJson.close(); });
@@ -283,18 +289,12 @@ const customJson = createCustomPuzzleJson({ get, game: GAME, exportPuzzle: () =>
   const custom = validateCustomPuzzle(value); editor.load(custom); setPuzzle('random', custom);
 } });
 const tutorial = createTutorial({
+  renderText: renderCircuitInstruction,
   get, isBlocked: () => daily.loading, intro: 'Fill the holes to match the target. This tutorial selects each hole for you.',
   controls: '#signal-board button, .signal-palette button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #circuit-editor-controls button, #custom-details select',
-  steps: TUTORIAL_STEPS.map(({ hole, gate, text }, index) => ({
+  steps: TUTORIAL_STEPS.map(({ hole, gate, text }) => ({
     text, target: '[data-choice="' + gate + '"]', prepare: () => selectHole(hole),
-    action() {
-      place(gate);
-      if (index === TUTORIAL_STEPS.length - 1) {
-        const scroll = get('flow-scroll'); scroll.scrollLeft = scroll.scrollWidth;
-        get('signal-scroll').scrollLeft = scroll.scrollLeft;
-        pinFlowLabels(get('signal-flow'), scroll.scrollLeft);
-      }
-    },
+    action: () => place(gate),
   })),
   onReset: () => setPuzzle('tutorial', LEVELS.at(-1)),
 });

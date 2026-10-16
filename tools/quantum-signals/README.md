@@ -2,7 +2,7 @@
 
 Fill circuit holes with H, X, Z, CX, XC, CZ or identity to reach a real quantum state. Every hole must be filled. Targets match up to global sign, including relative phase.
 
-The simulator uses at most four qubits, sixteen columns and six holes. White wires show the editable circuit. The mirrored diagram has one lane per joint basis state: black dots with white outlines mean + phase; white dots with black outlines mean − phase. Paths are neutral. Dot areas show probabilities. Both views scroll together; the target sits beyond a divider.
+The simulator uses at most four qubits, sixteen columns and six holes. White wires show the editable circuit. The mirrored diagram has one lane per joint basis state: black dots mean + phase; white dots mean − phase. Paths are neutral. Dot areas show probabilities. Both views scroll together; the target sits beyond a divider.
 
 The flow model reuses the gate simulator and adds contributions before each new column, so destructive interference extinguishes paths. Target markers match up to global phase.
 

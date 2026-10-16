@@ -19,7 +19,7 @@ export function gateGlyph(cell) {
   } else if (cell.startsWith('X')) {
     svg.appendChild(svgNode('circle', { cx: 22, cy: 22, r: 16, ...common }));
     svg.appendChild(svgNode('path', { d: 'M22 12V32M12 22H32', fill: 'none', stroke: color, 'stroke-width': 2.4, 'stroke-linecap': 'round' }));
-  } else svg.appendChild(svgNode('circle', { cx: 22, cy: 22, r: 6, fill: color }));
+  } else svg.appendChild(svgNode('circle', { cx: 22, cy: 22, r: 8, fill: color }));
   return svg;
 }
 
@@ -33,6 +33,6 @@ export function drawGate(ctx, cell, x, y, radius) {
     ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x - radius * .6, y); ctx.lineTo(x + radius * .6, y); ctx.moveTo(x, y - radius * .6); ctx.lineTo(x, y + radius * .6); ctx.stroke();
   } else {
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, Math.max(4, radius * .375), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, Math.max(4, radius * .5), 0, Math.PI * 2); ctx.fill();
   }
 }

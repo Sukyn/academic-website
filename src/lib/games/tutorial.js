@@ -3,6 +3,7 @@
  * and an action that may return an animation promise.
  */
 export function createTutorial({ get, steps, onReset, controls, onLeave = () => {}, isBlocked = () => false,
+  renderText = (node, text) => { node.textContent = text; },
   intro = 'Choose the highlighted control or Next step.' }) {
   let active = false, executing = false, index = -1, revision = 0, focus = null, failed = false;
   const panel = get('tutorial-panel'), startButton = get('tutorial-start'), nextButton = get('tutorial-next');
@@ -28,8 +29,8 @@ export function createTutorial({ get, steps, onReset, controls, onLeave = () => 
     }
     const done = finished();
     get('tutorial-heading').textContent = done ? 'Tutorial complete' : index < 0 ? 'Guided example' : `Step ${index + 1} of ${steps.length}`;
-    get('tutorial-text').textContent = failed ? 'Step failed. Restart the tutorial.' :
-      done ? '' : index < 0 ? intro : steps[index].text;
+    renderText(get('tutorial-text'), failed ? 'Step failed. Restart the tutorial.' :
+      done ? '' : index < 0 ? intro : steps[index].text);
     startButton.textContent = index < 0 ? 'Start tutorial' : 'Restart tutorial';
     const blocked = executing || isBlocked();
     startButton.disabled = blocked;

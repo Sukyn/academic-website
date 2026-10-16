@@ -1,7 +1,7 @@
 import { gateGlyph, svgNode } from '../games/circuit-graphics.js';
 import { controlWire, stateEqual } from './engine.js';
 import { flowTrace } from './flow.js';
-import { PHASE_PATH_COLOR, phaseColor, phaseOutline, alignTarget, targetRadius } from './state-visuals.js';
+import { PHASE_COLORS, PHASE_PATH_COLOR, phaseColor, phaseOutline, alignTarget, targetRadius } from './state-visuals.js';
 
 const SLOT = 88, ROW = 88, LEFT = 92, TOP = 46;
 const boardWidth = puzzle => LEFT + puzzle.columns.length * SLOT + 64;
@@ -66,7 +66,7 @@ export function renderBoard(board, puzzle, placements, { selected, locked = fals
 }
 
 export function highlightFlow(svg, puzzle, selected) {
-  const column = puzzle.columns.findIndex(entries => entries.some(entry => entry.id === selected));
+  const column = selected ? puzzle.columns.findIndex(entries => entries.some(entry => entry.id === selected)) : -1;
   const marker = svg.querySelector('.signal-flow-selection');
   if (!marker || column < 0) return;
   marker.setAttribute('x', String(boundaryX(column))); marker.dataset.column = String(column);
@@ -89,7 +89,7 @@ export function renderFlow(svg, puzzle, placements, selected) {
     [basis.toString(2).padStart(puzzle.wires, '0') + ', ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? 'minus' : 'plus') + ' phase']).join('; ');
   description.textContent = snapshots.map((state, boundary) => (boundary ? 'After column ' + boundary : 'Input') + ': ' + describe(state)).join('. ') + '. Target: ' + describe(target);
   fragment.appendChild(description);
-  const selectedColumn = puzzle.columns.findIndex(column => column.some(entry => entry.id === selected));
+  const selectedColumn = selected ? puzzle.columns.findIndex(column => column.some(entry => entry.id === selected)) : -1;
   if (selectedColumn >= 0) fragment.appendChild(svgNode('rect', { class: 'signal-flow-selection', 'data-column': selectedColumn,
     x: x(selectedColumn), y: 28, width: SLOT, height: height - 42, rx: 6 }));
   for (const [label, position] of [['Input', x(0)], ['Output', x(columns.length)], ['Target', width - 24]]) {
@@ -126,7 +126,7 @@ export function renderFlow(svg, puzzle, placements, selected) {
     if (Math.abs(amplitude) < 1e-9) return;
     const node = svgNode('circle', { class: 'signal-flow-target', 'data-basis': basis, 'data-amplitude': amplitude,
       'data-phase': amplitude < 0 ? '-' : '+', cx: width - 24, cy: y(basis), r: targetRadius(amplitude),
-      fill: phaseColor(amplitude), stroke: phaseOutline(amplitude) });
+      fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative });
     const title = svgNode('title', {});
     title.textContent = 'Target ' + basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase';
     node.appendChild(title);

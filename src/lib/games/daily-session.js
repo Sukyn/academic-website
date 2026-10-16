@@ -59,7 +59,7 @@ export function createDailySession({
       // The caller owns the playable puzzle. Retain only clock/archive metadata here.
       const { puzzle, ...metadata } = response;
       info = metadata; received = performance.now(); loading = false;
-      onPuzzle({ ...metadata, puzzle }, select);
+      onPuzzle(response, select);
       if (request !== job) return;
       const range = `${info.startDate}/${info.today}`;
       if (range !== archiveRange) {

@@ -5,6 +5,7 @@ import { createReplayShare } from '../lib/games/replay-share.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
 import { createTutorial } from '../lib/games/tutorial.js';
+import { renderGolfInstruction } from '../lib/games/tutorial-gates.js';
 import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { validateCustomPuzzle } from '../lib/quantum-golf/custom-puzzle.js';
 import { DAILY_START } from '../lib/quantum-golf/daily.js';
@@ -79,6 +80,7 @@ const customJson = createCustomPuzzleJson({
 });
 tutorial = createTutorial({
   get,
+  renderText: renderGolfInstruction,
   intro: 'Reach the gold target with H and T.',
   isBlocked: () => daily.loading,
   controls: '.gates button, .round-controls button, #sequence button, .advanced-panel button, #coordinate-form button',
@@ -408,15 +410,13 @@ onClick('previous-level', () => {
   if (!busy && campaign() && level.id > 1) selectLevel(level.id - 1);
 });
 onClick('mode-campaign', () => {
-  if (tutorialMode) { selectLevel(campaignLevel.id); return; }
-  if (busy) return;
+  if (busy && !tutorialMode) return;
   if (campaign()) { daily.cancel(); update(); }
   else selectLevel(campaignLevel.id);
 });
 onClick('mode-random', () => {
-  if (tutorialMode) { selectLevel('infinite'); return; }
-  if (busy) return;
-  if (level) selectLevel('infinite');
+  if (busy && !tutorialMode) return;
+  if (tutorialMode || level) selectLevel('infinite');
   else { daily.cancel(); update(); }
 });
 onClick('mode-tutorial', () => tutorial.enter());
