@@ -1,6 +1,7 @@
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { formatPuzzleDate as dateLabel, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createDailySession } from '../lib/games/daily-session.js';
+import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
@@ -59,6 +60,7 @@ const daily = createDailySession({
     if (!Number.isFinite(puzzle.epsilon) || puzzle.epsilon < 0 || puzzle.epsilon > 1) {
       throw new Error('Invalid daily hole size.');
     }
+    return puzzle;
   },
   onPuzzle(info, select) {
     if (!select && level?.date !== info.date) return;
@@ -135,7 +137,7 @@ function update(visibleState) {
     get('daily-title').textContent = `Daily puzzle · ${dateLabel(level.date)}`;
     get('daily-note').textContent = scorable ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
   }
-  updateModeMenu(get, currentMode, busy && !tutorialMode);
+  updateModeMenu(get, currentMode, busy && !tutorialMode, scores.submitting);
   get('daily-date').disabled = busy || !daily.info;
   get('show-rules').disabled = busy && !tutorialMode;
   get('previous-level').disabled = locked || !isCampaign || level.id === 1;
@@ -476,4 +478,4 @@ window.addEventListener('pageshow', event => {
   if (tutorialMode) { tutorial.enter(); return; }
   update(); daily.refresh(); scores.load();
 });
-tutorial.enter();
+if (!startDailyFromLink(daily)) tutorial.enter();

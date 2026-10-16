@@ -30,14 +30,6 @@
     const el = document.querySelector(WALLPAPER_SELECTOR);
     if (!(el instanceof HTMLCanvasElement)) return;
 
-    const existingState = window.__chalkWallpaperState;
-    if (existingState?.canvas === el) {
-      existingState.resize();
-      return;
-    }
-
-    existingState?.destroy?.();
-
     const canvas = el;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -346,25 +338,9 @@
 
     window.addEventListener("resize", queuePaint);
     window.addEventListener("pagehide", cancelPaint);
+    window.addEventListener("pageshow", queuePaint);
     document.addEventListener("visibilitychange", queuePaint);
-
-    window.__chalkWallpaperState = {
-      canvas,
-      resize: queuePaint,
-      destroy() {
-        cancelPaint();
-        window.removeEventListener("resize", queuePaint);
-        window.removeEventListener("pagehide", cancelPaint);
-        document.removeEventListener("visibilitychange", queuePaint);
-      },
-    };
   }
 
   bindChalkWallpaper();
-
-  if (!window.__chalkWallpaperListenerBound) {
-    window.__chalkWallpaperListenerBound = true;
-    document.addEventListener("astro:page-load", bindChalkWallpaper);
-    window.addEventListener("pageshow", bindChalkWallpaper);
-  }
 })();

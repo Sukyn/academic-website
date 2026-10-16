@@ -2,8 +2,7 @@
   const SCRATCH_SELECTOR = "[data-scratch-profile]";
 
   function bindScratchProfile(root) {
-    if (!(root instanceof HTMLElement) || root.dataset.bound === "true") return;
-    root.dataset.bound = "true";
+    if (!(root instanceof HTMLElement)) return;
 
     const image = root.querySelector("img");
     const canvas = root.querySelector("[data-scratch-canvas]");
@@ -327,14 +326,5 @@
     }
   }
 
-  function bindScratchProfiles() {
-    document.querySelectorAll(SCRATCH_SELECTOR).forEach(bindScratchProfile);
-  }
-
-  bindScratchProfiles();
-
-  if (!window["__scratchProfileListenerBound"]) {
-    window["__scratchProfileListenerBound"] = true;
-    document.addEventListener("astro:page-load", bindScratchProfiles);
-  }
+  document.querySelectorAll(SCRATCH_SELECTOR).forEach(bindScratchProfile);
 })();

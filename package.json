@@ -20,6 +20,7 @@
     "test:signals:browser": "node tools/quantum-signals/browser.mjs",
     "test:graphs": "node --test tests/graph-states/*.test.mjs",
     "test:graphs:browser": "node tools/graph-states/browser.mjs",
+    "test:daily:browser": "node tools/games/daily-browser.mjs",
     "test:golf:api": "npm run test:games:api",
     "test:games:api": "node --test tests/games/leaderboard-api.test.mjs",
     "precompute:golf": "node tools/quantum-golf/python.mjs tools/quantum-golf/precompute.py",

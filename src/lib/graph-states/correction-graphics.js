@@ -21,7 +21,6 @@ const phases = { S: phaseShape(-Math.PI / 4), SDG: phaseShape(Math.PI / 4) };
 /** A centred local Clifford gate, including its accessible name. */
 export function correctionGlyph(gate, x, y) {
   const group = svgNode('g', { transform: `translate(${x},${y})`, class: 'graph-gate', 'data-gate': gate, role: 'img', 'aria-label': CORRECTION_LABELS[gate] });
-  const title = svgNode('title'); title.textContent = CORRECTION_LABELS[gate]; group.appendChild(title);
   if (phases[gate]) {
     group.appendChild(svgNode('path', { d: phases[gate].path, fill: colors.z }));
   } else {

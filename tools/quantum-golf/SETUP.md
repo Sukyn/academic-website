@@ -1,6 +1,8 @@
 # Scores and hosting
 
-Vercel serves the static site and both game APIs. The `quantum-golf` Neon database has separate Production and Preview branches. Each environment needs a server-only `DATABASE_URL`; migrations prefer `DATABASE_URL_UNPOOLED`. Keep credentials and environment files out of Git.
+Vercel serves the static site and both game APIs. All four games share one Neon project and its `quantum_golf` database, with separate Production and Preview branches. Ranked results use `scores`; Quantum signals uses `completions`. Queries and indexes group records by campaign and level, so adding games does not require more databases.
+
+Each environment needs a server-only `DATABASE_URL`; migrations prefer `DATABASE_URL_UNPOOLED`. Keep credentials and environment files out of Git.
 
 ## Local API
 

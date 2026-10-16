@@ -76,6 +76,7 @@
   .quantum-game #nickname-status { width: 100%; }
   .quantum-game .message { margin: .5rem 0 0; color: var(--color-muted); font-size: .85rem; }
   .quantum-game .message:empty { display: none; }
+  .quantum-game #check-daily-puzzles { display: block; width: 100%; margin-top: 1.2rem; }
   .quantum-game .game-dialog { width: min(34rem, calc(100% - 2rem)); max-height: 85vh; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-family: var(--font-ui); }
   .quantum-game .game-dialog::backdrop { background: rgba(3, 12, 9, .8); }
   /* Leave the completed board visible before revealing the result. */

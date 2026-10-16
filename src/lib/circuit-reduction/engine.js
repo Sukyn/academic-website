@@ -6,32 +6,33 @@ export const EMPTY = '.';
 // impose their own resource budgets before allocating user-supplied layouts.
 export const MAX_WIRES = 4;
 export const RULES = Object.freeze([
-  { id: 'slide-h', title: 'Move H', left: [['.', 'H']], right: [['H', '.']], description: 'Move H into a neighbouring empty slot.' },
-  { id: 'slide-x', title: 'Move X', left: [['.', 'X']], right: [['X', '.']], description: 'Move X into a neighbouring empty slot.' },
-  { id: 'cancel-h', title: 'Cancel HH', left: [['H', 'H']], right: [['.', '.']], description: 'Two consecutive H gates cancel.' },
-  { id: 'cancel-x', title: 'Cancel XX', left: [['X', 'X']], right: [['.', '.']], description: 'Two consecutive X gates cancel.' },
-  { id: 'cancel-z', derived: true, title: 'Cancel ZZ', left: [['Z', 'Z']], right: [['.', '.']], description: 'A learned shortcut: two consecutive Z phases cancel.' },
-  { id: 'cancel-cz', derived: true, title: 'Cancel CZ pair', left: [['ZU', 'ZU'], ['ZD', 'ZD']], right: [['.', '.'], ['.', '.']], description: 'A learned shortcut: two consecutive controlled Z gates cancel.' },
-  { id: 'basis-x', title: 'Change basis · X', left: [['H', 'Z', 'H']], right: [['.', 'X', '.']], description: 'HZH and X have the same effect.' },
-  { id: 'basis-z', derived: true, title: 'Change basis · Z', left: [['H', 'X', 'H']], right: [['.', 'Z', '.']], description: 'A learned shortcut: HXH and Z have the same effect.' },
-  { id: 'basis-up', title: 'Change basis · upper', left: [['H', 'ZU', 'H']], right: [['.', 'XU', '.']], description: 'H on either side turns the upper Z endpoint into X.' },
-  { id: 'basis-down', title: 'Change basis · lower', left: [['H', 'ZD', 'H']], right: [['.', 'XD', '.']], description: 'H on either side turns the lower Z endpoint into X.' },
+  { id: 'slide-h', title: 'Move H', left: [['.', 'H']], right: [['H', '.']] },
+  { id: 'slide-x', title: 'Move X', left: [['.', 'X']], right: [['X', '.']] },
+  { id: 'cancel-h', title: 'Cancel HH', left: [['H', 'H']], right: [['.', '.']] },
+  { id: 'cancel-x', title: 'Cancel XX', left: [['X', 'X']], right: [['.', '.']] },
+  { id: 'cancel-z', derived: true, title: 'Cancel ZZ', left: [['Z', 'Z']], right: [['.', '.']] },
+  { id: 'cancel-cz', derived: true, title: 'Cancel CZ pair', left: [['ZU', 'ZU'], ['ZD', 'ZD']], right: [['.', '.'], ['.', '.']] },
+  { id: 'basis-x', title: 'Change basis · X', left: [['H', 'Z', 'H']], right: [['.', 'X', '.']] },
+  { id: 'basis-z', derived: true, title: 'Change basis · Z', left: [['H', 'X', 'H']], right: [['.', 'Z', '.']] },
+  { id: 'basis-up', title: 'Change basis · upper', left: [['H', 'ZU', 'H']], right: [['.', 'XU', '.']] },
+  { id: 'basis-down', title: 'Change basis · lower', left: [['H', 'ZD', 'H']], right: [['.', 'XD', '.']] },
   // The printed rules use CNOT cancellation, while Unity uses CZ cancellation.
   // Keep both valid versions, rather than silently losing either source's rule.
-  { id: 'cancel-cnot-down', title: 'Cancel CNOT ↓ pair', left: [['ZU', 'ZU'], ['XD', 'XD']], right: [['.', '.'], ['.', '.']], description: 'Two CNOT gates with the same lower target cancel.' },
-  { id: 'cancel-cnot-up', derived: true, title: 'Cancel CNOT ↑ pair', left: [['XU', 'XU'], ['ZD', 'ZD']], right: [['.', '.'], ['.', '.']], description: 'A learned shortcut: two CNOT gates with the same upper target cancel.' },
-  { id: 'phase-up', title: 'Move upper phase', left: [['Z', 'ZU', '.']], right: [['.', 'ZU', 'Z']], description: 'A Z phase commutes with a Z control.' },
-  { id: 'phase-down', title: 'Move lower phase', left: [['Z', 'ZD', '.']], right: [['.', 'ZD', 'Z']], description: 'A Z phase commutes with a Z control.' },
-  { id: 'control-order', title: 'Reorder controls', left: [['.', 'ZU'], ['ZU', 'ZD'], ['ZD', '.']], right: [['ZU', '.'], ['ZD', 'ZU'], ['.', 'ZD']], description: 'Overlapping controlled Z gates commute.' },
-  { id: 'stabilizer-up', title: 'Propagate upper X', left: [['X', 'ZU'], ['.', 'ZD']], right: [['ZU', 'X'], ['ZD', 'Z']], description: 'Moving X through CZ adds a Z on the other wire.' },
-  { id: 'stabilizer-down', title: 'Propagate lower X', left: [['.', 'ZU'], ['X', 'ZD']], right: [['ZU', 'Z'], ['ZD', 'X']], description: 'Moving X through CZ adds a Z on the other wire.' },
-  { id: 'transfer', title: 'Transfer', left: [['ZU', 'XU', 'ZU'], ['XD', 'ZD', 'XD']], right: [['XU', 'ZU', 'XU'], ['ZD', 'XD', 'ZD']], description: 'Reverse the directions of an alternating three-CNOT block.' },
-  { id: 'corner-down', title: 'Change lower corner', left: [['ZU', 'ZU', '.'], ['XD', 'ZD', '.']], right: [['ZU', 'ZU', 'Z'], ['ZD', 'XD', '.']], description: 'Swap CNOT and CZ while introducing the corresponding phase.' },
-  { id: 'corner-up', title: 'Change upper corner', left: [['XU', 'ZU', '.'], ['ZD', 'ZD', '.']], right: [['ZU', 'XU', '.'], ['ZD', 'ZD', 'Z']], description: 'Swap CNOT and CZ while introducing the corresponding phase.' },
+  { id: 'cancel-cnot-down', title: 'Cancel CNOT ↓ pair', left: [['ZU', 'ZU'], ['XD', 'XD']], right: [['.', '.'], ['.', '.']] },
+  { id: 'cancel-cnot-up', derived: true, title: 'Cancel CNOT ↑ pair', left: [['XU', 'XU'], ['ZD', 'ZD']], right: [['.', '.'], ['.', '.']] },
+  { id: 'phase-up', title: 'Move upper phase', left: [['Z', 'ZU', '.']], right: [['.', 'ZU', 'Z']] },
+  { id: 'phase-down', title: 'Move lower phase', left: [['Z', 'ZD', '.']], right: [['.', 'ZD', 'Z']] },
+  { id: 'control-order', title: 'Reorder controls', left: [['.', 'ZU'], ['ZU', 'ZD'], ['ZD', '.']], right: [['ZU', '.'], ['ZD', 'ZU'], ['.', 'ZD']] },
+  { id: 'stabilizer-up', title: 'Propagate upper X', left: [['X', 'ZU'], ['.', 'ZD']], right: [['ZU', 'X'], ['ZD', 'Z']] },
+  { id: 'stabilizer-down', title: 'Propagate lower X', left: [['.', 'ZU'], ['X', 'ZD']], right: [['ZU', 'Z'], ['ZD', 'X']] },
+  { id: 'transfer', title: 'Transfer', left: [['ZU', 'XU', 'ZU'], ['XD', 'ZD', 'XD']], right: [['XU', 'ZU', 'XU'], ['ZD', 'XD', 'ZD']] },
+  { id: 'corner-down', title: 'Change lower corner', left: [['ZU', 'ZU', '.'], ['XD', 'ZD', '.']], right: [['ZU', 'ZU', 'Z'], ['ZD', 'XD', '.']] },
+  { id: 'corner-up', title: 'Change upper corner', left: [['XU', 'ZU', '.'], ['ZD', 'ZD', '.']], right: [['ZU', 'XU', '.'], ['ZD', 'ZD', 'Z']] },
 ]);
 export const PAPER_RULE_IDS = Object.freeze(RULES.filter(rule => !rule.derived).map(rule => rule.id));
 export const LEARNED_RULE_IDS = Object.freeze(RULES.map(rule => rule.id));
 const rulesById = new Map(RULES.map(rule => [rule.id, rule]));
+export const getRule = id => rulesById.get(id);
 const freeRules = new Set(['slide-h', 'slide-x', 'insert-column', 'remove-column', 'insert-space', 'remove-space', 'compact-identities', 'arrange']);
 const symbols = new Set(['.', 'H', 'X', 'Z', 'ZU', 'ZD', 'XU', 'XD']);
 export const cloneCircuit = circuit => circuit.map(row => [...row]);
@@ -187,7 +188,7 @@ export function applyMove(circuit, move) {
     next.forEach(line => line.splice(column, 1));
     return next;
   }
-  const rule = rulesById.get(move.rule);
+  const rule = getRule(move.rule);
   if (!rule) throw new RangeError('Unknown circuit rule.');
   const pattern = matches(circuit, rule.left, row, column) ? rule.right : matches(circuit, rule.right, row, column) ? rule.left : null;
   if (!pattern) throw new RangeError('Select every cell in a matching rule window, including empty cells.');

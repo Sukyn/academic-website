@@ -1,18 +1,18 @@
 import { applyMove, isSolved, optimalShots, pathGraph, puzzleData, sequenceCost, MAX_MOVES } from '../lib/graph-states/engine.js';
-import { LEVELS, generatePuzzle, dailyPuzzle, DAILY_START } from '../lib/graph-states/puzzles.js';
+import { LEVELS, generatePuzzle, DAILY_START } from '../lib/graph-states/puzzles.js';
 import { TUTORIAL } from '../lib/graph-states/tutorial.js';
 import { edgeAtPoint, renderGraph, renderCircuit } from '../lib/graph-states/rendering.js';
 import { correctionGlyph } from '../lib/graph-states/correction-graphics.js';
 import { animateGraphMove } from '../lib/graph-states/animation.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
+import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
-import { dailyMetadata } from '../lib/games/daily-calendar.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'graph-states', get = id => document.getElementById(id);
@@ -41,18 +41,13 @@ const scores = createScoreboard({
 });
 const daily = createDailySession({
   game: GAME, startDate: DAILY_START, get, update: () => update({ board: false }),
-  offlineMessage: 'Offline puzzle.', selectedDate: () => mode === 'daily' ? puzzle.date : undefined,
+  selectedDate: () => mode === 'daily' ? puzzle.date : undefined,
   validatePuzzle: puzzleData,
   onPuzzle(info, select) {
     if (select && (mode !== 'daily' || puzzle.date !== info.date)) {
       tutorial.leave(); editing = false; mode = 'daily';
-      puzzle = { ...puzzleData(info.puzzle), date: info.date }; reset();
+      puzzle = { ...info.puzzle, date: info.date }; reset();
     } else if (mode === 'daily' && puzzle.date === info.date) scores.load();
-  },
-  fallback(date) {
-    const metadata = dailyMetadata(date, DAILY_START);
-    const puzzle = dailyPuzzle(metadata.date);
-    return { ...metadata, puzzle: { ...puzzle, optimalMoves: optimalShots(puzzle) }, acceptingScores: false, offline: true };
   },
 });
 const review = createStepReplay({
@@ -90,7 +85,7 @@ function update({ board = true, follow = false } = {}) {
     renderCorrections(follow);
     if (focusedMove) get('graph-board').querySelector(moveSelector(focusedMove))?.focus({ preventScroll: true });
   } else for (const button of get('graph-board').querySelectorAll('button')) button.disabled = locked;
-  updateModeMenu(get, mode);
+  updateModeMenu(get, mode, false, scores.submitting);
   get('campaign-controls').hidden = mode !== 'campaign'; get('custom-controls').hidden = mode !== 'random';
   get('graph-editor-controls').hidden = mode !== 'random';
   get('custom-details').hidden = !editing;
@@ -292,4 +287,4 @@ const tutorial = createTutorial({
   steps: TUTORIAL.steps.map(({ move, text }) => ({ text, target: '#graph-board ' + moveSelector(move), action: () => playMove(move) })),
   onReset: () => setPuzzle('tutorial', TUTORIAL.graph),
 });
-tutorial.enter();
+if (!startDailyFromLink(daily)) tutorial.enter();

@@ -183,6 +183,9 @@ test('tutorial finishes with an actual three-shot pivot after teaching local com
 });
 
 test('campaign witnesses solve all named lessons; generated puzzles remain deterministic and editable', () => {
+  assert.equal(createHash('sha256').update(JSON.stringify(LEVELS)).digest('hex'),
+    'e7d49512408934ad76935268d3a2e5dda7eed1893d1c808dd8864ef815028803',
+    'Published campaign titles and graphs stay fixed');
   for (const lesson of LEVELS) {
     assert.ok(lesson.title.length > 0);
     assert.equal(isSolved(lesson), false);

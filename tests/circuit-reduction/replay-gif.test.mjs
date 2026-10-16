@@ -67,16 +67,16 @@ const selectedCells = frame => frame.filter(command => command.name === 'strokeR
 const move = (rule, row = 0, column = 0) => ({ rule, row, column });
 const round = { label: 'Level 1 · Two flips', circuit: [['.', 'X', 'X', '.']], sequence: [move('cancel-x', 0, 1)], optimalMoves: 1 };
 
-test('still image draws the completed identity once without palette conversion or GIF frames', context => {
+test('share image draws the original circuit without move highlights, captions, links or GIF frames', context => {
   const surfaces = canvases(context), progress = [], saved = structuredClone(round);
   const image = encodeReplay(round, value => progress.push(value), true);
   assert.equal(image, surfaces[0]);
-  assert.equal(image.width, 960); assert.equal(image.height, 304);
+  assert.equal(image.width, 960); assert.equal(image.height, 224);
   assert.equal(image.frames.length, 0, 'No GIF pixels are read');
   assert.equal(image.commands().filter(command => command.name === 'fillRect' && command.args[2] === 960).length, 1);
-  assert.ok(texts(image.commands()).includes('Identity circuit · GG'));
-  assert.ok(texts(image.commands()).includes('My score: 1 moves · Optimal: 1'));
-  assert.equal(image.commands().filter(command => command.name === 'arc').length, 0);
+  assert.deepEqual(texts(image.commands()), [round.label, 'Optimal : 1', 'My score : 1']);
+  assert.equal(image.commands().filter(command => command.name === 'arc').length, 2, 'The two original X gates remain visible');
+  assert.equal(selectedCells(image.commands()).length, 0, 'A share image has no selected move window');
   assert.deepEqual(progress, []);
   assert.deepEqual(round, saved);
   assert.throws(() => encodeReplay({ ...round, sequence: [move('slide-h')] }, undefined, true));
@@ -102,8 +102,8 @@ test('GIF shows every rule window, includes the full replay, and ends on an empt
     assert.equal(selectedCells(surface.frames[0]).length, rule.left.length * rule.left[0].length, rule.id);
     assert.ok(texts(surface.frames[0]).includes(`${moveCost(sequence[0]) ? 'Move 1' : 'Layout'}: ${rule.title}`));
     const final = surface.frames.at(-1);
-    assert.ok(texts(final).includes('Identity circuit · GG'));
-    assert.ok(texts(final).includes(`My score: ${sequenceCost(sequence)} moves · Optimal: ${solution.optimalMoves}`));
+    assert.deepEqual(texts(final), [round.label, `Optimal : ${solution.optimalMoves}`, `My score : ${sequenceCost(sequence)}`]);
+    assert.ok(surface.frames.every(frame => !texts(frame).some(text => /GG|colin-blake|Identity circuit/.test(text))));
     assert.ok(surface.frames.every(frame => !texts(frame).includes('⊕')), 'Every target plus is drawn with paths rather than a font glyph');
     assert.equal(final.filter(command => command.name === 'arc').length, 0, 'No gates remain in the final image');
     assert.equal(final.filter(command => command.name === 'strokeRect').length, 0, 'No Hadamards or selected cells remain');
@@ -129,8 +129,7 @@ test('Padding frames redraw changed circuit widths and finish the complete seque
   });
   assert.deepEqual(wireLengths, [112, 168, 112, 112]);
   assert.equal(selectedCells(rendered[2]).length, 2);
-  assert.ok(texts(rendered[3]).includes('Identity circuit · GG'));
-  assert.ok(texts(rendered[3]).includes('My score: 1 moves · Optimal: 1'));
+  assert.deepEqual(texts(rendered[3]), [round.label, 'Optimal : 1', 'My score : 1']);
 });
 
 test('wire spacing and one-click identity compaction export every free layout with the true rewrite score', context => {
@@ -143,8 +142,7 @@ test('wire spacing and one-click identity compaction export every free layout wi
   assert.equal(frames.length, 6);
   assert.ok(texts(surfaces[0].frames[0]).includes('Layout: Identity spacing · free'));
   assert.ok(texts(surfaces[0].frames[2]).includes('Move 1: Cancel XX'));
-  assert.ok(texts(surfaces[0].frames.at(-1)).includes('My score: 1 moves · Optimal: 1'));
-  assert.ok(texts(surfaces[0].frames.at(-1)).includes('Identity circuit · GG'));
+  assert.deepEqual(texts(surfaces[0].frames.at(-1)), [round.label, 'Optimal : 1', 'My score : 1']);
 });
 
 test('2000-move boundary replay samples at most 97 frames while retaining the final identity', context => {
@@ -160,8 +158,7 @@ test('2000-move boundary replay samples at most 97 frames while retaining the fi
     assert.ok(texts(rendered).includes(`Move ${step}: Cancel XX`), 'Sampled labels retain the complete rewrite count');
     assert.equal(rendered.filter(command => command.name === 'arc').length, step % 2 ? 2 : 0, 'Sampled circuits retain the complete replay state');
   }
-  assert.ok(texts(surface.frames.at(-1)).includes('My score: 1999 moves · Optimal: 1'));
-  assert.ok(texts(surface.frames.at(-1)).includes('Identity circuit · GG'));
+  assert.deepEqual(texts(surface.frames.at(-1)), [round.label, 'Optimal : 1', 'My score : 1999']);
   assert.equal(surface.frames.at(-1).filter(command => command.name === 'arc').length, 0);
   assert.equal(progress.length, 97); assert.equal(progress[0], 0); assert.equal(progress.at(-1), 1);
   assert.ok(progress.every((value, index) => value >= 0 && value <= 1 && (!index || value > progress[index - 1])));
@@ -195,7 +192,8 @@ test('Worker independently returns one PNG or transfers a GIF, and serializes ex
     conversions++;
     assert.deepEqual(options, { type: 'image/png' });
     assert.equal(this, surfaces.at(-1));
-    assert.ok(texts(this.commands()).includes('Identity circuit · GG'));
+    assert.deepEqual(texts(this.commands()), [round.label, 'Optimal : 1', 'My score : 1']);
+    assert.equal(this.commands().filter(command => command.name === 'arc').length, 2);
     assert.equal(this.frames.length, 0, 'A static preview reads no GIF frames');
     return new Promise(resolve => { finishConversion = resolve; });
   };

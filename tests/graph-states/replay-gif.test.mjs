@@ -22,21 +22,24 @@ function canvas(context) {
   return surfaces;
 }
 
-test('still image draws only the completed graph and complete simplified corrections, without GIF pixel reads', context => {
+test('still image compares the original graph with its target, without corrections or GIF pixel reads', context => {
   const surfaces = canvas(context), puzzle = applyMove(pathGraph(8), { vertex: 1 });
   const sequence = Array.from({ length: 65 }, () => ({ vertex: 1 })), progress = [], saved = structuredClone(puzzle);
   const image = encodeReplay({ label: 'Completed graph', puzzle, sequence }, value => progress.push(value), true);
   assert.equal(image, surfaces[0]);
-  assert.equal(image.width, 960); assert.equal(image.height, 992);
+  assert.equal(image.width, 960); assert.equal(image.height, 520);
   assert.equal(image.frames.length, 0, 'Static export skips GIF pixel reads and palette conversion');
   const commands = image.commands(), text = commands.filter(command => command.name === 'fillText').map(command => command.args[0]);
   assert.equal(commands.filter(command => command.name === 'fillRect' && command.args[2] === 960).length, 1);
-  assert.ok(text.includes('Chain matched · GG'));
-  assert.ok(text.includes('Clifford corrections · simplified'));
-  assert.ok(text.includes('65 shots · Optimal: 1'));
+  assert.ok(text.includes('Original') && text.includes('Target'));
+  assert.ok(text.includes('Optimal : 1') && text.includes('My score : 65'));
+  assert.ok(text.every(label => !/Clifford|GG|https?:|colin-blake|\|G/.test(label)));
   assert.equal(commands.filter(command => command.name === 'arc' && command.args[4] - command.args[3] === 2 * Math.PI).length, 16);
-  assert.ok(commands.some(command => command.name === 'closePath'), 'The final simplified phase correction retains its split dot');
-  assert.deepEqual(commands.filter(command => command.name === 'fillText' && command.args[1] === 286).map(command => command.args[0]), ['1', '2', '3', '4', '5', '6', '7', '8']);
+  assert.ok(!commands.some(command => command.name === 'closePath'), 'The still image has no correction gates.');
+  const edges = commands.filter(command => command.name === 'lineTo');
+  assert.notEqual(puzzle.edges.length, pathGraph(8).edges.length, 'The original fixture differs from its solved graph.');
+  assert.equal(edges.filter(command => command.args[0] < 480).length, puzzle.edges.length, 'The left graph retains the original edges.');
+  assert.equal(edges.filter(command => command.args[0] > 480).length, pathGraph(8).edges.length);
   assert.deepEqual(progress, []);
   assert.deepEqual(puzzle, saved);
   assert.throws(() => encodeReplay({ label: 'Unsolved', puzzle, sequence: [{ vertex: 0 }] }, undefined, true));
@@ -55,13 +58,13 @@ test('graph replay includes the labelled graph, target, and Clifford corrections
     const surface = surfaces.at(-1), text = frame => frame.filter(command => command.name === 'fillText').map(command => command.args[0]);
     assert.equal(surface.frames.length, sequence.length + 1);
     assert.ok(surface.frames.every(frame => text(frame).includes('Target') && text(frame).includes('Clifford corrections · simplified')));
-    assert.ok(text(surface.frames.at(-1)).includes('Chain matched · GG'));
+    assert.ok(text(surface.frames.at(-1)).includes(`Step ${sequence.length} / ${sequence.length}`));
     assert.ok(surface.frames.at(-1).some(command => command.name === 'closePath'), 'Phase gates retain their vector cutouts.');
     assert.ok(surface.frames.at(-1).some(command => command.name === 'fillRect' && command.fill === '#f2d572'));
     assert.ok(surface.frames.every(frame => frame.filter(command => command.name === 'arc' && command.args[4] - command.args[3] === 2 * Math.PI).length === 2 * vertices));
     const shots = sequenceCost(sequence);
-    assert.ok(surface.frames.every(frame => text(frame).includes(`${shots} ${shots === 1 ? 'shot' : 'shots'} · Optimal: ${optimalShots(puzzle)}`)));
-    assert.ok(surface.frames.every(frame => text(frame).every(label => !/0\.707|prototype/i.test(label))));
+    assert.ok(surface.frames.every(frame => text(frame).includes(`My score : ${shots}`) && text(frame).includes(`Optimal : ${optimalShots(puzzle)}`)));
+    assert.ok(surface.frames.every(frame => text(frame).every(label => !/0\.707|prototype|GG|colin-blake|https?:/i.test(label))));
     assert.equal(progress[0], 0); assert.equal(progress.at(-1), 1);
     assert.deepEqual(puzzle, saved);
   }
@@ -85,7 +88,7 @@ test('a pivot replay compares its three shots with the two-shot optimum', contex
   const puzzle = applyMove(pathGraph(3), move);
   encodeReplay({ label: 'Pivot', puzzle, sequence: [move] }, undefined, true);
   const text = surfaces[0].commands().filter(command => command.name === 'fillText').map(command => command.args[0]);
-  assert.ok(text.includes('3 shots · Optimal: 2'));
+  assert.ok(text.includes('My score : 3') && text.includes('Optimal : 2'));
 });
 
 test('replays reject malformed, oversized and unsolved histories before drawing', context => {

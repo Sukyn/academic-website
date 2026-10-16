@@ -9,14 +9,13 @@ import { PHASE_PATH_COLORS, phasePathColor } from '../../src/lib/quantum-signals
 
 const sequenceFor = puzzle => Object.entries(solvePuzzle(puzzle, { limit: 1 })[0]).map(([hole, gate]) => ({ hole, gate }));
 
-function pathColors(commands, puzzle, placements) {
+function pathColors(commands, puzzle, placements, flowTop = 246 + (puzzle.wires - 1) * 76) {
   const paths = commands.filter(command => command.name === 'bezierCurveTo');
   const edges = flowTrace(puzzle, placements).columns.flat();
   assert.deepEqual(paths.map(path => path.strokeStyle), edges.map(edge => phasePathColor(edge.amplitude)),
     'Every path follows its signed contribution, including phase changes and interference');
   assert.deepEqual(paths.map(path => path.lineWidth), edges.map(edge => 2 + 4 * Math.abs(edge.amplitude)),
     'Path weight still follows amplitude magnitude');
-  const flowTop = 246 + (puzzle.wires - 1) * 76;
   const dots = commands.filter(command => command.name === 'arc' && command.args[1] >= flowTop &&
     [1.4, 2].includes(command.lineWidth));
   assert.ok(dots.length > 0);
@@ -50,19 +49,28 @@ function surfaces(context) {
   return result;
 }
 
-test('still image renders only the completed circuit, output and target, without GIF pixel reads', context => {
+test('still image shows only the completed expanded paths and round label, without GIF pixel reads', context => {
   const rendered = surfaces(context);
   for (const index of [0, 7, 11]) {
     const puzzle = LEVELS[index], sequence = sequenceFor(puzzle), saved = structuredClone(puzzle), progress = [];
-    const image = encodeReplay({ label: 'Completed circuit', puzzle, sequence }, value => progress.push(value), true);
+    const label = 'Level : ' + (index + 1);
+    const image = encodeReplay({ label, puzzle, sequence }, value => progress.push(value), true);
     assert.equal(image, rendered.at(-1));
     assert.equal(image.width, 960);
     assert.equal(image.frames.length, 0, 'Static export skips GIF pixel reads and palette conversion');
     const commands = image.commands(), texts = commands.filter(command => command.name === 'fillText').map(command => command.args[0]);
-    assert.equal(commands.filter(command => command.name === 'fillRect' && command.args[2] === 960).length, 1);
-    assert.ok(texts.includes('Target matched · GG'));
-    assert.ok(texts.includes('Output') && texts.includes('Target'));
-    pathColors(commands, puzzle, Object.fromEntries(sequence.map(({ hole, gate }) => [hole, gate])));
+    assert.deepEqual(texts, [label, ...Array.from({ length: 2 ** puzzle.wires }, (_, basis) => basis.toString(2).padStart(puzzle.wires, '0'))],
+      'The share card has no headings, status, link or redundant target');
+    assert.equal(commands.filter(command => command.name === 'fillRect').length, 1,
+      'No regular gate board or selected-hole boxes accompany the expanded paths');
+    assert.ok(!commands.some(command => command.name === 'strokeRect'));
+    const flowTop = (image.height + 48 - (2 ** puzzle.wires - 1) * 38) / 2;
+    pathColors(commands, puzzle, Object.fromEntries(sequence.map(({ hole, gate }) => [hole, gate])), flowTop);
+    assert.equal(commands.filter(command => command.name === 'arc' && command.args[0] === 850).length,
+      puzzle.target.filter(amplitude => Math.abs(amplitude) > 1e-9).length,
+      'The final state is shown once at the right end of the paths');
+    assert.ok(commands.filter(command => command.name === 'arc').every(command => command.args[1] + command.args[2] < image.height - 32),
+      'All expanded states fit within the compact card');
     assert.deepEqual(progress, []);
     assert.deepEqual(puzzle, saved);
   }
@@ -89,8 +97,9 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
     assert.equal(bytes[8] | bytes[9] << 8, flowTop + (2 ** puzzle.wires - 1) * 28 + 100);
     const surface = rendered.at(-1), texts = frame => frame.filter(command => command.name === 'fillText').map(command => command.args[0]);
     assert.equal(surface.frames.length, sequence.length + 1);
-    assert.ok(texts(surface.frames[0]).includes('Match the target'));
-    assert.ok(texts(surface.frames.at(-1)).includes('Target matched · GG'));
+    assert.ok(surface.frames.every(frame => texts(frame).includes(`Level ${index + 1}`)));
+    assert.ok(surface.frames.every(frame => texts(frame).every(text => !/GG|colin-blake|https?:|Photon paths|Match the target/.test(text))),
+      'Replay frames keep the same clean label without links or congratulatory copy');
     assert.ok(surface.frames.every(frame => texts(frame).every(text => !/optimal|gates placed|\d+ gates?/i.test(text))),
       'Replays display neither gate counts nor legacy benchmarks');
     assert.ok(surface.frames.every(frame => texts(frame).every(text => !['Linked', '|0⟩', '|1⟩', '|+⟩', '|−⟩'].includes(text))),
@@ -98,7 +107,6 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
     assert.ok(surface.frames.every(frame => texts(frame).includes('Output') && texts(frame).includes('Target')));
     assert.ok(surface.frames.every(frame => texts(frame).every(text => !text.includes('⟩') && !text.includes('0.707'))),
       'The path view avoids coefficient equations');
-    assert.ok(surface.frames.every(frame => texts(frame).includes('Photon paths')));
     const step = Math.min(88, 740 / puzzle.columns.length);
     const targetX = (960 + step * puzzle.columns.length) / 2 + 54;
     const targets = surface.frames.at(-1).filter(command => command.name === 'arc' && command.args[0] === targetX && command.lineWidth === 2);
@@ -189,21 +197,22 @@ test('still images and GIF frames show a wall only at fully cancelled path junct
   const round = { label: 'Recombination', puzzle, sequence: [{ hole: 'a', gate: 'H' }] };
   const step = Math.min(88, 740 / puzzle.columns.length), left = (960 - step * puzzle.columns.length) / 2;
   const x = left + (puzzle.columns.findIndex(column => column.some(entry => entry.id === 'a')) + 1) * step;
-  const checkWall = commands => {
-    const index = commands.findIndex(command => command.name === 'moveTo' && command.args[0] === x - 3 && command.args[1] === 267);
+  const checkWall = (commands, wallX = x, basisY = 274, rowHeight = 28) => {
+    const index = commands.findIndex(command => command.name === 'moveTo' && command.args[0] === wallX - 3 && command.args[1] === basisY - 7);
     assert.ok(index >= 0, 'The cancelled lower branch ends at a small wall');
     assert.deepEqual(commands.slice(index, index + 5).map(({ name, args }) => [name, args]), [
-      ['moveTo', [x - 3, 267]], ['lineTo', [x, 267]], ['lineTo', [x, 281]], ['lineTo', [x - 3, 281]], ['stroke', []],
+      ['moveTo', [wallX - 3, basisY - 7]], ['lineTo', [wallX, basisY - 7]], ['lineTo', [wallX, basisY + 7]], ['lineTo', [wallX - 3, basisY + 7]], ['stroke', []],
     ]);
     assert.ok(commands.slice(index, index + 5).every(command => command.strokeStyle === '#ffffff' && command.lineWidth === 2));
-    assert.ok(!commands.some(command => command.name === 'moveTo' && command.args[0] === x - 3 && command.args[1] === 239),
+    assert.ok(!commands.some(command => command.name === 'moveTo' && command.args[0] === wallX - 3 && command.args[1] === basisY - rowHeight - 7),
       'The surviving upper branch has no wall');
   };
   encodeReplay(round);
   checkWall(rendered.at(-1).frames.at(-1));
   assert.ok(!rendered.at(-1).frames[0].some(command => command.name === 'moveTo' && command.args[0] === x - 3 && command.args[1] === 267),
     'There is no wall before the recombining Hadamard is placed');
-  checkWall(encodeReplay(round, undefined, true).commands());
+  const image = encodeReplay(round, undefined, true);
+  checkWall(image.commands(), 850, (image.height + 48 - 38) / 2 + 38, 38);
 });
 
 test('replay controls align exactly on white wires, including reversed and distant endpoints', context => {
@@ -328,6 +337,12 @@ test('replay keeps sixteen fixed outcomes within the canvas and ignores a global
     'Every dense target retains a white outline for either phase');
   assert.ok(!denseFrame.some(command => command.name === 'arc' && command.args[0] === 666 && command.strokeStyle === colors.wire),
     'Filled target markers use their own border without a second empty-outcome ring');
+  const image = encodeReplay({ label: 'Dense phases', puzzle: dense, sequence: [{ hole: 'spare', gate: 'I' }] }, undefined, true);
+  const outputs = image.commands().filter(command => command.name === 'arc' && command.args[0] === 850);
+  assert.equal(outputs.length, 16, 'The still image retains every outcome for a four-qubit circuit');
+  assert.deepEqual(outputs.map(command => command.fillStyle), [...Array(8).fill('#000000'), ...Array(8).fill('#ffffff')]);
+  assert.ok(outputs.every(command => command.strokeStyle === '#ffffff' && command.args[1] + command.args[2] < image.height - 32),
+    'Dense static outputs retain visible phase outlines within the canvas');
 });
 
 test('replay reports unavailable canvas support', context => {

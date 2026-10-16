@@ -277,12 +277,12 @@ try {
       await page.locator('#score-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
       assert.equal(await page.locator('#submit-score').isEnabled(), true, 'A failed save permits retry');
       await page.locator('#close-win').click();
+      const board = page.locator(game === 'quantum-golf' ? '#move-count' : '#circuit-board');
+      const previousBoard = await board.innerHTML();
       await page.locator('#mode-daily').click();
-      await page.locator('#daily-status').filter({ hasText: /Offline practice|Daily puzzle unavailable/ }).waitFor();
-      if (game === 'circuit-reduction') {
-        assert.equal(await page.locator('#mode-daily').getAttribute('aria-pressed'), 'true');
-        assert.match(await page.locator('#daily-note').innerText(), /Practice/);
-      }
+      await page.locator('#daily-status').filter({ hasText: 'Daily puzzle unavailable. Try again.' }).waitFor();
+      assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true', 'A failed daily request preserves the current mode');
+      assert.equal(await board.innerHTML(), previousBoard, 'A failed daily request never creates a local replacement puzzle');
       await page.locator('#mode-campaign').click();
       await page.locator('#restart').click();
       assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');

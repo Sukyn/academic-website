@@ -34,10 +34,10 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
           </div>
           <p class="selection-note" id="selection-note" role="status" aria-live="polite"></p>
           <div class="rule-palette" role="group" aria-label="Circuit rules">
-            {RULES.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled title={rule.description}></button>)}
+            {RULES.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled></button>)}
           </div>
           <GameRoundControls>
-            <button class="button ghost" id="compact-identities" type="button" title="Remove all unnecessary empty slots">Tidy</button>
+            <button class="button ghost" id="compact-identities" type="button">Tidy</button>
           </GameRoundControls>
           <div id="daily-replay-actions" class="daily-replay-actions" hidden></div>
           <div class="replay-actions daily-replay-actions" id="replay-actions" hidden>

@@ -34,7 +34,7 @@ function textNode(text, attrs) {
 function graphButton(className, label, locked) {
   const button = document.createElement('button');
   button.type = 'button'; button.className = className; button.disabled = locked;
-  button.setAttribute('aria-label', label); button.title = label;
+  button.setAttribute('aria-label', label);
   return button;
 }
 
@@ -52,7 +52,6 @@ export function renderGraph(container, graph, { interactive = true, locked = fal
   if (interactive) for (const [u, v] of graph.edges) {
     const a = positions[u], b = positions[v];
     const button = graphButton('graph-edge', `Pivot edge ${u + 1}–${v + 1}`, locked);
-    button.title = ''; // Pointer selection follows the line, not overlapping button rectangles.
     button.dataset.edge = `${u}:${v}`;
     button.style.left = ((a.x + b.x) / 2 / SIZE * 100) + '%';
     button.style.top = ((a.y + b.y) / 2 / SIZE * 100) + '%';

@@ -1,0 +1,28 @@
+---
+import { games } from '../../data/games.js';
+interface Props { current?: string; hidden?: boolean }
+const { current, hidden = false } = Astro.props;
+---
+
+<nav class="daily-games" id="daily-games" tabindex="-1" aria-label="Today’s daily puzzles" hidden={hidden}>
+  {games.map(game => (
+    <a href={`/games/${game.path}/?daily=1`} data-astro-prefetch="viewport" aria-current={current === game.path ? 'page' : undefined}>
+      <img src={`/images/games/${game.image}.webp`} width="64" height="48" alt="" decoding="async" />
+      <span>{game.title}</span>
+    </a>
+  ))}
+</nav>
+
+<style>
+  .daily-games { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; margin: 1.5rem 0; font-family: var(--font-ui); }
+  .daily-games[hidden] { display: none; }
+  .daily-games a { display: grid; justify-items: center; align-content: center; gap: .5rem; padding: .8rem .5rem; border: 1px solid var(--color-border); border-radius: .6rem; background: var(--color-surface-2); color: var(--color-text); text-align: center; text-decoration: none; font-size: .9rem; }
+  .daily-games a:hover { border-color: var(--color-accent); }
+  .daily-games a[aria-current="page"] { border-color: var(--color-heading); box-shadow: inset 0 3px var(--color-heading); }
+  .daily-games img { display: block; width: var(--daily-game-image-width, 4rem); max-width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: contain; }
+  .daily-games:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+  @media (max-width: 560px) {
+    .daily-games { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .daily-games a { padding: .65rem .4rem; font-size: .85rem; }
+  }
+</style>

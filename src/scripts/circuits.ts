@@ -132,8 +132,6 @@ layoutToggle.addEventListener('click', () => {
   continuous = !continuous;
   layoutToggle.textContent = continuous ? '↕' : '↔';
   layoutToggle.setAttribute('aria-pressed', String(continuous));
-  layoutToggle.title = continuous ? 'Wrap into rows' : 'Show in one horizontal row';
-  copy.title = continuous ? 'Copy TikZ with wrapped rows' : 'Copy TikZ';
   preview.toggleAttribute('data-continuous', continuous);
   preview.scrollLeft = 0;
   draw();

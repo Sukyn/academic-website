@@ -1,19 +1,13 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { stemOutreach } from '../../data/stemOutreach';
+import { games } from '../../data/games.js';
 
 const events = [...stemOutreach].sort((left, right) => right.date.localeCompare(left.date));
-const games = [
-  { title: 'Circuit simplification', path: 'circuit-reduction', image: 'circuit-simplification' },
-  { title: 'Quantum golf', path: 'quantum-golf', image: 'quantum-golf' },
-  { title: 'Quantum signals', path: 'quantum-signals', image: 'quantum-signals' },
-  { title: 'Graph states', path: 'graph-states', image: 'graph-states' },
-];
 ---
 
 <BaseLayout title="Outreach & games" description="Games, classroom activities, and public workshops about quantum circuits by Colin Blake.">
   <h1>Outreach &amp; games</h1>
-  <p class="prose">Games and workshops for exploring quantum circuits through play.</p>
   <ul class="games">
     {games.map(game => (
       <li>
@@ -23,6 +17,15 @@ const games = [
       </li>
     ))}
   </ul>
+
+  <a class="daily-round-link" id="all-daily-puzzles" href="/games/daily/">
+    <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M12 12H36V36H12Z" fill="none" stroke="currentColor" stroke-width="1.5" />
+      {[ [12, 12], [36, 12], [36, 36], [12, 36] ].map(([cx, cy]) => <circle cx={cx} cy={cy} r="4" fill="currentColor" />)}
+    </svg>
+    <span><strong>All daily puzzles</strong><small>Today’s four games.</small></span>
+    <span class="daily-round-arrow" aria-hidden="true">→</span>
+  </a>
 
   <section class="prose events" aria-labelledby="other-events">
     <h2 id="other-events">Other events</h2>
@@ -57,6 +60,11 @@ const games = [
   .games img { display: block; width: 100%; height: auto; object-fit: contain; }
   .games h2 { font-size: clamp(1rem, 3vw, 1.5rem); }
   .games .button { min-height: 2.75rem; white-space: nowrap; }
+  .daily-round-link { display: flex; align-items: center; gap: 1rem; max-width: 42rem; margin: 1.5rem auto 0; padding: 1rem 1.25rem; border: 1px solid var(--color-heading); border-radius: .6rem; background: var(--color-surface); color: var(--color-heading); font-family: var(--font-ui); text-decoration: none; }
+  .daily-round-link svg { flex-shrink: 0; }
+  .daily-round-link strong { display: block; font-size: 1.15rem; }
+  .daily-round-link small { display: block; color: var(--color-muted); }
+  .daily-round-arrow { margin-left: auto; font-size: 1.5rem; }
   h2 { margin: 0; font-size: 1.75rem; }
   .events { max-width: 48rem; margin-top: 3rem; }
   .outreach-list { list-style: none; padding: 0; margin: 1.25rem 0 0; }

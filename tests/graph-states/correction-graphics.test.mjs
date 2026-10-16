@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORRECTION_SIZE, correctionGlyph, drawCorrection } from '../../src/lib/graph-states/correction-graphics.js';
+import { CORRECTION_LABELS, CORRECTION_SIZE, correctionGlyph, drawCorrection } from '../../src/lib/graph-states/correction-graphics.js';
 
 test('phase gates use green split dots with transparent cuts in opposite diagonal directions', context => {
   const original = globalThis.document;
@@ -14,13 +14,12 @@ test('phase gates use green split dots with transparent cuts in opposite diagona
   for (const gate of ['H', 'X', 'Z', 'S', 'SDG']) {
     const glyph = correctionGlyph(gate, 80, 60);
     assert.equal(glyph.attributes.transform, 'translate(80,60)');
-    assert.ok(glyph.attributes['aria-label']);
-    assert.equal(glyph.children[0].tag, 'title');
-    assert.equal(glyph.children[0].textContent, glyph.attributes['aria-label']);
+    assert.equal(glyph.attributes.role, 'img');
+    assert.equal(glyph.attributes['aria-label'], CORRECTION_LABELS[gate]);
     assert.ok(glyph.children.every(child => child.tag !== 'text'), 'Gate symbols never depend on a font.');
     if (gate.startsWith('S')) {
       const paths = glyph.children.filter(child => child.tag === 'path');
-      assert.equal(glyph.children.length, 2, 'Only an accessible title and the cut-out dot are needed.');
+      assert.equal(glyph.children.length, 1, 'The accessible group contains only the cut-out dot.');
       assert.equal(paths.length, 1);
       assert.equal(paths[0].attributes.fill, '#9ad9d1');
       assert.equal(paths[0].attributes.stroke, undefined);

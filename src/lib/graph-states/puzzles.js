@@ -5,24 +5,8 @@ import { seededRandom } from '../games/random.js';
 export const DAILY_START = '2026-10-16';
 export const DAILY_VERSION = 'graph-states-daily-v1';
 
-/** @type {Array<[string, number, number, number]>} */
-const lessonSpecs = [
-  ['Open the triangle', 3, 1, 2],
-  ['Shift the centre', 3, 1, 0],
-  ['Four vertices', 4, 1, 2],
-  ['Two neighbourhoods', 4, 2, 4],
-  ['Five vertices', 5, 2, 7],
-  ['Change the centre', 5, 3, 4],
-  ['Six vertices', 6, 3, 23],
-  ['Seven vertices', 7, 4, 30],
-  ['Crossed paths', 8, 4, 180],
-  ['Find the chain', 8, 5, 37],
-];
-
-export const LEVELS = lessonSpecs.map(([title, vertices, distance, index]) => {
-  const choices = graphsAtDistance(vertices, distance);
-  return { title, ...choices[index % choices.length] };
-});
+// Store fixed lessons without building unrelated graph orbits at startup.
+export { default as LEVELS } from './levels.json' with { type: 'json' };
 
 /** Pick from the exact orbit: every puzzle is reachable and needs real moves. */
 export function generatePuzzle(seed, difficulty = 2) {

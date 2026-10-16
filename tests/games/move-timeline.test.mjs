@@ -23,7 +23,7 @@ function setup(context) {
   const render = createMoveTimeline(container, (move, index) => {
     descriptions.push(move);
     const text = typeof move === 'string' ? move : move.gate;
-    return { text, label: `Step ${index + 1}: ${text}`, title: `Move ${index + 1}` };
+    return { text, label: `Step ${index + 1}: ${text}` };
   });
   return { container, render, descriptions, get created() { return created; }, get fragments() { return fragments; } };
 }
@@ -35,7 +35,6 @@ test('metadata and replay selection preserve button nodes, labels and their even
   buttons[1].handler = () => 'keyboard action';
   assert.deepEqual(buttons.map(button => button.dataset.step), ['1', '2', '3']);
   assert.equal(buttons[1].attrs['aria-label'], 'Step 2: T');
-  assert.equal(buttons[1].title, 'Move 2');
   state.render('HTH', { step: 2, disabled: true });
   assert.deepEqual(state.container.children, buttons);
   assert.equal(buttons[1].handler(), 'keyboard action');

@@ -5,8 +5,8 @@ const { resultLabel = 'Scores' } = Astro.props;
 
 <div class="round-controls">
   <slot name="before" />
-  <button class="button ghost" id="undo" type="button" title="Undo · Ctrl/Cmd+Z · Backspace" disabled>Undo</button>
-  <button class="button ghost" id="restart" type="button" title="Reset · R">Reset</button>
+  <button class="button ghost" id="undo" type="button" aria-keyshortcuts="Control+Z Meta+Z Backspace" disabled>Undo</button>
+  <button class="button ghost" id="restart" type="button" aria-keyshortcuts="R">Reset</button>
   <slot />
   <button class="button ghost" id="show-results" type="button" hidden>{resultLabel}</button>
 </div>

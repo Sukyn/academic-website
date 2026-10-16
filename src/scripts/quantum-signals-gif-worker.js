@@ -44,21 +44,25 @@ function drawBoard(ctx, puzzle, placements, top, selected) {
   }));
 }
 
-function drawFlow(ctx, puzzle, placements, top) {
+function drawFlow(ctx, puzzle, placements, top, { imageOnly = false } = {}) {
   const { snapshots, columns, cancellations } = flowTrace(puzzle, placements);
-  const step = Math.min(88, 740 / puzzle.columns.length), left = (WIDTH - step * puzzle.columns.length) / 2;
-  const right = left + puzzle.columns.length * step, targetX = right + 54, y = basis => top + basis * 28;
+  const step = imageOnly ? 740 / puzzle.columns.length : Math.min(88, 740 / puzzle.columns.length);
+  const left = (WIDTH - step * puzzle.columns.length) / 2;
+  const right = left + puzzle.columns.length * step, targetX = right + 54, y = basis => top + basis * (imageOnly ? 38 : 28);
   ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = colors.text;
-  ctx.fillText('Photon paths', WIDTH / 2, top - 58);
-  ctx.fillText('Output', right, top - 28); ctx.fillText('Target', targetX, top - 28);
+  if (!imageOnly) {
+    ctx.fillText('Output', right, top - 28); ctx.fillText('Target', targetX, top - 28);
+  }
   for (let basis = 0; basis < snapshots[0].length; basis++) {
     ctx.fillText(basis.toString(2).padStart(puzzle.wires, '0'), left - 28, y(basis));
     ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(left, y(basis)); ctx.lineTo(right, y(basis)); ctx.stroke();
   }
-  ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(right + 26, top - 44);
-  ctx.lineTo(right + 26, y(snapshots[0].length - 1) + 16); ctx.stroke();
+  if (!imageOnly) {
+    ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(right + 26, top - 44);
+    ctx.lineTo(right + 26, y(snapshots[0].length - 1) + 16); ctx.stroke();
+  }
   columns.forEach((edges, column) => {
     const start = left + column * step, end = start + step;
     for (const edge of edges) {
@@ -83,7 +87,7 @@ function drawFlow(ctx, puzzle, placements, top) {
     ctx.beginPath(); ctx.arc(x, y(basis), target ? targetRadius(amplitude) : 8 * Math.abs(amplitude), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   };
   snapshots.forEach((state, column) => state.forEach((amplitude, basis) => dot(left + column * step, basis, amplitude)));
-  alignTarget(puzzle.target, snapshots.at(-1)).forEach((amplitude, basis) => {
+  if (!imageOnly) alignTarget(puzzle.target, snapshots.at(-1)).forEach((amplitude, basis) => {
     if (Math.abs(amplitude) < 1e-9) {
       ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(targetX, y(basis), 6, 0, Math.PI * 2); ctx.stroke();
@@ -105,8 +109,9 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
     }
   }
   if (!simulate(puzzle, placements).solved) throw new Error('This circuit has not reached its target state.');
-  const flowTop = 246 + (puzzle.wires - 1) * 76;
-  const height = flowTop + (2 ** puzzle.wires - 1) * 28 + 100;
+  const flowHeight = (2 ** puzzle.wires - 1) * (imageOnly ? 38 : 28);
+  const height = imageOnly ? Math.max(240, 144 + flowHeight) : 246 + (puzzle.wires - 1) * 76 + flowHeight + 100;
+  const flowTop = imageOnly ? (height + 48 - flowHeight) / 2 : 246 + (puzzle.wires - 1) * 76;
   const canvas = new OffscreenCanvas(WIDTH, height), ctx = canvas.getContext('2d');
   if (!ctx) throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
   const gif = imageOnly ? null : GIFEncoder();
@@ -114,13 +119,9 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
     const move = round.sequence[frame.step - 1];
     ctx.fillStyle = colors.background; ctx.fillRect(0, 0, WIDTH, height);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = colors.h; ctx.font = '600 28px system-ui, sans-serif'; ctx.fillText('Quantum signals', WIDTH / 2, 30);
-    ctx.fillStyle = colors.text; ctx.font = '20px system-ui, sans-serif'; ctx.fillText(round.label, WIDTH / 2, 62, WIDTH - 40);
-    drawBoard(ctx, puzzle, frame.placements, 154, move?.hole);
-    drawFlow(ctx, puzzle, frame.placements, flowTop);
-    ctx.fillStyle = colors.h; ctx.font = '20px system-ui, sans-serif';
-    ctx.fillText(frame.step === round.sequence.length ? 'Target matched · GG' : move ? `${move.hole}: ${move.gate ?? 'clear'}` : 'Match the target', WIDTH / 2, height - 56);
-    ctx.fillStyle = colors.text; ctx.font = '14px system-ui, sans-serif'; ctx.fillText('colin-blake.eu/games/quantum-signals/', WIDTH / 2, height - 22);
+    ctx.fillStyle = colors.h; ctx.font = '600 20px system-ui, sans-serif'; ctx.fillText(round.label, WIDTH / 2, 34, WIDTH - 40);
+    if (!imageOnly) drawBoard(ctx, puzzle, frame.placements, 154, move?.hole);
+    drawFlow(ctx, puzzle, frame.placements, flowTop, { imageOnly });
     if (gif) {
       const indexed = applyPalette(ctx.getImageData(0, 0, WIDTH, height).data, palette, 'rgb444');
       gif.writeFrame(indexed, WIDTH, height, { palette, delay: frame.step === round.sequence.length ? 1800 : frame.step === 0 ? 1000 : 500 });

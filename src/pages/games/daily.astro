@@ -1,0 +1,27 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DailyGameLinks from '../../components/games/DailyGameLinks.astro';
+---
+
+<BaseLayout title="All daily puzzles" description="Today's four quantum puzzles.">
+  <div class="daily-hub">
+    <a class="back" href="/games/">← Outreach &amp; games</a>
+    <h1>All daily puzzles</h1>
+    <div class="intro">
+      <p class="muted">Try each game’s <a href="/games/">tutorial and levels</a> before starting here.</p>
+    </div>
+    <DailyGameLinks />
+  </div>
+</BaseLayout>
+
+<style>
+  .daily-hub { max-width: 54rem; margin-inline: auto; }
+  .back, .intro { font-family: var(--font-ui); }
+  .back { font-size: .85rem; text-decoration: none; }
+  h1 { margin-top: 2rem; }
+  .intro { border-left: 3px solid var(--color-heading); padding: .2rem 0 .2rem 1.25rem; margin-block: 2rem; }
+  .intro p { margin: .25rem 0 .7rem; }
+  @media (min-width: 561px) {
+    .daily-hub { --daily-game-image-width: 8rem; }
+  }
+</style>

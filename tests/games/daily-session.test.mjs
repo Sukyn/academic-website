@@ -57,7 +57,8 @@ function harness(context, options = {}) {
 }
 
 test('Daily sessions reject ignored-abort stale responses and explicit cancellation', async context => {
-  const h = harness(context);
+  let validations = 0;
+  const h = harness(context, { validatePuzzle(puzzle) { validations++; return puzzle; } });
   const staleLoad = h.session.load('2026-10-14'), stale = h.requests.at(-1);
   assert.equal(h.session.loading, true);
   const currentLoad = h.session.load('2026-10-15'), current = h.requests.at(-1);
@@ -71,6 +72,7 @@ test('Daily sessions reject ignored-abort stale responses and explicit cancellat
   assert.equal(h.puzzles.length, 1);
   assert.equal(h.updates.length, updateCount, 'A stale response cannot update the visible round');
   assert.equal(h.archive.value, '2026-10-15');
+  assert.equal(validations, 1, 'Stale responses never run game validation');
 
   const cancelledLoad = h.session.load('2026-10-14'), cancelled = h.requests.at(-1);
   h.session.cancel();
@@ -81,6 +83,7 @@ test('Daily sessions reject ignored-abort stale responses and explicit cancellat
   assert.strictEqual(h.session.info, currentInfo);
   assert.equal(h.puzzles.length, 1);
   assert.equal(h.timers.size, 0, 'Cancelled work cannot resurrect a refresh timer');
+  assert.equal(validations, 1, 'Cancelled responses never run game validation');
 });
 
 test('The server clock follows elapsed time and archive metadata retains no puzzle', async context => {
@@ -110,24 +113,22 @@ test('The server clock follows elapsed time and archive metadata retains no puzz
   h.session.cancel();
 });
 
-test('Offline metadata retries online eligibility without replacing the played puzzle', async context => {
-  const fallbackDates = [];
-  const h = harness(context, { fallback: date => {
-    fallbackDates.push(date); return metadata(date, { offline: true, acceptingScores: false });
-  } });
+test('An initial outage creates no puzzle and retries the same server date', async context => {
+  const h = harness(context);
   const load = h.session.load('2026-10-14');
   h.respond(h.requests.at(-1), {}, 503); await load;
-  assert.deepEqual(fallbackDates, ['2026-10-14']);
-  assert.equal(h.session.info.acceptingScores, false);
-  assert.match(h.status.textContent, /Offline practice/);
-  assert.equal(h.puzzles.at(-1).select, true);
+  assert.equal(h.session.info, undefined);
+  assert.equal(h.puzzles.length, 0, 'An unavailable API never invents a local daily puzzle');
+  assert.equal(h.session.loading, false);
+  assert.equal(h.status.textContent, 'Daily puzzle unavailable. Try again.');
   const retry = h.runTimer(h.timerAt(60_000));
   assert.equal(h.requests.length, 2);
   assert.equal(new URL(h.requests.at(-1).url, 'https://game.test').searchParams.get('date'), '2026-10-14');
   h.respond(h.requests.at(-1), metadata()); await retry;
   assert.equal(h.session.info.acceptingScores, true);
   assert.equal(h.status.textContent, '');
-  assert.equal(h.puzzles.at(-1).select, false);
+  assert.equal(h.puzzles.at(-1).select, true, 'The first successful response opens the requested puzzle');
+  assert.equal(h.puzzles.length, 1);
   assert.equal(h.timerAt(60_000), undefined);
   h.session.cancel();
 });
@@ -158,24 +159,24 @@ test('Retries wait for gameplay to settle and cancellation clears deferred work'
   assert.equal(h.status.textContent, '');
 });
 
-test('Unranked daily puzzles recover from offline fallback without benchmark metadata', async context => {
+test('Unranked daily puzzles use server data without benchmark metadata', async context => {
   const puzzle = { wires: 1, columns: [[{ id: 'a', wires: [0], choices: ['I', 'X'] }]], target: [0, 1] };
-  const h = harness(context, { ranked: false, validatePuzzle: validateSignalsPuzzle, offlineMessage: 'Offline puzzle.',
-    fallback: date => metadata(date, { puzzle, acceptingScores: false, offline: true }) });
+  const h = harness(context, { game: 'quantum-signals', ranked: false, validatePuzzle: validateSignalsPuzzle });
   const load = h.session.load('2026-10-14');
   h.respond(h.requests.at(-1), {}, 503); await load;
-  assert.equal(h.status.textContent, 'Offline puzzle.');
-  assert.deepEqual(h.puzzles.at(-1).response.puzzle, puzzle);
-  assert.equal(Object.hasOwn(h.puzzles.at(-1).response.puzzle, 'optimalMoves'), false);
+  assert.equal(h.status.textContent, 'Daily puzzle unavailable. Try again.');
+  assert.equal(h.puzzles.length, 0);
   const retry = h.runTimer(h.timerAt(60_000));
   h.respond(h.requests.at(-1), metadata('2026-10-14', { puzzle, acceptingScores: false })); await retry;
   assert.equal(h.status.textContent, '');
-  assert.equal(h.puzzles.at(-1).select, false);
+  assert.deepEqual(h.puzzles.at(-1).response.puzzle, puzzle);
+  assert.equal(Object.hasOwn(h.puzzles.at(-1).response.puzzle, 'optimalMoves'), false);
+  assert.equal(h.puzzles.at(-1).select, true);
   h.session.cancel();
 });
 
-test('Invalid archive dates never retry or enter offline fallback', async context => {
-  const h = harness(context, { fallback: () => { assert.fail('Validation errors are not offline outages'); } });
+test('Invalid archive dates do not retry', async context => {
+  const h = harness(context);
   const load = h.session.load('2099-01-01');
   h.respond(h.requests.at(-1), { error: 'Choose an available daily puzzle.' }, 400); await load;
   assert.equal(h.status.textContent, 'Choose an available daily puzzle.');
@@ -234,44 +235,27 @@ test('Malformed successful responses preserve the last valid round and retry at 
   h.session.cancel();
 });
 
-test('Malformed successful responses use a valid offline puzzle when the game supports fallback', async context => {
-  const dates = [];
-  const h = harness(context, { fallback: date => {
-    dates.push(date);
-    return metadata(date, { offline: true, acceptingScores: false });
-  } });
-  const load = h.session.load('2026-10-14');
-  h.respond(h.requests.at(-1), metadata('2026-10-14', { nextChangeAt: Infinity })); await load;
-  assert.deepEqual(dates, ['2026-10-14']);
-  assert.equal(h.session.info.offline, true);
-  assert.equal(h.session.info.acceptingScores, false);
+test('Network failures preserve the ongoing round and recover metadata without resetting play', async context => {
+  const h = harness(context);
+  const initial = h.session.load();
+  h.respond(h.requests.at(-1), metadata()); await initial;
+  const lastInfo = h.session.info;
+  const refresh = h.session.refresh();
+  h.requests.at(-1).reject(new TypeError('Failed to fetch')); await refresh;
+  assert.strictEqual(h.session.info, lastInfo);
   assert.equal(h.puzzles.length, 1);
-  assert.match(h.status.textContent, /Offline practice/);
+  assert.equal(h.status.textContent, 'Daily puzzle unavailable. Try again.');
   assert.ok(h.timerAt(60_000));
   const retry = h.runTimer(h.timerAt(60_000));
   h.respond(h.requests.at(-1), metadata()); await retry;
-  assert.equal(h.puzzles.at(-1).select, false, 'Recovery updates eligibility while preserving the ongoing round');
+  assert.equal(h.puzzles.at(-1).select, false, 'A metadata retry preserves the ongoing puzzle');
   assert.equal(h.session.info.acceptingScores, true);
   assert.equal(h.status.textContent, '');
   h.session.cancel();
 });
 
-test('Invalid offline metadata is rejected rather than corrupting the active round', async context => {
-  const h = harness(context, { fallback: () => metadata('2026-10-14', { serverNow: null }) });
-  const initial = h.session.load();
-  h.respond(h.requests.at(-1), metadata()); await initial;
-  const lastInfo = h.session.info;
-  const refresh = h.session.refresh();
-  h.respond(h.requests.at(-1), {}, 503); await refresh;
-  assert.strictEqual(h.session.info, lastInfo);
-  assert.equal(h.puzzles.length, 1);
-  assert.equal(h.status.textContent, 'Daily puzzle unavailable. Try again.');
-  assert.ok(h.timerAt(60_000));
-  h.session.cancel();
-});
-
 test('Gameplay validation runs before replacing metadata or the played puzzle', async context => {
-  const h = harness(context, { validatePuzzle: puzzle => validateCircuit(puzzle.circuit) });
+  const h = harness(context, { validatePuzzle: puzzle => ({ ...puzzle, circuit: validateCircuit(puzzle.circuit) }) });
   const initial = h.session.load();
   h.respond(h.requests.at(-1), metadata()); await initial;
   const lastInfo = h.session.info;
@@ -286,15 +270,54 @@ test('Gameplay validation runs before replacing metadata or the played puzzle', 
   h.session.cancel();
 });
 
-test('Invalid JSON in an HTTP 200 response enters the supported offline fallback', async context => {
-  const h = harness(context, { fallback: date => metadata(date, { offline: true, acceptingScores: false }),
-    validatePuzzle: puzzle => validateCircuit(puzzle.circuit) });
-  const load = h.session.load('2026-10-14');
-  h.requests.at(-1).resolve({ ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected HTML'); } });
-  await load;
+test('Puzzle normalization runs once, preserves the raw response and follows ranked metadata checks', async context => {
+  let calls = 0, normalized;
+  const h = harness(context, {
+    validatePuzzle(puzzle) {
+      calls++;
+      normalized = { circuit: validateCircuit(puzzle.circuit).map(row => [...row]) };
+      return normalized;
+    },
+  });
+  const response = Object.freeze(metadata()), originalPuzzle = response.puzzle;
+  const load = h.session.load();
+  h.respond(h.requests.at(-1), response); await load;
+  assert.equal(calls, 1);
+  const played = h.puzzles[0].response;
+  assert.notStrictEqual(played, response, 'Normalization does not mutate the network response');
+  assert.strictEqual(response.puzzle, originalPuzzle);
+  assert.strictEqual(played.puzzle, normalized, 'Gameplay receives the normalizer result without repeating validation');
+  assert.notStrictEqual(played.puzzle.circuit, originalPuzzle.circuit);
+  assert.notStrictEqual(played.puzzle.circuit[0], originalPuzzle.circuit[0]);
+  assert.equal(Object.hasOwn(played.puzzle, 'optimalMoves'), false, 'The normalizer may return only playable data');
+  assert.equal(Object.hasOwn(h.session.info, 'puzzle'), false);
+
+  const lastInfo = h.session.info, refresh = h.session.refresh();
+  h.respond(h.requests.at(-1), metadata('2026-10-14', { puzzle: { circuit: [['H', 'H']], optimalMoves: 0 } }));
+  await refresh;
+  assert.equal(calls, 1, 'Invalid ranked metadata is rejected before gameplay validation');
+  assert.strictEqual(h.session.info, lastInfo);
   assert.equal(h.puzzles.length, 1);
-  assert.equal(h.session.info.offline, true);
-  assert.match(h.status.textContent, /Offline practice/);
-  assert.ok(h.timerAt(60_000));
+  assert.equal(h.status.textContent, 'Daily puzzle unavailable. Try again.');
   h.session.cancel();
 });
+
+for (const game of ['quantum-golf', 'circuit-reduction', 'quantum-signals', 'graph-states']) {
+  test(`${game}: invalid JSON creates no puzzle and a server retry recovers`, async context => {
+    const h = harness(context, { game });
+    const load = h.session.load('2026-10-14');
+    assert.equal(new URL(h.requests.at(-1).url, 'https://game.test').searchParams.get('game'), game);
+    h.requests.at(-1).resolve({ ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected HTML'); } });
+    await load;
+    assert.equal(h.puzzles.length, 0);
+    assert.equal(h.session.info, undefined);
+    assert.equal(h.status.textContent, 'Daily puzzle unavailable. Try again.');
+    assert.equal(h.timers.size, 1);
+    const retry = h.runTimer(h.timerAt(60_000)), response = metadata();
+    h.respond(h.requests.at(-1), response); await retry;
+    assert.strictEqual(h.puzzles[0].response, response, 'Only the received server puzzle enters gameplay');
+    assert.equal(h.puzzles[0].select, true);
+    assert.equal(h.status.textContent, '');
+    h.session.cancel();
+  });
+}

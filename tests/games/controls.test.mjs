@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bindGameDialogs, ignoresGameShortcut } from '../../src/lib/games/controls.js';
+import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../../src/lib/games/controls.js';
 
 for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect disabled controls and backdrop boundaries (${extraDialogs.length ? 'with guide' : 'default'})`, () => {
   const nodes = new Map();
@@ -8,10 +8,12 @@ for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect d
     if (!nodes.has(id)) {
       const listeners = new Map();
       nodes.set(id, {
-        open: false, disabled: false, openings: 0,
+        open: false, disabled: false, hidden: false, openings: 0,
         addEventListener(type, action) { listeners.set(type, action); },
         emit(type, event = {}) { listeners.get(type)?.({ target: this, ...event }); },
         showModal() { this.open = true; this.openings++; }, close() { this.open = false; },
+        scrollIntoView(options) { this.scrolled = options; },
+        focus(options) { this.focused = options; },
         getBoundingClientRect() { return { left: 10, right: 100, top: 20, bottom: 120 }; },
       });
     }
@@ -27,6 +29,16 @@ for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect d
   show.emit('click'); get('close-rules').emit('click'); assert.equal(rules.open, false);
   win.showModal(); win.emit('click', { clientX: 50, clientY: 121 }); assert.equal(win.open, false);
   win.showModal(); get('close-win').emit('click'); assert.equal(win.open, false);
+  const check = get('check-daily-puzzles'), dailyGames = get('daily-games');
+  check.emit('click'); assert.equal(dailyGames.focused, undefined, 'A closed result cannot redirect focus');
+  win.showModal(); check.hidden = true; check.emit('click');
+  assert.equal(win.open, true); assert.equal(dailyGames.focused, undefined, 'Other game modes cannot jump to hidden daily links');
+  check.hidden = false; check.disabled = true; check.emit('click');
+  assert.equal(win.open, true); assert.equal(dailyGames.scrolled, undefined, 'Pending saves keep the result open');
+  check.disabled = false; check.emit('click');
+  assert.equal(win.open, false);
+  assert.deepEqual(dailyGames.scrolled, { block: 'start' });
+  assert.deepEqual(dailyGames.focused, { preventScroll: true }, 'Checking other daily puzzles reveals and focuses their navigation');
   if (extraDialogs.length) {
     const legend = get('gate-legend-dialog'), showLegend = get('show-gate-legend');
     showLegend.disabled = true; showLegend.emit('click'); assert.equal(legend.open, false);
@@ -34,6 +46,31 @@ for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect d
     legend.emit('click', { clientX: 50, clientY: 50 }); assert.equal(legend.open, true);
     legend.emit('click', { clientX: 0, clientY: 0 }); assert.equal(legend.open, false);
     showLegend.emit('click'); get('close-gate-legend').emit('click'); assert.equal(legend.open, false);
+  }
+});
+
+test('daily navigation is visible only in Daily mode and save locks reset without changing mode controls', () => {
+  const nodes = new Map(), modes = ['tutorial', 'campaign', 'random', 'daily'];
+  const get = id => {
+    if (!nodes.has(id)) nodes.set(id, { hidden: false, disabled: false, inert: false, attrs: new Map(),
+      setAttribute(name, value) { this.attrs.set(name, value); } });
+    return nodes.get(id);
+  };
+  /** @type {[string, boolean, boolean][]} */
+  const states = [
+    ['daily', false, true], ['daily', false, false], ['campaign', true, false],
+    ['random', false, false], ['tutorial', false, false],
+  ];
+  for (const [mode, locked, saving] of states) {
+    updateModeMenu(get, mode, locked, saving);
+    for (const name of modes) {
+      assert.equal(get('mode-' + name).attrs.get('aria-pressed'), String(name === mode));
+      assert.equal(get('mode-' + name).disabled, locked);
+    }
+    assert.equal(get('daily-games').hidden, mode !== 'daily');
+    assert.equal(get('daily-games').inert, saving);
+    assert.equal(get('check-daily-puzzles').hidden, mode !== 'daily');
+    assert.equal(get('check-daily-puzzles').disabled, saving);
   }
 });
 

@@ -48,7 +48,6 @@ export function renderBoard(board, puzzle, placements, { selected, locked = fals
       node.type = 'button'; node.dataset.hole = entry.id; node.dataset.filled = String(gate !== undefined);
       node.setAttribute('aria-pressed', String(selected === entry.id)); node.disabled = locked;
       node.setAttribute('aria-label', 'Hole ' + entry.id + ', wire' + (entry.wires.length > 1 ? 's ' : ' ') + entry.wires.map(row => row + 1).join(' and ') + ': ' + (gate ? gateLabel(gate, entry.wires) : 'unfilled'));
-      node.title = gate ? gateLabel(gate, entry.wires) + ' · Click to change' : 'Choose a gate';
     } else node.setAttribute('aria-hidden', 'true');
     if (entry.wires.length === 2 && gate && gate !== 'I') {
       const link = span('signal-link', '');
@@ -119,28 +118,23 @@ export function renderFlow(svg, puzzle, placements, selected) {
     const wall = svgNode('path', { class: 'signal-flow-cancellation', 'data-boundary': column + 1, 'data-basis': basis,
       d: CANCELLATION_WALL.map(([dx, dy], index) => (index ? 'L' : 'M') + (x(column + 1) + dx) + ',' + (y(basis) + dy)).join(' '),
       fill: 'none', stroke: PHASE_COLORS.negative, 'stroke-width': 2, 'stroke-linejoin': 'round', role: 'img',
-      'aria-label': basis.toString(2).padStart(puzzle.wires, '0') + ': opposite phases cancel' });
-    const title = svgNode('title', {});
-    title.textContent = 'Opposite phases cancel: no outgoing amplitude';
-    wall.appendChild(title); fragment.appendChild(wall);
+      'aria-label': basis.toString(2).padStart(puzzle.wires, '0') + ': opposite phases cancel; no outgoing amplitude' });
+    fragment.appendChild(wall);
   }));
   snapshots.forEach((state, boundary) => state.forEach((amplitude, basis) => {
     if (Math.abs(amplitude) < 1e-9) return;
     const node = svgNode('circle', { class: 'signal-flow-node', 'data-boundary': boundary, 'data-basis': basis,
       'data-amplitude': amplitude, 'data-phase': amplitude < 0 ? '-' : '+', cx: x(boundary), cy: y(basis),
-      r: 8 * Math.abs(amplitude), fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative });
-    const title = svgNode('title', {});
-    title.textContent = basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase';
-    node.appendChild(title); fragment.appendChild(node);
+      r: 8 * Math.abs(amplitude), fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative, role: 'img',
+      'aria-label': basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase' });
+    fragment.appendChild(node);
   }));
   target.forEach((amplitude, basis) => {
     if (Math.abs(amplitude) < 1e-9) return;
     const node = svgNode('circle', { class: 'signal-flow-target', 'data-basis': basis, 'data-amplitude': amplitude,
       'data-phase': amplitude < 0 ? '-' : '+', cx: width - 24, cy: y(basis), r: targetRadius(amplitude),
-      fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative });
-    const title = svgNode('title', {});
-    title.textContent = 'Target ' + basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase';
-    node.appendChild(title);
+      fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative, role: 'img',
+      'aria-label': 'Target ' + basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase' });
     fragment.appendChild(node);
   });
   fragment.appendChild(gutter); svg.replaceChildren(fragment);

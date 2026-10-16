@@ -11,13 +11,12 @@ export function createMoveTimeline(container, describe) {
         if (shared < sequence.length) {
           const added = document.createDocumentFragment();
           for (let index = shared; index < sequence.length; index++) {
-            const { text, label, title } = describe(sequence[index], index);
+            const { text, label } = describe(sequence[index], index);
             const button = document.createElement('button');
             button.type = 'button'; button.dataset.step = String(index + 1);
             button.textContent = text; button.disabled = disabled;
             button.setAttribute('aria-label', label);
             button.setAttribute('aria-current', 'false');
-            if (title) button.title = title;
             added.appendChild(button);
           }
           container.appendChild(added);

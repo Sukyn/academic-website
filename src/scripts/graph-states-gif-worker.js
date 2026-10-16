@@ -48,7 +48,7 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
   const samples = Math.min(64, round.sequence.length);
   let graph = initial, sample = 1;
   for (let step = 1; step <= round.sequence.length; step++) {
-    columns.push(...correctionColumns(graph, round.sequence[step - 1]));
+    if (!imageOnly) columns.push(...correctionColumns(graph, round.sequence[step - 1]));
     graph = applyMove(graph, round.sequence[step - 1]);
     if (!imageOnly && step === Math.round(sample * round.sequence.length / samples)) {
       frames.push({ step, graph, columns: simplifyCorrectionColumns(initial.vertices, columns) }); sample++;
@@ -56,31 +56,33 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
   }
   if (!isSolved(graph)) throw new Error('This graph has not reached the target chain.');
   const shots = sequenceCost(round.sequence), minimum = optimalShots(initial);
-  const height = 656 + (initial.vertices - 1) * 48;
+  const height = imageOnly ? 520 : 656 + (initial.vertices - 1) * 48;
   const canvas = new OffscreenCanvas(WIDTH, height), ctx = canvas.getContext('2d');
   if (!ctx) throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
   const gif = imageOnly ? null : GIFEncoder(), target = pathGraph(initial.vertices);
   const drawFrame = frame => {
     ctx.fillStyle = colors.background; ctx.fillRect(0, 0, WIDTH, height);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = colors.h; ctx.font = '600 28px system-ui, sans-serif'; ctx.fillText('Graph states', WIDTH / 2, 30);
-    ctx.fillStyle = colors.text; ctx.font = '20px system-ui, sans-serif'; ctx.fillText(round.label, WIDTH / 2, 64, WIDTH - 40);
-    drawGraph(ctx, frame.graph, 90, 90, 1.05); drawGraph(ctx, target, 590, 135, .7);
-    ctx.fillStyle = colors.text; ctx.font = '18px system-ui, sans-serif'; ctx.fillText('Target', 702, 122);
-    ctx.fillText('Clifford corrections · simplified', WIDTH / 2, 460);
-    drawCircuit(ctx, initial.vertices, frame.columns, 510);
-    ctx.fillStyle = colors.text; ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText('|G₀⟩', 308, 480); ctx.fillText('|G⟩', 672, 480);
-    ctx.fillStyle = colors.h; ctx.font = '20px system-ui, sans-serif';
-    ctx.fillText(frame.step === round.sequence.length ? 'Chain matched · GG' : `Step ${frame.step} / ${round.sequence.length}`, WIDTH / 2, height - 66);
-    ctx.fillStyle = colors.text; ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText(`${shots} ${shots === 1 ? 'shot' : 'shots'} · Optimal: ${minimum}`, WIDTH / 2, height - 46);
-    ctx.fillStyle = colors.text; ctx.font = '14px system-ui, sans-serif'; ctx.fillText('colin-blake.eu/games/graph-states/', WIDTH / 2, height - 30);
+    ctx.fillStyle = colors.h; ctx.font = '600 20px system-ui, sans-serif'; ctx.fillText(round.label, WIDTH / 2, 34, WIDTH - 40);
+    ctx.fillStyle = colors.text; ctx.font = '20px system-ui, sans-serif';
+    ctx.fillText(`Optimal : ${minimum}`, WIDTH / 2, 66);
+    ctx.fillText(`My score : ${shots}`, WIDTH / 2, 98);
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText(imageOnly ? 'Original' : 'Current', 240, 142); ctx.fillText('Target', 720, 142);
+    drawGraph(ctx, frame.graph, 80, 150, 1); drawGraph(ctx, target, 560, 150, 1);
+    if (!imageOnly) {
+      ctx.fillStyle = colors.text; ctx.font = '18px system-ui, sans-serif';
+      ctx.fillText('Clifford corrections · simplified', WIDTH / 2, 474);
+      drawCircuit(ctx, initial.vertices, frame.columns, 524);
+      ctx.fillStyle = colors.text; ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('|G₀⟩', 308, 494); ctx.fillText('|G⟩', 672, 494);
+      ctx.fillText(`Step ${frame.step} / ${round.sequence.length}`, WIDTH / 2, height - 40);
+    }
     if (gif) gif.writeFrame(applyPalette(ctx.getImageData(0, 0, WIDTH, height).data, palette, 'rgb444'), WIDTH, height,
       { palette, delay: frame.step === round.sequence.length ? 1800 : frame.step === 0 ? 1000 : 600 });
   };
   if (imageOnly) {
-    drawFrame({ step: round.sequence.length, graph, columns: simplifyCorrectionColumns(initial.vertices, columns) });
+    drawFrame({ step: 0, graph: initial });
     return canvas;
   }
   onProgress?.(0);

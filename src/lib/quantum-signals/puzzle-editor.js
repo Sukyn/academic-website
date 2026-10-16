@@ -78,13 +78,13 @@ export function createPuzzleEditor({ get, onPlay }) {
   function renderMenu() {
     get('editor-tools').replaceChildren(...TOOLS.filter(([tool]) => draft.wires > 1 || !['control', 'target', 'phase', 'hole-pair'].includes(tool)).map(([tool, label]) => {
       const button = element('button', 'editor-tool'); button.type = 'button'; button.dataset.editorTool = tool;
-      button.id = 'editor-tool-' + tool; button.title = label; button.setAttribute('aria-label', label); button.append(toolIcon(tool)); return button;
+      button.id = 'editor-tool-' + tool; button.setAttribute('aria-label', label); button.append(toolIcon(tool)); return button;
     }));
     const entry = at(column, wire);
     get('editor-choices').hidden = !entry?.id;
     get('editor-gates').replaceChildren(...(entry?.id ? (entry.wires.length === 2 ? PAIR : SINGLE).map(gate => {
       const button = element('button', 'editor-tool'); button.type = 'button'; button.dataset.editorChoice = gate;
-      button.id = 'editor-choice-' + gate; button.title = gateLabel(gate, entry.wires);
+      button.id = 'editor-choice-' + gate;
       button.setAttribute('aria-label', 'Offer ' + gateLabel(gate, entry.wires));
       button.setAttribute('aria-pressed', String(entry.choices.includes(gate))); button.append(gateIcon(gate, entry.wires)); return button;
     }) : []));
@@ -95,7 +95,7 @@ export function createPuzzleEditor({ get, onPlay }) {
       button.type = 'button'; button.id = 'editor-target-' + basis;
       button.dataset.editorTarget = basis; button.dataset.sign = weight;
       const phase = weight === 0 ? 'off' : weight > 0 ? 'positive phase' : 'negative phase';
-      button.setAttribute('aria-label', 'Target ' + bits + ': ' + phase); button.title = phase;
+      button.setAttribute('aria-label', 'Target ' + bits + ': ' + phase);
       const text = element('span'); text.textContent = bits;
       const line = element('span', 'editor-target-line'), dot = element('span', 'editor-target-dot');
       line.setAttribute('aria-hidden', 'true'); dot.setAttribute('aria-hidden', 'true');

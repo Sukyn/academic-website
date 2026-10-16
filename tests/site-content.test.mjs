@@ -176,7 +176,7 @@ async function wallpaperFixture({ idleSupported = true, hidden = false } = {}) {
     clearRect() { paintCount += 1; },
   }, { get: (target, key) => target[key] ?? (() => {}) });
   class Canvas { getContext() { return context; } }
-  let canvas = new Canvas();
+  const canvas = new Canvas();
   const document = events({ hidden, querySelector: () => canvas });
   const window = events({
     innerWidth: 1280, innerHeight: 800, devicePixelRatio: 3,
@@ -202,8 +202,7 @@ async function wallpaperFixture({ idleSupported = true, hidden = false } = {}) {
     timers.delete(id);
     timer.callback();
   }
-  return { window, document, get canvas() { return canvas; }, timers, idleJobs, flushIdle, tick,
-    replaceCanvas() { canvas = new Canvas(); document.emit('astro:page-load'); },
+  return { window, document, canvas, timers, idleJobs, flushIdle, tick,
     counts: () => ({ gradients: gradientCount, paints: paintCount }) };
 }
 
@@ -219,7 +218,6 @@ test('wallpaper paints once after content and stays static across page and visib
   assert.deepEqual(fixture.counts(), { gradients: 4, paints: 1 });
   for (let index = 0; index < 8; index += 1) {
     fixture.window.emit('pageshow');
-    fixture.document.emit('astro:page-load');
     fixture.document.emit('visibilitychange');
   }
   assert.equal(fixture.timers.size + fixture.idleJobs.size, 0, 'No recurring background work');
@@ -272,19 +270,19 @@ test('wallpaper defers hidden work and recovers an interrupted first paint on pa
   assert.equal(fixture.counts().paints, 2);
   fixture.window.innerWidth = 900;
   fixture.window.emit('resize');
-  fixture.window.__chalkWallpaperState.destroy();
+  fixture.window.emit('pagehide');
   assert.equal(fixture.timers.size + fixture.idleJobs.size, 0);
-  assert.equal(fixture.document.listenerCount('visibilitychange'), 0);
 });
 
-test('wallpaper replaces its canvas without retaining duplicate event handlers', async () => {
+test('wallpaper restores a changed viewport without registering duplicate event handlers', async () => {
   const fixture = await wallpaperFixture();
   fixture.flushIdle();
-  const firstCanvas = fixture.canvas;
-  fixture.replaceCanvas();
+  fixture.window.emit('pagehide');
+  fixture.window.innerWidth = 900;
+  fixture.window.emit('pageshow', { persisted: true });
   assert.equal(fixture.idleJobs.size, 1);
   fixture.flushIdle();
-  assert.notEqual(fixture.canvas, firstCanvas);
+  assert.equal(fixture.canvas.width, 900);
   assert.equal(fixture.counts().paints, 2);
   for (const name of ['resize', 'pagehide', 'pageshow']) assert.equal(fixture.window.listenerCount(name), 1);
   assert.equal(fixture.document.listenerCount('visibilitychange'), 1);
@@ -334,18 +332,15 @@ async function scratchFixture({ failedSources = [], tainted = false } = {}) {
   vm.runInContext(source, sandbox);
   const settle = () => new Promise(resolve => setImmediate(resolve));
   await settle();
-  return { root, image, canvas, document, timers, source, sandbox, settle };
+  return { root, image, canvas, timers, settle };
 }
 
 test('scratch portrait retains its last successful image when the next asset fails', async () => {
-  const { root, image, canvas, source, sandbox, document } = await scratchFixture({ failedSources: ['/second.jpg'] });
+  const { root, image, canvas } = await scratchFixture({ failedSources: ['/second.jpg'] });
   assert.equal(image.src, '/first.jpg');
   assert.equal(root.dataset.ready, undefined);
   assert.equal(root.dataset.revealed, 'true');
   assert.equal(canvas.style.pointerEvents, 'none');
-  vm.runInContext(source, sandbox);
-  assert.equal(document.listenerCount('astro:page-load'), 1);
-  assert.equal(canvas.listenerCount('pointerdown'), 1);
 });
 
 test('scratch portrait ignores secondary clicks and recovers from unreadable canvas data', async () => {

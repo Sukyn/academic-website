@@ -609,11 +609,13 @@ try {
 
     await page.route('**/api/daily**', route => route.abort());
     await tap(page.locator('#mode-campaign'));
+    const campaignGraph = await page.locator('#graph-board').innerHTML();
     await tap(page.locator('#mode-daily'));
-    await page.waitForFunction(() => document.getElementById('daily-status').textContent.includes('Offline'));
-    assert.ok(await page.locator('#graph-board button[data-vertex]').count() >= 3, 'Offline daily puzzles remain playable');
+    await page.locator('#daily-status').filter({ hasText: 'Daily puzzle unavailable. Try again.' }).waitFor();
+    assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('#graph-board').innerHTML(), campaignGraph, 'A daily API outage preserves the campaign graph');
     await context.close();
-    console.log(`${name}: tutorial, vertex/edge shots, remembered scores, undo, replay, visual editor, JSON, daily/practice/offline and accessibility passed.`);
+    console.log(`${name}: tutorial, vertex/edge shots, remembered scores, undo, replay, visual editor, JSON, daily/practice/outages and accessibility passed.`);
   }
   await animatedMoves('desktop', { viewport: { width: 1440, height: 1000 } });
   await animatedMoves('mobile390', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

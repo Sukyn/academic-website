@@ -29,8 +29,8 @@ import '../../styles/quantum-signals.css';
             <div id="signal-board" aria-label="Circuit with gate holes"></div>
           </div>
           <div class="signal-palette" role="group" aria-label="Gate choices for the selected hole">
-            {GATES.map(gate => <button class="button ghost" type="button" data-choice={gate} aria-label={gateLabel(gate)} title={gateLabel(gate)}></button>)}
-            <button class="button ghost" id="erase-gate" type="button" title="Clear selected hole · Delete" disabled>Erase</button>
+            {GATES.map(gate => <button class="button ghost" type="button" data-choice={gate} aria-label={gateLabel(gate)}></button>)}
+            <button class="button ghost" id="erase-gate" type="button" aria-keyshortcuts="Delete" disabled>Erase</button>
           </div>
           <div class="game-scroll signal-scroll signal-flow-scroll" id="flow-scroll" role="region" aria-label="Joint-state paths. Scroll to explore the states and circuit columns." tabindex="0">
             <svg id="signal-flow" role="img" aria-label="Quantum state paths through the circuit, with the target at the right"></svg>

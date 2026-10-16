@@ -32,8 +32,8 @@ import GameReviewControls from '../../components/games/GameReviewControls.astro'
 
     <div class="controls">
       <div class="gates">
-        <button class="button gate h" id="gate-h" type="button" title="Hadamard · H">H</button>
-        <button class="button gate t" id="gate-t" type="button" title="T gate · T">T</button>
+        <button class="button gate h" id="gate-h" type="button" aria-label="Hadamard" aria-keyshortcuts="H">H</button>
+        <button class="button gate t" id="gate-t" type="button" aria-label="T gate" aria-keyshortcuts="T">T</button>
       </div>
       <label class="hole" id="hole-controls" hidden>
         <span>Hole <output id="epsilon-value" for="epsilon">ε = 0.220</output></span>
@@ -43,11 +43,11 @@ import GameReviewControls from '../../components/games/GameReviewControls.astro'
 
     <GameRoundControls>
       <div class="free-controls" id="free-controls" slot="before" hidden>
-        <button class="button ghost" id="new-hole" type="button" title="New random target · N">New hole</button>
+        <button class="button ghost" id="new-hole" type="button" aria-keyshortcuts="N">New hole</button>
         <button class="button ghost" id="pick-target" type="button" aria-pressed="false">Pick target</button>
-        <button class="button ghost" id="toggle-precision" type="button" aria-pressed="false" title="Keep the target and shrink the hole after each win">Precision</button>
+        <button class="button ghost" id="toggle-precision" type="button" aria-pressed="false">Precision</button>
         <details>
-          <summary title="Set target angles">θ, φ</summary>
+          <summary aria-label="Set target angles θ, φ">θ, φ</summary>
           <form id="coordinate-form">
             <label>θ <input id="target-theta" type="number" min="0" max="180" step="any" value="90" required aria-label="Target polar angle in degrees" />°</label>
             <label>φ <input id="target-phi" type="number" min="0" max="360" step="any" value="45" required aria-label="Target azimuth in degrees" />°</label>
@@ -55,7 +55,7 @@ import GameReviewControls from '../../components/games/GameReviewControls.astro'
           </form>
         </details>
       </div>
-      <button class="button ghost" id="toggle-trace" type="button" aria-pressed="true" title="Show gate history">Trace</button>
+      <button class="button ghost" id="toggle-trace" type="button" aria-pressed="true">Trace</button>
       <button class="button ghost" id="precision-next" type="button" hidden>Smaller hole</button>
     </GameRoundControls>
     <GameJsonActions />

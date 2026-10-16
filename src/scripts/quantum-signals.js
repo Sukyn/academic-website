@@ -1,9 +1,10 @@
 import { getHoles, applyPlacement, simulate, validatePuzzle, validateCustomPuzzle, puzzleData } from '../lib/quantum-signals/engine.js';
 import { createPuzzleEditor } from '../lib/quantum-signals/puzzle-editor.js';
-import { LEVELS, generatePuzzle, dailyPuzzle, DAILY_START } from '../lib/quantum-signals/puzzles.js';
+import { LEVELS, generatePuzzle, DAILY_START } from '../lib/quantum-signals/puzzles.js';
 import { gateIcon, gateLabel, renderBoard, renderFlow, highlightFlow, pinFlowLabels } from '../lib/quantum-signals/rendering.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
+import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
@@ -12,7 +13,6 @@ import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
-import { dailyMetadata } from '../lib/games/daily-calendar.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'quantum-signals', get = id => document.getElementById(id);
@@ -32,7 +32,7 @@ function isWon() {
 const choices = [...document.querySelectorAll('[data-choice]')];
 const paletteWires = new WeakMap();
 const tutorialBlocked = () => tutorial.active && !tutorial.executing;
-const canRecord = () => mode === 'campaign' || (mode === 'daily' && !daily.info?.offline);
+const canRecord = () => mode === 'campaign' || mode === 'daily';
 const selector = () => mode === 'tutorial' || mode === 'random' ? null : { game: GAME, ...(mode === 'daily' ? { date: puzzle.date } : { level: campaignIndex + 1 }) };
 const sharing = createReplayShare({ get,
   createWorker: () => new Worker(new URL('./quantum-signals-gif-worker.js', import.meta.url), { type: 'module' }),
@@ -42,7 +42,7 @@ const completions = createScoreboard({
   canSubmit: () => !daily.loading && canRecord() && isWon(),
 });
 const daily = createDailySession({
-  game: GAME, startDate: DAILY_START, ranked: false, get, update: () => update({ board: false }), offlineMessage: 'Offline puzzle.',
+  game: GAME, startDate: DAILY_START, ranked: false, get, update: () => update({ board: false }),
   selectedDate: () => mode === 'daily' ? puzzle.date : undefined,
   validatePuzzle,
   onPuzzle(info, select) {
@@ -50,13 +50,9 @@ const daily = createDailySession({
       tutorial.leave();
       completions.reset();
       mode = 'daily';
-      puzzle = { ...validatePuzzle(info.puzzle), date: info.date };
+      puzzle = { ...info.puzzle, date: info.date };
       reset();
     } else if (mode === 'daily' && puzzle.date === info.date) completions.load();
-  },
-  fallback(date) {
-    const metadata = dailyMetadata(date, DAILY_START);
-    return { ...metadata, puzzle: dailyPuzzle(metadata.date), acceptingScores: false, offline: true };
   },
 });
 const review = createStepReplay({
@@ -103,9 +99,9 @@ function navigateHole(key) {
   if (candidates.length) { selectHole(candidates[0].id); focusSelected(); }
 }
 const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => {
-  const title = 'Placement ' + (index + 1) + ': ' + move.hole;
+  const label = 'Placement ' + (index + 1) + ': ' + move.hole;
   return { text: move.gate === null ? '×' : move.gate === 'I' ? '—' : move.gate,
-    title, label: title + ' · ' + (move.gate ?? 'erase') };
+    label: label + ' · ' + (move.gate ?? 'erase') };
 });
 // Only play/navigation actions follow progress; network updates preserve exploration.
 function update({ board = true, follow = false } = {}) {
@@ -136,14 +132,13 @@ function update({ board = true, follow = false } = {}) {
         button.setAttribute('aria-label', gateLabel(gate, hole.wires));
         paletteWires.set(button, wires);
       }
-      button.title = button.getAttribute('aria-label') + ' · ' + key;
       button.setAttribute('aria-keyshortcuts', key + (gate.length === 1 ? ' ' + gate : ''));
     } else button.removeAttribute('aria-keyshortcuts');
   }
   get('erase-gate').hidden = !Object.hasOwn(visible, selected);
   get('erase-gate').disabled = locked || !Object.hasOwn(placements, selected);
   if (focusedControl?.hidden) focusSelected();
-  updateModeMenu(get, mode);
+  updateModeMenu(get, mode, false, completions.submitting);
   get('campaign-controls').hidden = mode !== 'campaign'; get('custom-controls').hidden = mode !== 'random';
   get('circuit-editor-controls').hidden = mode !== 'random';
   customJson.update({ visible: mode === 'random', disabled: daily.loading });
@@ -298,4 +293,4 @@ const tutorial = createTutorial({
   })),
   onReset: () => setPuzzle('tutorial', TUTORIAL_PUZZLE),
 });
-tutorial.enter();
+if (!startDailyFromLink(daily)) tutorial.enter();

@@ -253,9 +253,9 @@ async function gateGeometry(page, puzzle, placements = {}) {
 async function placedGates(page, puzzle) {
   const holes = new Map(getHoles(puzzle).map(hole => [hole.id, hole]));
   const visible = await page.locator('#signal-board [data-hole][data-filled="true"]').evaluateAll(nodes =>
-    nodes.map(node => ({ id: node.dataset.hole, label: node.title.split(' · ')[0] })));
+    nodes.map(node => ({ id: node.dataset.hole, label: node.getAttribute('aria-label') })));
   return Object.fromEntries(visible.map(({ id, label }) => {
-    const hole = holes.get(id), gate = hole?.choices.find(gate => gateLabel(gate, hole.wires) === label);
+    const hole = holes.get(id), gate = hole?.choices.find(gate => label.endsWith(': ' + gateLabel(gate, hole.wires)));
     assert.ok(gate, 'Each displayed placement identifies a gate offered by its hole');
     return [id, gate];
   }));
@@ -273,7 +273,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
       const computed = getComputedStyle(node);
       const color = property => { context.fillStyle = '#000000'; context.fillStyle = computed[property]; return context.fillStyle; };
       return { fill: color('fill'), stroke: color('stroke'), strokeWidth: parseFloat(computed.strokeWidth),
-        dash: computed.strokeDasharray, title: node.querySelector('title')?.textContent };
+        dash: computed.strokeDasharray, label: node.getAttribute('aria-label') };
     };
     return {
     nodes: [...svg.querySelectorAll('[data-boundary][data-basis][data-amplitude]')].map(node => ({
@@ -288,7 +288,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
     targets: [...svg.querySelectorAll('.signal-flow-target')].map(node => ({ basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
       x: node.cx.baseVal.value, ...style(node) })),
     cancellations: [...svg.querySelectorAll('.signal-flow-cancellation')].map(node => ({ boundary: Number(node.dataset.boundary),
-      basis: Number(node.dataset.basis), path: node.getAttribute('d'), label: node.getAttribute('aria-label'), ...style(node), fill: node.getAttribute('fill') })),
+      basis: Number(node.dataset.basis), path: node.getAttribute('d'), ...style(node), fill: node.getAttribute('fill') })),
     divider: svg.querySelector('.signal-flow-divider')?.getBBox().x,
   }; });
   assert.deepEqual(actual.lanes.map(lane => lane.basis), Array.from({ length: 2 ** puzzle.wires }, (_, basis) => basis), 'Every complete basis state has its own fixed lane');
@@ -317,8 +317,8 @@ async function basisFlow(page, puzzle, placements = undefined) {
     assert.equal(edge.stroke, phasePathColor(edge.amplitude), 'Negative paths are white; positive paths are darker');
   }
   for (const item of [...actual.nodes, ...actual.edges, ...actual.targets]) assert.equal(item.dash, 'none', 'Paths and markers use solid strokes');
-  for (const item of [...actual.nodes, ...actual.targets]) assert.ok(item.title.includes(item.amplitude < 0 ? '− phase' : '+ phase'),
-    'Hover descriptions state the signed phase');
+  for (const item of [...actual.nodes, ...actual.targets]) assert.ok(item.label.includes(item.amplitude < 0 ? '− phase' : '+ phase'),
+    'Accessible descriptions state the signed phase');
   const outputX = actual.nodes.find(node => node.boundary === puzzle.columns.length).x;
   assert.ok(Number.isFinite(actual.divider) && outputX < actual.divider && actual.targets.every(node => node.x > actual.divider),
     'A divider separates the input-to-output diagram from every target marker');
@@ -1263,17 +1263,16 @@ async function recovery(page) {
   await activate(page, page.locator('#show-rules'));
   await page.locator('#rules-dialog[open]').waitFor();
   await activate(page, page.locator('#close-rules'));
+  const campaignCircuit = await page.locator('#signal-board').innerHTML();
   await page.route('**/api/daily?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"Temporarily unavailable."}' }));
   await activate(page, page.locator('#mode-daily'));
-  await page.locator('#daily-status').filter({ hasText: /^Offline puzzle\.$/ }).waitFor();
-  await completionBoard(page);
-  await finish(page, dailyPuzzle(fixture.getDaily('quantum-signals').date));
-  await closeWin(page);
-  await activate(page, page.locator('#restart'));
+  await page.locator('#daily-status').filter({ hasText: 'Daily puzzle unavailable. Try again.' }).waitFor();
+  assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('#signal-board').innerHTML(), campaignCircuit, 'A daily API outage preserves the campaign circuit');
   await page.unroute('**/api/daily?**');
   await fixture.install(page);
   await daily(page, 'Signals desktop');
-  assert.equal(await page.locator('#daily-status').innerText(), '', 'A successful daily retry clears the offline status');
+  assert.equal(await page.locator('#daily-status').innerText(), '', 'A successful daily retry clears the unavailable status');
 }
 
 async function tutorialGateAppearance(page) {

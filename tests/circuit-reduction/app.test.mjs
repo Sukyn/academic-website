@@ -132,6 +132,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   context.after(() => { Date.now = originalDateNow; });
   const { ReplayWorker, gifs } = replayWorkers();
   const windowMock = new Element('WINDOW'), requests = [], workers = [], timers = new Map();
+  windowMock.location = { search: '' };
   let monotonic = 0;
   Object.defineProperty(globalThis, 'document', { configurable: true, value: documentMock });
   Object.defineProperty(globalThis, 'window', { configurable: true, value: windowMock });
@@ -741,10 +742,10 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(get('share-score').closest('.advanced-features'), null, 'Daily sharing stays outside Advanced');
   assert.equal(get('share-result').closest('.advanced-features'), null);
   assert.equal(get('score-form').hidden, false); const winningBoard = boardSignature();
-  const rollover = [...timers.values()].find(timer => timer.delay === 1020); assert.ok(rollover);
-  monotonic += 1020; timers.delete(rollover); const refreshing = rollover.callback();
+  const rollover = [...timers.values()].find(timer => timer.delay === 1050); assert.ok(rollover);
+  monotonic += 1050; timers.delete(rollover); const refreshing = rollover.callback();
   assert.match(get('daily-note').textContent, /Practice.*closed/);
-  await reply(pendingDaily(), metadata(today, beforeMidnight + 1020)); await refreshing; await boards();
+  await reply(pendingDaily(), metadata(today, beforeMidnight + 1050)); await refreshing; await boards();
   assert.equal(moveCount(), puzzle.optimalMoves); assert.equal(boardSignature(), winningBoard); assert.equal(get('score-form').hidden, true);
   assert.equal(get('daily-date').children[0].value, '2026-10-15'); assert.equal(get('daily-date').value, today);
   const beforePastSubmit = requests.length; await get('score-form').dispatch('submit'); assert.equal(requests.length, beforePastSubmit);
@@ -761,13 +762,20 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await reply(pendingDaily(), metadata('2026-10-15', dailyBounds('2026-10-15').closesAt + 10)); await boards();
   assert.equal(moveCount(), next.optimalMoves); assert.equal(get('win-dialog').open, true);
 
-  // Offline puzzles are playable but never authorize submission.
+  // An unavailable daily API leaves the current puzzle intact.
+  const beforeOutage = boardSignature(), movesBeforeOutage = moveCount();
   const offline = click('mode-daily'); await reply(pendingDaily(), {}, 503); await offline; await boards();
-  assert.match(get('daily-status').textContent, /Offline practice/); assert.equal(get('score-form').hidden, true);
-  assert.ok([...timers.values()].some(timer => timer.delay === 60_000), 'Offline practice retries online scoring metadata');
+  assert.equal(get('daily-status').textContent, 'Daily puzzle unavailable. Try again.');
+  assert.equal(boardSignature(), beforeOutage, 'An outage never replaces the board with a locally generated puzzle');
+  assert.equal(moveCount(), movesBeforeOutage);
+  assert.equal(get('score-form').hidden, true);
+  assert.ok([...timers.values()].some(timer => timer.delay === 60_000), 'The requested daily puzzle retries its server API');
   const requestCount = requests.length; documentMock.hidden = true; await documentMock.dispatch('visibilitychange'); assert.equal(requests.length, requestCount);
-  documentMock.hidden = false; const resumed = documentMock.dispatch('visibilitychange'); await reply(pendingDaily(), metadata(today)); await resumed; await boards();
+  documentMock.hidden = false; const resumed = documentMock.dispatch('visibilitychange');
+  assert.equal(new URL(pendingDaily().url, 'https://example.test').searchParams.get('date'), '2026-10-15', 'Recovery refreshes the preserved puzzle date');
+  await reply(pendingDaily(), metadata('2026-10-15', dailyBounds('2026-10-15').closesAt + 10)); await resumed; await boards();
   assert.equal(get('daily-status').textContent, '');
+  assert.equal(boardSignature(), beforeOutage, 'A metadata refresh preserves progress after the outage');
   await click('mode-campaign'); await boards();
   assert.equal(get('share-score').parentElement, get('replay-actions'), 'Leaving daily restores main Share to the replay row');
   assert.equal(get('share-result').parentElement, get('result-replay-actions'), 'Leaving daily restores result Share to Advanced');

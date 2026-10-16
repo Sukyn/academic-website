@@ -1,5 +1,9 @@
 ---
 import '../../styles/games.css';
+import DailyGameLinks from './DailyGameLinks.astro';
 ---
 
-<div class="quantum-game"><slot /></div>
+<div class="quantum-game">
+  <DailyGameLinks current={Astro.url.pathname.split('/').filter(Boolean).at(-1)} hidden />
+  <slot />
+</div>

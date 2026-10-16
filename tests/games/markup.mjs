@@ -1,6 +1,9 @@
 // Controller fixtures retain real controls and containers; browser tests check
 // Astro slot placement and layout.
 export async function expandGameControls(html, component) {
+  const shell = await component('GameShell');
+  html = html.replace(/<GameShell\b[^>]*>([\s\S]*?)<\/GameShell>/, (_, content) => shell.replace('<slot />', content));
+  html = html.replace(/<DailyGameLinks\b[^>]*\/>/, await component('DailyGameLinks'));
   html = html.replace(/<GameTutorial\b[^>]*\/>/, await component('GameTutorial'));
   html = html.replace(/<GameReviewControls\b[^>]*\/>/, await component('GameReviewControls'));
   const round = await component('GameRoundControls');

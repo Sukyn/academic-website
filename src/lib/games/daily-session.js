@@ -18,17 +18,16 @@ function checkResponse(response, date, startDate, validatePuzzle, ranked) {
   }
   if ((date && response.date !== date) ||
       ['date', 'today', 'opensAt', 'closesAt', 'nextChangeAt'].some(key => response[key] !== calendar[key]) ||
-      (response.acceptingScores && (!calendar.acceptingScores || response.offline))) {
+      (response.acceptingScores && !calendar.acceptingScores)) {
     throw new Error('Invalid daily puzzle response.');
   }
-  validatePuzzle?.(response.puzzle);
-  return response;
+  return validatePuzzle ? { ...response, puzzle: validatePuzzle(response.puzzle) } : response;
 }
 
-/** Daily transport, server clock and refresh lifecycle; gameplay stays in the caller. */
+/** Daily transport and clock; validatePuzzle returns the normalized playable puzzle. */
 export function createDailySession({
-  game, startDate, onPuzzle, update, selectedDate, isBusy = () => false, fallback, validatePuzzle, ranked = true,
-  settleDelay = 50, offlineMessage = 'Offline practice · online scores unavailable.', get = id => document.getElementById(id),
+  game, startDate, onPuzzle, update, selectedDate, isBusy = () => false, validatePuzzle, ranked = true,
+  get = id => document.getElementById(id),
 }) {
   let info, received, request, timer, loading = false;
   let archiveRange;
@@ -49,13 +48,9 @@ export function createDailySession({
     update();
     try {
       const params = new URLSearchParams({ game, ...(date ? { date } : {}) });
-      let response;
-      try { response = checkResponse(await fetchJson(`/api/daily?${params}`, job, { cache: 'no-store' }), date, startDate, validatePuzzle, ranked); }
-      catch (error) {
-        if (job.signal.aborted || error instanceof ScoreError || !fallback) throw error;
-        response = checkResponse(fallback(date), date, startDate, validatePuzzle, ranked);
-      }
+      const data = await fetchJson(`/api/daily?${params}`, job, { cache: 'no-store' });
       if (request !== job) return;
+      const response = checkResponse(data, date, startDate, validatePuzzle, ranked);
       // The caller owns the playable puzzle. Retain only clock/archive metadata here.
       const { puzzle, ...metadata } = response;
       info = metadata; received = performance.now(); loading = false;
@@ -67,9 +62,8 @@ export function createDailySession({
         archiveRange = range;
       }
       get('daily-date').value = selectedDate() ?? info.today;
-      get('daily-status').textContent = info.offline ? offlineMessage : '';
-      timer = setTimeout(refresh, Math.min(info.offline ? 60_000 : 2_147_483_647,
-        Math.max(settleDelay, info.nextChangeAt - serverTime() + settleDelay)));
+      get('daily-status').textContent = '';
+      timer = setTimeout(refresh, Math.max(50, info.nextChangeAt - serverTime() + 50));
     } catch (error) {
       if (request !== job) return;
       get('daily-status').textContent = error instanceof ScoreError ? error.message : 'Daily puzzle unavailable. Try again.';

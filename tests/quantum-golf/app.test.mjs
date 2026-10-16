@@ -234,6 +234,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   globalThis.document = doc;
   let reducedMotion = true;
   const browser = new MockElement('WINDOW');
+  browser.location = { search: '' };
   browser.matchMedia = () => ({ matches: reducedMotion });
   globalThis.window = browser;
   let clipboardSupported = true, pngClipboardSupported = true, clipboardFailure = null, clipboardDelay = null;

@@ -1,5 +1,5 @@
 import {
-  EMPTY, MAX_WIRES, LEARNED_RULE_IDS, RULES, circuitKey, compactCircuit,
+  EMPTY, MAX_WIRES, LEARNED_RULE_IDS, getRule, circuitKey, compactCircuit,
   getRewriteMoves, lowerBound, seededRandom,
 } from './engine.js';
 import { CERTIFIED_PUZZLES } from './generated-catalogue.js';
@@ -10,7 +10,7 @@ const reflectCircuit = circuit => [...circuit].reverse().map(row => row.map(cell
 const offsetCircuit = (circuit, offset, wires) => Array.from({ length: wires }, (_, row) =>
   row >= offset && row < offset + circuit.length ? [...circuit[row - offset]] : Array(circuit[0].length).fill(EMPTY));
 function reflectMove(move, wires) {
-  const rule = RULES.find(rule => rule.id === move.rule);
+  const rule = getRule(move.rule);
   const next = { ...move, rule: reflectedRules[move.rule] || move.rule, row: rule ? wires - move.row - rule.left.length : 0 };
   if (move.circuit) next.circuit = reflectCircuit(move.circuit);
   return next;

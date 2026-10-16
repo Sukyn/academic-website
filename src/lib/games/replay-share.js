@@ -1,6 +1,6 @@
 import { createWorkerReplayGif, createWorkerReplayImage } from './replay-gif.js';
 
-/** Share a final still immediately; encode the replay only on download. */
+/** Prepare the share image immediately; encode the replay only on download. */
 export function createReplayShare({ createWorker, get = id => document.getElementById(id) }) {
   const dialog = get('share-dialog');
   const download = get('download-gif');

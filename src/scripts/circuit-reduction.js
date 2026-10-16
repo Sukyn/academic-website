@@ -1,12 +1,12 @@
-import { RULES, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getLegalMoves, isSolved, validateCircuit, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
+import { getRule, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getLegalMoves, isSolved, validateCircuit, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
 import { customCircuit, identityCircuit } from '../lib/circuit-reduction/custom.js';
 import { generatePuzzle } from '../lib/circuit-reduction/generator.js';
 import { spaceGlyph, circuitWires } from '../lib/circuit-reduction/rendering.js';
 import { gateGlyph } from '../lib/games/circuit-graphics.js';
-import { LEVELS, dailyPuzzle, DAILY_START } from '../lib/circuit-reduction/puzzles.js';
-import { dailyMetadata } from '../lib/games/daily-calendar.js';
+import { LEVELS, DAILY_START } from '../lib/circuit-reduction/puzzles.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
+import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
@@ -21,7 +21,6 @@ const get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 const winDialog = get('win-dialog');
 const ruleButtons = [...document.querySelectorAll('[data-rule]')];
-const rulesById = Object.fromEntries(RULES.map(rule => [rule.id, rule]));
 const cellNames = { '.': 'empty slot', H: 'H', X: 'X', Z: 'Z', ZU: 'upper Z endpoint', ZD: 'lower Z endpoint', XU: 'upper X endpoint', XD: 'lower X endpoint' };
 let mode = 'campaign', level = LEVELS[0], campaignLevel = level, editing = false;
 let circuit = level.circuit, sequence = [], states = [circuit];
@@ -56,8 +55,8 @@ const scores = createScoreboard({
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
 const daily = createDailySession({
-  game: GAME, startDate: DAILY_START, get, update: () => update({ board: false }), settleDelay: 20,
-  validatePuzzle: puzzle => validateCircuit(puzzle.circuit),
+  game: GAME, startDate: DAILY_START, get, update: () => update({ board: false }),
+  validatePuzzle: puzzle => ({ ...puzzle, circuit: validateCircuit(puzzle.circuit) }),
   selectedDate: () => mode === 'daily' ? level.date : undefined,
   onPuzzle(info, select) {
     if (select && (mode !== 'daily' || level.date !== info.date)) {
@@ -71,10 +70,6 @@ const daily = createDailySession({
       Object.assign(level, { acceptingScores: info.acceptingScores, opensAt: info.opensAt, closesAt: info.closesAt });
       scores.load();
     }
-  },
-  fallback(date) {
-    const metadata = dailyMetadata(date, DAILY_START);
-    return { ...metadata, puzzle: dailyPuzzle(metadata.date), acceptingScores: false, offline: true };
   },
 });
 const review = createStepReplay({
@@ -93,7 +88,7 @@ guide = createTutorial({
     prepare() {
       if (layout) playMove({ rule: 'arrange', row: 0, column: 0, circuit: layout });
       clearSelection();
-      const rule = rulesById[move.rule];
+      const rule = getRule(move.rule);
       if (!rule) return;
       for (let row = 0; row < rule.left.length; row++) {
         for (let column = 0; column < rule.left[0].length; column++) selection.add(`${move.row + row}:${move.column + column}`);
@@ -148,7 +143,6 @@ function renderCircuit() {
     row.forEach((cell, x) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'circuit-cell'; button.dataset.cell = `${y}:${x}`;
       button.dataset.gate = cell; button.setAttribute('aria-label', `Wire ${y + 1}, column ${x + 1}: ${cellNames[cell]}`);
-      button.title = 'Drag or Shift-click to select a rectangle · Enter: apply sole matching rule';
       button.setAttribute('aria-pressed', String(selection.has(`${y}:${x}`)));
       button.disabled = daily.loading || review.step !== null;
       if (cell !== '.') {
@@ -159,7 +153,6 @@ function renderCircuit() {
     for (let boundary = 0; boundary <= row.length; boundary++) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'space-handle'; button.dataset.space = `${y}:${boundary}`;
       button.setAttribute('aria-label', `Add space before slot ${boundary + 1} on all wires`);
-      button.title = 'Add space on all wires · Right-click: remove space';
       button.style.setProperty('left', `${22 + boundary * 64}px`); button.style.setProperty('top', `${36 + y * 72}px`);
       button.disabled = daily.loading || review.step !== null;
       if (boundary === 0 || boundary === row.length) button.dataset.edge = boundary === 0 ? 'start' : 'end';
@@ -195,7 +188,7 @@ function update({ board = true } = {}) {
   }
   const selectionNote = !locked && !won && selection.size && !matches.size ? 'No matching rule' : '';
   get('selection-note').textContent = selectionNote;
-  updateModeMenu(get, mode);
+  updateModeMenu(get, mode, false, scores.submitting);
   get('campaign-controls').hidden = mode !== 'campaign';
   get('custom-controls').hidden = mode !== 'random';
   customJson.update({ visible: mode === 'random', disabled: daily.loading, canShare: !editing || !solved });
@@ -456,7 +449,7 @@ window.addEventListener('pagehide', () => {
   cancelSearch(); sharing.close(); customJson.close();
 });
 for (const button of ruleButtons) {
-  const rule = rulesById[button.dataset.rule];
+  const rule = getRule(button.dataset.rule);
   const preview = document.createElement('span'); preview.className = 'rule-preview'; preview.setAttribute('aria-hidden', 'true');
   for (const [index, pattern] of [rule.left, rule.right].entries()) {
     if (index) { const arrow = document.createElement('span'); arrow.textContent = '↔'; preview.appendChild(arrow); }
@@ -466,4 +459,4 @@ for (const button of ruleButtons) {
   }
   button.replaceChildren(preview);
 }
-guide.enter();
+if (!startDailyFromLink(daily)) guide.enter();

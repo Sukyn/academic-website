@@ -1,9 +1,13 @@
-export function updateModeMenu(get, mode, disabled = false) {
+export function updateModeMenu(get, mode, disabled = false, saving = false) {
   for (const name of ['tutorial', 'campaign', 'random', 'daily']) {
     const button = get('mode-' + name);
     button.setAttribute('aria-pressed', String(name === mode));
     button.disabled = disabled;
   }
+  get('daily-games').hidden = mode !== 'daily';
+  get('daily-games').inert = saving;
+  get('check-daily-puzzles').hidden = mode !== 'daily';
+  get('check-daily-puzzles').disabled = saving;
 }
 
 /** Common overlay actions; each game still decides which controls are enabled. */
@@ -16,6 +20,12 @@ export function bindGameDialogs(get = id => document.getElementById(id), extraDi
     dialogs.push(dialog);
   }
   get('close-win').addEventListener('click', () => win.close());
+  get('check-daily-puzzles').addEventListener('click', () => {
+    if (get('check-daily-puzzles').hidden || get('check-daily-puzzles').disabled || !win.open) return;
+    win.close();
+    get('daily-games').scrollIntoView({ block: 'start' });
+    get('daily-games').focus({ preventScroll: true });
+  });
   for (const dialog of dialogs) dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();

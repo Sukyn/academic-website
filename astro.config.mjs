@@ -5,6 +5,7 @@ import sitemap from "@astrojs/sitemap";
 export default defineConfig({
   site: "https://www.colin-blake.eu/",
   compressHTML: true,
+  prefetch: true,
   markdown: { syntaxHighlight: false },
   security: {
     csp: {
