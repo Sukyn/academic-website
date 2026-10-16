@@ -53,7 +53,21 @@ const daily = createDailySession({
 const review = createStepReplay({
   length: () => sequence.length, canReview: () => !animation && !tutorial.active && !daily.loading && !editing,
   onEnter: () => get('win-dialog').close(), onChange: () => update({ follow: true }),
+  transition(step) {
+    const job = startAnimation(states[step], sequence[step]);
+    return { cancel: cancelAnimation, finished: job.finished.then(completed => {
+      if (animation === job) cancelAnimation();
+      return completed;
+    }) };
+  },
 });
+
+function startAnimation(before, move) {
+  const job = animation = animateGraphMove(get('graph-board'), before, move);
+  get('graph-board').dataset.graphAnimating = 'true';
+  get('graph-board').setAttribute('aria-busy', 'true');
+  return job;
+}
 
 function closeResult() { sharing.close(); get('win-dialog').close(); }
 const moveSelector = move => Object.hasOwn(move, 'vertex') ? `[data-vertex="${move.vertex}"]` : `[data-edge="${move.edge.join(':')}"]`;
@@ -163,9 +177,7 @@ async function playMove(move) {
     const next = applyMove(graph, move);
     const restoreFocus = document.activeElement?.closest('#graph-board button');
     closeResult(); highlightEdge(null);
-    job = animation = animateGraphMove(get('graph-board'), graph, move);
-    get('graph-board').dataset.graphAnimating = 'true';
-    get('graph-board').setAttribute('aria-busy', 'true');
+    job = startAnimation(graph, move);
     get('status').textContent = ''; update({ board: false });
     const completed = await job.finished;
     if (animation !== job) return false;

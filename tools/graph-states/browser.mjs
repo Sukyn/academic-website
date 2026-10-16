@@ -320,6 +320,27 @@ async function animatedMoves(name, options) {
     assert.ok(duration >= 3 * COMPLEMENT_DURATION - 100, 'Pivot stages are not compressed to fit a total time limit');
     assert.ok(duration <= 3 * COMPLEMENT_DURATION + 300, `A pivot keeps the same duration for each local complementation (${duration} ms)`);
 
+    await closeWin(page, tap);
+    await page.evaluate(() => { window.graphMotion = []; });
+    if (!await page.locator('#advanced-features').evaluate(node => node.open)) await tap(page.locator('#advanced-features > summary'));
+    await tap(page.locator('#replay'));
+    await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating === 'true');
+    assert.equal(await page.locator('#review-note').innerText(), 'Operation 0 / 1', 'Review waits for the full pivot animation');
+    await page.waitForFunction(() => document.getElementById('review-note').textContent === 'Operation 1 / 1');
+    motion = await page.evaluate(() => window.graphMotion);
+    const replayVertices = motion.filter(state => state.busy && state.vertex !== undefined).map(state => state.vertex)
+      .filter((vertex, index, all) => !index || vertex !== all[index - 1]);
+    assert.deepEqual(replayVertices, ['0', '2', '0'], 'Replay includes all three animated pivot stages');
+    assert.ok(motion.some(state => state.phase === 'pulse') && motion.some(state => state.phase === 'rewrite'));
+    assert.deepEqual(await edges(page), applyMove(initial, { edge: [0, 2] }).edges);
+    assert.equal(await page.locator('#sequence button').count(), 1, 'Animated replay preserves the played sequence');
+    await tap(page.locator('#resume-round'));
+    await tap(page.locator('#replay'));
+    await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating === 'true');
+    await tap(page.locator('#resume-round'));
+    assert.notEqual(await board.getAttribute('data-graph-animating'), 'true');
+    assert.deepEqual(await edges(page), applyMove(initial, { edge: [0, 2] }).edges, 'Resuming cancels replay motion and restores the live graph');
+
     await tap(page.locator('#restart'));
     await board.locator('[data-edge="0:2"]').focus();
     await page.keyboard.press('Enter');

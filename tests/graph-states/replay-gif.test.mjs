@@ -13,7 +13,7 @@ function canvas(context) {
       let commands = [];
       this.commands = () => commands;
       this.context = Object.fromEntries(['fillRect', 'beginPath', 'moveTo', 'lineTo', 'bezierCurveTo', 'arc', 'closePath', 'fill', 'stroke', 'fillText']
-        .map(name => [name, (...args) => commands.push({ name, args, fill: this.context.fillStyle, stroke: this.context.strokeStyle })]));
+        .map(name => [name, (...args) => commands.push({ name, args, fill: this.context.fillStyle, stroke: this.context.strokeStyle, width: this.context.lineWidth })]));
       this.context.getImageData = () => { this.frames.push(commands); commands = []; return { data: this.pixels ??= new Uint8ClampedArray(width * height * 4) }; };
       surfaces.push(this);
     }
@@ -56,12 +56,16 @@ test('graph replay includes the labelled graph, target, and Clifford corrections
     assert.equal(bytes[6] | bytes[7] << 8, 960);
     assert.equal(bytes[8] | bytes[9] << 8, 656 + (vertices - 1) * 48);
     const surface = surfaces.at(-1), text = frame => frame.filter(command => command.name === 'fillText').map(command => command.args[0]);
-    assert.equal(surface.frames.length, sequence.length + 1);
+    assert.equal(surface.frames.length, 16 * sequenceCost(sequence) + sequence.length + 1);
     assert.ok(surface.frames.every(frame => text(frame).includes('Target') && text(frame).includes('Clifford corrections · simplified')));
     assert.ok(text(surface.frames.at(-1)).includes(`Step ${sequence.length} / ${sequence.length}`));
     assert.ok(surface.frames.at(-1).some(command => command.name === 'closePath'), 'Phase gates retain their vector cutouts.');
     assert.ok(surface.frames.at(-1).some(command => command.name === 'fillRect' && command.fill === '#f2d572'));
-    assert.ok(surface.frames.every(frame => frame.filter(command => command.name === 'arc' && command.args[4] - command.args[3] === 2 * Math.PI).length === 2 * vertices));
+    assert.ok(surface.frames.every(frame => frame.filter(command => command.name === 'arc' && command.args[2] === 21).length === 2 * vertices));
+    assert.ok(surface.frames.some(frame => frame.some(command => command.name === 'arc' && command.args[2] === 3.5 && command.fill === colors.h)),
+      'Replay dots travel from the source to its neighbours.');
+    assert.ok(surface.frames.some(frame => frame.some(command => command.name === 'arc' && command.fill === '#3d3825')),
+      'Reached neighbours are highlighted before the edges change.');
     const shots = sequenceCost(sequence);
     assert.ok(surface.frames.every(frame => text(frame).includes(`My score : ${shots}`) && text(frame).includes(`Optimal : ${optimalShots(puzzle)}`)));
     assert.ok(surface.frames.every(frame => text(frame).every(label => !/0\.707|prototype|GG|colin-blake|https?:/i.test(label))));
@@ -91,6 +95,30 @@ test('a pivot replay compares its three shots with the two-shot optimum', contex
   assert.ok(text.includes('My score : 3') && text.includes('Optimal : 2'));
 });
 
+test('a pivot animates its three successive complementations with both growing and erasing edges', context => {
+  const surfaces = canvas(context), move = { edge: [0, 1] }, puzzle = applyMove(pathGraph(3), move);
+  const bytes = encodeReplay({ label: 'Pivot', puzzle, sequence: [move] });
+  const frames = surfaces[0].frames;
+  assert.equal(frames.length, 3 * 16 + 2);
+  const sources = [0, 1, 0];
+  for (const [index, source] of sources.entries()) {
+    const pulse = frames[1 + index * 16];
+    const highlighted = pulse.filter(command => command.name === 'arc' && command.args[2] === 21 && command.stroke === colors.h);
+    assert.equal(highlighted.length, 1);
+    const label = pulse.find(command => command.name === 'fillText' && command.args[0] === String(source + 1));
+    assert.deepEqual(highlighted[0].args.slice(0, 2), label.args.slice(1, 3));
+  }
+  const timing = [];
+  for (let offset = 0; offset + 7 < bytes.length; offset++) {
+    if (bytes[offset] === 0x21 && bytes[offset + 1] === 0xf9 && bytes[offset + 2] === 4) timing.push((bytes[offset + 4] | bytes[offset + 5] << 8) * 10);
+  }
+  assert.equal(timing.filter(delay => delay === 150).length, 48, 'Every complementation retains its 2400 ms duration');
+  assert.ok(frames.some(frame => frame.some(command => command.name === 'stroke' && command.stroke === '#f5f5f2' && command.width === 3.2)),
+    'New edges are painted in white.');
+  assert.ok(frames.some(frame => frame.some(command => command.name === 'stroke' && command.width === 2.8)),
+    'Existing edges are erased as two shrinking halves.');
+});
+
 test('replays reject malformed, oversized and unsolved histories before drawing', context => {
   const surfaces = canvas(context), puzzle = applyMove(pathGraph(4), { vertex: 1 });
   for (const sequence of [[], [{ vertex: -1 }], [{ edge: [0, 3] }], Array(MAX_MOVES + 1).fill({ vertex: 1 }), [{ vertex: 0 }]]) {
@@ -100,12 +128,12 @@ test('replays reject malformed, oversized and unsolved histories before drawing'
   assert.equal(surfaces.length, 0);
 });
 
-test('replay limits long histories to 65 sampled frames and simplifies the complete correction', context => {
+test('replay bounds animation samples in long histories and simplifies the complete correction', context => {
   const surfaces = canvas(context), puzzle = applyMove(pathGraph(3), { vertex: 1 });
   const sequence = Array.from({ length: 65 }, () => ({ vertex: 1 }));
   encodeReplay({ label: 'Long graph replay', puzzle, sequence });
   const surface = surfaces[0];
-  assert.equal(surface.frames.length, 65);
+  assert.equal(surface.frames.length, 64 * 17 + 1);
   const final = surface.frames.at(-1);
   assert.ok(final.some(command => command.name === 'fillText' && command.args[0] === '|G₀⟩'));
   assert.ok(!final.some(command => command.name === 'fillText' && command.args[0] === '…'), 'No earlier corrections are truncated.');

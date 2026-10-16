@@ -10,9 +10,15 @@ const clamp = value => Math.max(0, Math.min(1, value));
 const ease = value => value * value * (3 - 2 * value);
 
 // Begin visible motion at the circle edge rather than behind its opaque centre.
-function boundary(from, to) {
+export function graphBoundary(from, to) {
   const fraction = GRAPH_NODE_RADIUS / Math.hypot(to.x - from.x, to.y - from.y);
   return { x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction };
+}
+
+/** Shared timing for the live SVG and downloaded replay. */
+export function graphAnimationProgress(progress) {
+  return { phase: progress < .22 ? 'pulse' : progress < .30 ? 'neighbours' : 'rewrite',
+    travel: ease(clamp(progress / .22)), change: ease(clamp((progress - .30) / .64)) };
 }
 
 /** A pivot is three local complementations, each using its current neighbours. */
@@ -44,7 +50,7 @@ function drawStage(container, stage, positions) {
   const neighbours = stage.neighbours.map(vertex => container.querySelector(`[data-vertex="${vertex}"]`));
   const dots = stage.neighbours.map(vertex => {
     const origin = positions[stage.vertex], target = positions[vertex];
-    const start = boundary(origin, target), end = boundary(target, origin);
+    const start = graphBoundary(origin, target), end = graphBoundary(target, origin);
     const node = svgNode('circle', { class: 'graph-animation-dot', cx: start.x, cy: start.y, r: 3.5, opacity: 1 });
     overlay.appendChild(node);
     return { node, start, end };
@@ -53,7 +59,7 @@ function drawStage(container, stage, positions) {
     const [a, b] = edge.map(vertex => positions[vertex]);
     const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const halves = [a, b].map(end => {
-      const start = boundary(end, middle);
+      const start = graphBoundary(end, middle);
       const node = svgNode('line', { class: `graph-animation-edge ${existed ? 'is-removing' : 'is-appearing'}`, x1: start.x, y1: start.y, x2: existed ? middle.x : start.x, y2: existed ? middle.y : start.y, opacity: 0 });
       overlay.appendChild(node);
       return { node, start, visible: false };
@@ -66,7 +72,7 @@ function drawStage(container, stage, positions) {
   let phase, affected = false, lastTravel = 0, lastChange = 0;
   return {
     update(progress) {
-      const nextPhase = progress < .22 ? 'pulse' : progress < .30 ? 'neighbours' : 'rewrite';
+      const { phase: nextPhase, travel, change } = graphAnimationProgress(progress);
       if (nextPhase !== phase) {
         phase = nextPhase;
         container.dataset.animationPhase = phase;
@@ -84,7 +90,6 @@ function drawStage(container, stage, positions) {
         for (const { node } of dots) node.setAttribute('opacity', 0);
       }
       if (!arrived) {
-        const travel = ease(clamp(progress / .22));
         if (travel === lastTravel) return;
         lastTravel = travel;
         for (const { node, start, end } of dots) {
@@ -93,7 +98,6 @@ function drawStage(container, stage, positions) {
         }
       }
       if (phase !== 'rewrite') return;
-      const change = ease(clamp((progress - .30) / .64));
       if (change === lastChange) return;
       lastChange = change;
       for (const { existed, halves, middle } of pairs) {

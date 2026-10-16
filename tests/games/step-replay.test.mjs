@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStepReplay } from '../../src/lib/games/step-replay.js';
 
-function fixture(context, count = 3) {
+function fixture(context, count = 3, transition) {
   const timers = new Map(), renders = [];
   let entries = 0, allowed = true, length = count;
   context.mock.method(globalThis, 'setTimeout', (callback, delay) => {
@@ -10,6 +10,7 @@ function fixture(context, count = 3) {
   });
   context.mock.method(globalThis, 'clearTimeout', timer => timers.delete(timer));
   const replay = createStepReplay({ length: () => length, canReview: () => allowed,
+    transition,
     onEnter: () => { entries++; }, onChange: () => renders.push({ step: replay.step, playing: replay.playing }),
   });
   function tick() {
@@ -34,6 +35,41 @@ test('play renders the initial snapshot once, advances every step and stops on t
   }
   assert.equal(timers.size, 0);
   assert.deepEqual(renders, [0, 1, 2, 3].map(step => ({ step, playing: step < 3 })));
+});
+
+test('animated replay waits for each transition and clearing cancels pending motion', async context => {
+  const jobs = [];
+  const state = fixture(context, 2, step => {
+    let finish;
+    const job = { step, cancelled: false, finished: new Promise(resolve => { finish = resolve; }),
+      cancel() { this.cancelled = true; finish(false); }, finish: value => finish(value) };
+    jobs.push(job); return job;
+  });
+  state.replay.play(); state.tick();
+  assert.equal(state.replay.step, 0); assert.equal(state.replay.playing, true);
+  assert.equal(state.timers.size, 0); assert.equal(jobs[0].step, 0);
+  jobs[0].finish(true); await Promise.resolve();
+  assert.equal(state.replay.step, 1); assert.equal(state.timers.size, 1);
+  state.tick(); assert.equal(jobs[1].step, 1);
+  state.replay.clear();
+  assert.equal(jobs[1].cancelled, true);
+  state.replay.play(); jobs[1].finish(true); await Promise.resolve();
+  assert.equal(state.replay.step, 0, 'An old animation cannot advance new playback');
+  state.tick(); jobs[2].finish(true); await Promise.resolve();
+  state.tick(); jobs[3].finish(true); await Promise.resolve();
+  assert.equal(state.replay.step, 2); assert.equal(state.replay.playing, false);
+});
+
+test('inspection cancels motion and an interrupted transition stops playback without advancing', async context => {
+  let finish, cancelled = 0;
+  const state = fixture(context, 2, () => ({ finished: new Promise(resolve => { finish = resolve; }), cancel() { cancelled++; } }));
+  state.replay.play(); state.tick();
+  assert.equal(state.replay.inspect(2), true); assert.equal(cancelled, 1);
+  finish(true); await Promise.resolve();
+  assert.equal(state.replay.step, 2); assert.equal(state.replay.playing, false);
+  state.replay.play(); state.tick(); finish(false); await Promise.resolve();
+  assert.equal(state.replay.step, 0); assert.equal(state.replay.playing, false);
+  assert.equal(state.timers.size, 0);
 });
 
 test('single-move and empty rounds respect their boundaries', context => {
