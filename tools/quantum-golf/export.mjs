@@ -6,13 +6,13 @@ import { neon } from '@neondatabase/serverless';
 class ExportError extends Error {}
 
 export async function exportScores(sql, path) {
-  const rows = await sql.query(`
-    SELECT id, campaign, level, name, moves, created_at
-    FROM scores ORDER BY id
-  `);
-  await writeFile(path, JSON.stringify({ exportedAt: new Date().toISOString(), rows }, null, 2) + '\n',
+  const [rows, completions] = await Promise.all([
+    sql.query('SELECT id, campaign, level, name, moves, created_at FROM scores ORDER BY id'),
+    sql.query('SELECT id, campaign, level, name FROM completions ORDER BY id'),
+  ]);
+  await writeFile(path, JSON.stringify({ exportedAt: new Date().toISOString(), rows, completions }, null, 2) + '\n',
     { flag: 'wx', mode: 0o600 });
-  return rows.length;
+  return rows.length + completions.length;
 }
 
 async function main() {
@@ -21,7 +21,7 @@ async function main() {
   const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
   if (!url) throw new ExportError('Set DATABASE_URL_UNPOOLED or DATABASE_URL before exporting scores.');
   const count = await exportScores(neon(url, { fetchOptions: { signal: AbortSignal.timeout(60_000) } }), resolve(path));
-  console.log(`Export complete. ${count} scores saved.`);
+  console.log(`Export complete. ${count} game records saved.`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

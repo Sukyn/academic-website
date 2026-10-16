@@ -5,7 +5,8 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
-import { RULES, sequenceCost, solveShortest, applyMove } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove } from '../../src/lib/circuit-reduction/engine.js';
+import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../../src/lib/circuit-reduction/tutorial.js';
 import { createBrowserApi } from './browser-api.mjs';
 import { layoutMoves } from './layout-moves.js';
 
@@ -56,9 +57,11 @@ async function downloadReplay(page) {
     await activate(page, page.locator('#share-score'));
     const button = page.getByRole('button', { name: 'Download the replay', exact: true });
     await button.waitFor();
-    assert.equal(workers.length, 0, 'Sharing does not start a GIF worker');
-    assert.equal(await page.locator('#share-preview').isVisible(), false);
-    assert.equal(await page.locator('#copy-gif').isDisabled(), true);
+    await page.locator('#share-preview').waitFor({ state: 'visible' });
+    await page.locator('#share-preview').evaluate(image => image.decode());
+    const preview = await page.locator('#share-preview').getAttribute('src');
+    assert.equal(workers.length, 1, 'Sharing renders one still image without encoding a GIF');
+    assert.equal(await page.locator('#copy-gif').isEnabled(), true, 'The still image can be copied before downloading');
     const pending = page.waitForEvent('download');
     await activate(page, button);
     const download = await pending;
@@ -66,13 +69,13 @@ async function downloadReplay(page) {
     const bytes = await readFile(await download.path());
     assert.match(bytes.toString('ascii', 0, 6), /^GIF8[79]a$/);
     assert.ok(bytes.length > 1000);
-    assert.equal(workers.length, 1, 'Download starts exactly one encoder');
-    await page.locator('#share-preview').evaluate(image => image.decode());
+    assert.equal(workers.length, 2, 'Download starts exactly one GIF encoder after the still renderer');
+    assert.equal(await page.locator('#share-preview').getAttribute('src'), preview, 'Downloading keeps the still preview');
     const repeated = page.waitForEvent('download');
     await activate(page, button);
     const second = await repeated;
     assert.deepEqual(await readFile(await second.path()), bytes);
-    assert.equal(workers.length, 1, 'Repeated download reuses the GIF');
+    assert.equal(workers.length, 2, 'Repeated download reuses the GIF');
     await activate(page, page.locator('#close-share'));
   } finally {
     page.off('worker', trackWorker);
@@ -234,7 +237,7 @@ async function customBuilder(page) {
   assert.equal(await page.locator('#move-count').innerText(), '0 moves');
   assert.equal(await page.locator('#replay').isDisabled(), true, 'Construction history is not a gameplay replay');
   await page.screenshot({ path: resolve(output, `custom-saved-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
-  const exported = await exportJson(page, 'circuit-reduction');
+  const exported = await exportJson(page, 'circuit-simplification');
   assert.deepEqual(exported.circuit, built, 'Play and JSON export preserve the constructed circuit');
   await openJson(page);
   for (const invalid of ['{', JSON.stringify({ circuit: [['H', '.']] }), JSON.stringify({ circuit: [['X', 'X'], ['.']] })]) {
@@ -290,6 +293,98 @@ async function focusedRegistration() {
   }
   assert.deepEqual(errors, [], 'No uncaught score registration errors');
   console.log('Remembered Reduction nickname: manual first level, automatic next level and current daily score verified on desktop/mobile.');
+}
+
+async function focusedTutorial() {
+  for (const [profile, options] of [['desktop', { viewport: { width: 1440, height: 1050 } }],
+    ['mobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]]) {
+    const page = await pageFor(options), workers = [];
+    let requests = 0;
+    page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) requests++; });
+    page.on('worker', worker => workers.push(worker.url()));
+    const ruleOrder = async () => page.locator('[data-rule]:visible').evaluateAll(buttons => ({
+      dom: buttons.map(button => button.dataset.rule),
+      visual: buttons.map(button => ({ id: button.dataset.rule, top: button.offsetTop, left: button.offsetLeft }))
+        .sort((a, b) => a.top - b.top || a.left - b.left).map(button => button.id),
+    }));
+    try {
+      await activate(page, page.locator('#mode-tutorial'));
+      await page.evaluate(() => document.fonts.ready);
+      assert.match(await page.locator('#tutorial-text').innerText(), /identity.*empty wires.*every input unchanged/i,
+        'The introduction states the goal and what identity means');
+      assert.match(await page.locator('#tutorial-text').innerText(), /rule matching the selected gates/i);
+      assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT);
+      assert.deepEqual(TUTORIAL_CIRCUIT.map(row => row.slice(0, 4)), [['X', 'X', 'H', 'H'], ['.', '.', '.', '.']]);
+      const order = await ruleOrder();
+      assert.deepEqual(order.dom, RULES.map(rule => rule.id), 'The tutorial presents the normal rule order');
+      assert.deepEqual(order.visual, order.dom, 'CSS does not move the active rule ahead of the others');
+      await page.screenshot({ path: resolve(output, `${profile}-tutorial-intro.png`), fullPage: true });
+      await activate(page, page.locator('#tutorial-start'));
+      let expected = structuredClone(TUTORIAL_CIRCUIT), moves = 0;
+      for (const [index, step] of TUTORIAL_STEPS.entries()) {
+        if (step.layout) expected = applyMove(expected, { rule: 'arrange', row: 0, column: 0, circuit: step.layout });
+        assert.deepEqual(await boardCircuit(page), expected, `Step ${index + 1} starts on its exact worked layout`);
+        assert.equal(await page.locator('#tutorial-heading').innerText(), `Step ${index + 1} of ${TUTORIAL_STEPS.length}`);
+        const target = page.locator('[data-tutorial-focus]');
+        assert.equal(await target.count(), 1, 'Exactly one real game control is highlighted');
+        assert.equal(await target.evaluate((node, selector) => node.matches(selector), step.target ?? `[data-rule="${step.move.rule}"]`), true);
+        assert.equal(await target.isDisabled(), false);
+        const rule = RULES.find(rule => rule.id === step.move.rule);
+        if (rule) {
+          const selected = [];
+          for (let row = 0; row < rule.left.length; row++) for (let column = 0; column < rule.left[0].length; column++) {
+            selected.push(`${step.move.row + row}:${step.move.column + column}`);
+          }
+          assert.deepEqual(await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(nodes => nodes.map(node => node.dataset.cell)), selected,
+            'The guide selects the gate block for the matching rule');
+          const pattern = expected.slice(step.move.row, step.move.row + rule.left.length)
+            .map(row => row.slice(step.move.column, step.move.column + rule.left[0].length));
+          assert.ok([rule.left, rule.right].some(side => JSON.stringify(side) === JSON.stringify(pattern)),
+            'The displayed selected pattern is one side of the highlighted rule');
+        }
+        const tokens = [...step.text.matchAll(/\b(CNOT|CZ|H|T|X|Z)\b/g)].map(match => ({ CNOT: 'XU', CZ: 'ZU' })[match[1]] ?? match[1]);
+        assert.deepEqual(await page.locator('#tutorial-text .tutorial-gate').evaluateAll(nodes => nodes.map(node => node.dataset.gate)), tokens,
+          'Tutorial gate names render as gameplay icons');
+        assert.equal(await page.locator('#tutorial-text .tutorial-gate:not(:has(svg))').count(), 0);
+        assert.equal(await page.locator('#tutorial-text .tutorial-pair').count(), 0, 'Rule instructions show only their single-wire endpoints');
+        if (index === 4) await page.screenshot({ path: resolve(output, `${profile}-tutorial-controlled-rule.png`), fullPage: true });
+        assert.deepEqual(await ruleOrder(), order, 'A matching rule keeps its normal place in the palette');
+        if (index < 2) assert.equal(step.move.rule, index ? 'cancel-h' : 'cancel-x', 'The first two steps teach simple cancellations');
+        await activate(page, step.target || index % 2 === 0 ? target : page.locator('#tutorial-next'));
+        expected = applyMove(expected, step.move); moves += moveCost(step.move);
+        const next = TUTORIAL_STEPS[index + 1];
+        const prepared = next?.layout ? applyMove(expected, { rule: 'arrange', row: 0, column: 0, circuit: next.layout }) : expected;
+        assert.deepEqual(await boardCircuit(page), prepared, 'The real action and next preparation match the circuit engine');
+        assert.equal(await page.locator('#move-count').innerText(), `${moves} move${moves === 1 ? '' : 's'}`,
+          'Only logical rewrites count, including after free spacing and Tidy');
+        assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'The guide never opens a result popup');
+        await noOverflow(page);
+      }
+      assert.equal(moves, 11);
+      assert.ok(isSolved(await boardCircuit(page)), 'The worked example finishes on empty identity wires');
+      assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
+      assert.deepEqual(await ruleOrder(), order, 'The rule order remains fixed after completion');
+      assert.equal(requests, 0, 'The tutorial never requests or submits scores');
+      assert.deepEqual(workers, [], 'The fixed walkthrough starts no solver or replay encoder');
+      await activate(page, page.locator('#tutorial-levels'));
+      assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#tutorial-panel').isVisible(), false);
+      await activate(page, page.locator('#mode-tutorial'));
+      await activate(page, page.locator('#tutorial-start'));
+      await activate(page, page.locator('[data-tutorial-focus]'));
+      await activate(page, page.locator('#tutorial-start'));
+      assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT, 'Restart restores the simple prefix and worked example');
+      assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+      assert.equal(await page.locator('#tutorial-heading').innerText(), `Step 1 of ${TUTORIAL_STEPS.length}`);
+      await activate(page, page.locator('#mode-campaign'));
+      assert.deepEqual(await boardCircuit(page), LEVELS[0].circuit, 'Leaving the restarted tutorial restores the campaign circuit');
+      await noOverflow(page);
+    } finally {
+      await page.context().close();
+    }
+    console.log(`${profile}: identity goal, uncontrolled then controlled rules, matching icons, fixed order, full solution, free layout, restart and Levels verified.`);
+  }
+  assert.deepEqual(errors, [], 'The tutorial has no uncaught browser errors');
 }
 
 async function golfCustomJson(page) {
@@ -379,7 +474,8 @@ async function columnSpacing(page) {
   await page.locator('#level').selectOption('1');
 }
 try {
-  if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
+  if (process.env.GAME_TEST_SCOPE === 'tutorial') await focusedTutorial();
+  else if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
   else if (process.env.GAME_TEST_SCOPE === 'registration') await focusedRegistration();
   else {
   let desktop, beforeRemoval;

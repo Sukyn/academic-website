@@ -17,7 +17,7 @@ function fixture(wires, columns) {
 const run = (wires, columns) => flowTrace(fixture(wires, columns));
 
 test('Hadamard paths split, then recombine signed contributions before the next column', () => {
-  const { columns, snapshots } = run(1, [[fixed('H', 0)], [fixed('H', 0)]]);
+  const { columns, snapshots, cancellations } = run(1, [[fixed('H', 0)], [fixed('H', 0)]]);
   assert.deepEqual(columns[0], [
     { from: 0, to: 0, amplitude: Math.SQRT1_2 },
     { from: 0, to: 1, amplitude: Math.SQRT1_2 },
@@ -27,8 +27,24 @@ test('Hadamard paths split, then recombine signed contributions before the next 
   assert.equal(canceled.length, 2, 'Both interfering paths remain available to draw.');
   close(canceled.map(edge => edge.amplitude), [.5, -.5]);
   close(snapshots[2], [1, 0]);
+  assert.deepEqual(cancellations, [[], [1], []], 'Only the recombined, cancelled branch gets a wall');
   assert.deepEqual(columns[2].map(({ from, to }) => [from, to]), [[0, 0]],
     'Canceled amplitude cannot illuminate paths in later columns.');
+});
+
+test('cancellation walls distinguish destructive interference from empty lanes and surviving mixed phases', () => {
+  assert.deepEqual(run(2, [[fixed('X', 0)]]).cancellations, [[], []], 'Empty lanes do not get walls');
+  const recombined = run(2, [[fixed('H', 0), fixed('H', 1)], [fixed('H', 0), fixed('H', 1)]]);
+  assert.deepEqual(recombined.cancellations, [[], [1, 2, 3], []]);
+  const mixed = run(2, [[fixed('H', 0), fixed('H', 1)], [fixed('CZ', 0, 1)], [fixed('H', 0), fixed('H', 1)]]);
+  assert.ok(mixed.columns[2].some(edge => edge.amplitude < 0));
+  assert.ok(mixed.columns[2].some(edge => edge.amplitude > 0));
+  assert.ok(mixed.snapshots[3].every(amplitude => Math.abs(amplitude) > .49));
+  assert.deepEqual(mixed.cancellations, [[], [], [], []], 'A nonzero residual continues without a wall');
+  const positive = run(1, [[fixed('X', 0)], [fixed('H', 0)], [fixed('H', 0)]]);
+  const negative = run(1, [[fixed('X', 0)], [fixed('Z', 0)], [fixed('H', 0)], [fixed('H', 0)]]);
+  assert.deepEqual(positive.cancellations[2], [0]);
+  assert.deepEqual(negative.cancellations[3], [0], 'Global phase does not change destructive interference');
 });
 
 test('X reroutes a path while Z changes its sign without changing its basis position', () => {
@@ -98,9 +114,10 @@ test('Every path boundary agrees with the circuit simulator across tutorials and
   const puzzles = [...LEVELS, fourWires, ...Array.from({ length: 12 }, (_, seed) => generatePuzzle(`flow-${seed}`, seed % 3 + 1))];
   for (const puzzle of puzzles) for (const placements of [{}, solvePuzzle(puzzle, { limit: 1 })[0]]) {
     const original = JSON.stringify({ puzzle, placements });
-    const { snapshots, columns } = flowTrace(puzzle, placements), simulation = simulate(puzzle, placements);
+    const { snapshots, columns, cancellations } = flowTrace(puzzle, placements), simulation = simulate(puzzle, placements);
     assert.equal(columns.length, puzzle.columns.length);
     assert.equal(snapshots.length, puzzle.columns.length + 1);
+    assert.equal(cancellations.length, columns.length);
     close(snapshots.at(-1), simulation.state);
     snapshots.forEach((snapshot, boundary) => {
       const prefix = { ...puzzle, columns: puzzle.columns.slice(0, boundary) };
@@ -119,6 +136,12 @@ test('Every path boundary agrees with the circuit simulator across tutorials and
         summed[edge.to] += edge.amplitude;
       }
       close(summed, snapshots[index + 1]);
+      const cancelled = summed.flatMap((amplitude, basis) => {
+        const incoming = edges.filter(edge => edge.to === basis);
+        return Math.abs(amplitude) < 1e-9 && incoming.some(edge => edge.amplitude > 0) &&
+          incoming.some(edge => edge.amplitude < 0) ? [basis] : [];
+      });
+      assert.deepEqual(cancellations[index], cancelled, 'Walls mark precisely zero sums of opposite phases');
     });
     assert.equal(JSON.stringify({ puzzle, placements }), original, 'Drawing the flow never mutates game state.');
     const again = flowTrace(puzzle, placements);

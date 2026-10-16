@@ -1,0 +1,59 @@
+.graph-game .graph-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .46fr); align-items: center; gap: 1rem; margin-top: .8rem; }
+.graph-game .graph-board-panel, .graph-game .graph-target-panel { min-width: 0; }
+.graph-game .graph-board-panel { max-width: 30rem; width: 100%; justify-self: center; }
+.graph-game .graph-target-panel { padding-left: .9rem; border-left: 1px solid var(--color-border); text-align: center; }
+.graph-game .graph-target-panel h2 { font: .9rem var(--font-ui); color: var(--color-muted); margin: 0; }
+.graph-game #shot-count { text-align: center; font-family: var(--font-ui); }
+.graph-game .graph-canvas { position: relative; width: 100%; aspect-ratio: 1; touch-action: manipulation; }
+.graph-game .graph-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.graph-game .graph-line { stroke: #b6c4bb; stroke-width: 2.8; pointer-events: none; }
+.graph-game .graph-canvas[data-interactive="true"] .graph-line { pointer-events: stroke; cursor: pointer; }
+.graph-game .graph-canvas[data-interactive="true"] .graph-line:hover { stroke: var(--color-accent); }
+.graph-game .graph-static-node { fill: var(--color-surface-2); stroke: var(--color-accent); stroke-width: 2; }
+.graph-game .graph-node-label { fill: var(--color-heading); font: 600 16px var(--font-ui); }
+.graph-game .graph-target-panel .graph-node-label { font-size: 26px; }
+.graph-game .graph-canvas button { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; touch-action: manipulation; }
+.graph-game .graph-canvas button:disabled { opacity: 1; cursor: default; }
+.graph-game .graph-edge { z-index: 1; height: 44px; border-radius: 3px; }
+.graph-game .graph-edge:disabled { pointer-events: none; }
+.graph-game .graph-edge::after { content: ''; position: absolute; inset: calc(50% - 2px) 0 auto; height: 4px; border-radius: 2px; background: var(--color-accent); opacity: 0; }
+.graph-game .graph-edge:focus-visible::after, .graph-game .graph-edge.is-highlighted::after { opacity: 1; }
+.graph-game .graph-node { z-index: 2; width: 17.5%; min-width: 44px; min-height: 44px; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; color: var(--color-heading); font: 600 clamp(1rem, 2.5vw, 1.2rem) var(--font-ui); isolation: isolate; }
+.graph-game .graph-node::before { content: ''; position: absolute; z-index: -1; inset: 12.5%; border: 2px solid var(--color-accent); border-radius: 50%; background: var(--color-surface-2); }
+.graph-game .graph-node:not(:disabled):hover::before, .graph-game .graph-node:focus-visible::before, .graph-game .graph-node.is-highlighted::before { background: var(--color-surface); box-shadow: 0 0 0 3px var(--color-accent); }
+.graph-game #graph-board [data-tutorial-focus] { outline: none; }
+.graph-game #graph-board .graph-node[data-tutorial-focus] { color: #1b2822; }
+.graph-game #graph-board .graph-node[data-tutorial-focus]::before { background: #f2d572; border-color: #f2d572; box-shadow: 0 0 16px rgb(242 213 114 / 55%); }
+.graph-game #graph-board .graph-edge[data-tutorial-focus]::after { opacity: 1; background: #f2d572; box-shadow: 0 0 9px rgb(242 213 114 / 80%); }
+.graph-game .graph-animation { pointer-events: none; }
+.graph-game .graph-animation-dot { fill: #f2d572; filter: drop-shadow(0 0 3px rgb(242 213 114 / 70%)); }
+.graph-game .graph-animation-edge { stroke: #f5f5f2; stroke-width: 3.2; stroke-linecap: round; }
+.graph-game .graph-animation-edge.is-removing { stroke: #b6c4bb; stroke-width: 2.8; }
+.graph-game .graph-node.is-source::before { border-color: #f2d572; box-shadow: 0 0 16px rgb(242 213 114 / 45%); }
+.graph-game .graph-node.is-affected::before { border-color: #f2d572; background: #3d3825; box-shadow: 0 0 12px rgb(242 213 114 / 35%); }
+.graph-game .graph-circuit-panel { width: min(100%, 28rem); box-sizing: border-box; margin: 1.3rem auto 1.2rem; padding: .85rem 1rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-surface-2); }
+.graph-game .graph-circuit-panel > h2 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 0 .65rem; font: .9rem var(--font-ui); color: var(--color-heading); }
+.graph-game .graph-circuit-badge { padding: .2rem .45rem; border-radius: 1rem; color: var(--color-accent); background: rgb(154 217 209 / 8%); font-size: .72rem; }
+.graph-game #circuit-scroll { border: 0; background: transparent; }
+.graph-game #clifford-circuit { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.graph-game .graph-circuit-wire { stroke: #b6c4bb; stroke-width: 1.4; }
+.graph-game .graph-wire-label { fill: var(--color-muted); font: 11px var(--font-ui); opacity: .7; }
+.graph-game .graph-state-label { fill: var(--color-muted); font: 14px system-ui, sans-serif; }
+.graph-game #show-gate-legend { margin-top: .7rem; }
+.gate-legend-dialog h2 { padding-right: 1.5rem; }
+.gate-legend { margin: .8rem 0 0; padding-left: 1.3rem; }
+.gate-legend li { padding-block: .2rem; }
+.gate-legend svg { vertical-align: middle; margin-right: .65rem; }
+.graph-game .graph-editor-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; margin-block: .75rem; font-family: var(--font-ui); }
+.graph-game .graph-editor-controls .button { padding: .4rem .65rem; font-size: .85rem; }
+.graph-game .graph-editor-controls select { flex: 0 1 8rem; min-height: 2.75rem; }
+.graph-game .custom-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: center; margin: 1rem auto 0; font: .9rem var(--font-ui); }
+.graph-game .custom-controls select { flex: 0 1 9rem; min-height: 44px; }
+@media (max-width: 600px) {
+  .graph-game .graph-workspace { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
+  .graph-game .graph-target-panel { display: flex; align-items: center; justify-content: center; gap: .65rem; padding: 0 0 .3rem; border-left: 0; border-bottom: 1px solid var(--color-border); grid-row: 1; }
+  .graph-game .graph-target-panel .graph-canvas { width: 10rem; flex-shrink: 0; }
+  .graph-game .graph-board-panel { max-width: 25rem; }
+  .graph-game .graph-circuit-panel { margin-top: .9rem; }
+  .graph-game .graph-editor-controls .button { min-height: 2.75rem; }
+}

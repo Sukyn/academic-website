@@ -1,10 +1,6 @@
 (() => {
   const WALLPAPER_SELECTOR = "#zx-wallpaper";
   const TAU = Math.PI * 2;
-  // This motion takes minutes to cycle. More frequent paints add raster work
-  // without visible smoothness; slow devices also get a gap of four paint times.
-  const MIN_PAINT_INTERVAL = 125;
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   /**
    * @typedef {{
@@ -25,8 +21,7 @@
    *   archA: number;
    *   archB: number;
    *   phase: number;
-   *   speed: number;
-   *   drift: number;
+   *   ripple: number;
    *   features: MarkerFeature[];
    * }} System
    */
@@ -37,7 +32,7 @@
 
     const existingState = window.__chalkWallpaperState;
     if (existingState?.canvas === el) {
-      existingState.resume();
+      existingState.resize();
       return;
     }
 
@@ -52,11 +47,7 @@
 
     let cssW = 0;
     let cssH = 0;
-    let raf = 0;
-    let timer = 0;
     let idle = 0;
-    let paintInterval = MIN_PAINT_INTERVAL;
-    let painted = false;
     const lineGradients = new Map();
     let centerVeil = null;
 
@@ -67,13 +58,11 @@
     function resize() {
       // Soft, translucent decoration needs one pixel per CSS pixel. Extra DPR
       // multiplies fullscreen raster work without sharpening the page content.
-      const dpr = Math.min(window.devicePixelRatio || 1, 1);
       cssW = window.innerWidth;
       cssH = window.innerHeight;
 
-      canvas.width = Math.floor(cssW * dpr);
-      canvas.height = Math.floor(cssH * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas.width = cssW;
+      canvas.height = cssH;
       lineGradients.clear();
       centerVeil = null;
     }
@@ -82,17 +71,16 @@
       return (line - (system.lineCount - 1) / 2) * system.gap;
     }
 
-    function lineYAt(system, line, x, time) {
+    function lineYAt(system, line, x) {
       const nx = x / Math.max(cssW, 1);
       const offset = lineOffset(system, line);
-      const animated = Math.sin(time * system.speed + system.phase + nx * 1.45) * system.drift;
+      const ripple = Math.sin(system.phase + nx * 1.45) * system.ripple;
       const slope = system.slope * (x - cssW * 0.5);
       const waveA = Math.sin(nx * TAU * 0.48 + system.phase) * system.archA;
       const waveB = Math.sin(nx * TAU * 1.05 + system.phase * 1.22) * system.archB;
-      const waveC = Math.sin(nx * TAU * 2.2 + system.phase * 0.45 + time * system.speed * 0.35) *
-        system.drift * 1.6;
+      const waveC = Math.sin(nx * TAU * 2.2 + system.phase * 0.45) * system.ripple * 1.6;
 
-      return system.y + offset + slope + waveA + waveB + waveC + animated;
+      return system.y + offset + slope + waveA + waveB + waveC + ripple;
     }
 
     function marginBandX(side) {
@@ -122,8 +110,7 @@
         archA: rand(14, 28) * (Math.random() > 0.5 ? 1 : -1),
         archB: rand(6, 14) * (Math.random() > 0.5 ? 1 : -1),
         phase: rand(0, TAU),
-        speed: rand(0.00003, 0.00006),
-        drift: rand(1.8, 3.6),
+        ripple: rand(1.8, 3.6),
         features: [],
       };
 
@@ -180,15 +167,15 @@
       }
     }
 
-    function drawLine(system, line, time, opacity) {
+    function drawLine(system, line, opacity) {
       const startX = -48;
       const endX = cssW + 48;
       const step = 24;
 
       const path = new Path2D();
-      path.moveTo(startX, lineYAt(system, line, startX, time));
+      path.moveTo(startX, lineYAt(system, line, startX));
       for (let x = startX + step; x <= endX; x += step) {
-        path.lineTo(x, lineYAt(system, line, x, time));
+        path.lineTo(x, lineYAt(system, line, x));
       }
       strokeChalk(path, opacity, 1.04);
     }
@@ -265,16 +252,15 @@
       fillMarkerCircle(x, y, size / 2, tone, alpha);
     }
 
-    function drawMarkerFeature(system, feature, time) {
-      const y = lineYAt(system, feature.line, feature.x, time);
+    function drawMarkerFeature(system, feature) {
+      const y = lineYAt(system, feature.line, feature.x);
       eraseMarkerUnderlay(feature.x, y, feature.shape, feature.size);
       const markerOpacity = feature.tone === "dark" ? 0.98 : 0.96;
       drawMarker(feature.x, y, feature.shape, feature.tone, feature.size, markerOpacity);
     }
 
-    function drawDust(time) {
+    function drawDust() {
       const count = Math.max(16, Math.round((cssW * cssH) / 90000));
-      const drift = Math.sin(time * 0.00002) * 8;
 
       for (let index = 0; index < count; index += 1) {
         const onLeft = index % 2 === 0;
@@ -284,7 +270,7 @@
         const tone = Math.random() > 0.5 ? "light" : "dark";
         const size = rand(1.8, 3.4);
 
-        drawMarker(x + drift * 0.15, y, shape, tone, size, rand(0.028, 0.07));
+        drawMarker(x, y, shape, tone, size, rand(0.028, 0.07));
       }
     }
 
@@ -311,72 +297,44 @@
       ctx.restore();
     }
 
-    function drawSystem(system, time) {
+    function drawSystem(system) {
       const opacity = 0.11;
 
       for (let line = 0; line < system.lineCount; line += 1) {
-        drawLine(system, line, time, opacity);
+        drawLine(system, line, opacity);
       }
 
       for (const feature of system.features) {
-        drawMarkerFeature(system, feature, time);
+        drawMarkerFeature(system, feature);
       }
     }
 
-    function draw(time = 0) {
+    function draw() {
       ctx.clearRect(0, 0, cssW, cssH);
 
-      drawDust(time);
+      drawDust();
       for (const system of systems) {
-        drawSystem(system, time);
+        drawSystem(system);
       }
       drawCenterVeil();
     }
 
-    function shouldRun() {
-      return !reduceMotion.matches && !document.hidden;
-    }
-
-    function loop(now) {
-      raf = 0;
-      if (!shouldRun()) return;
-      const started = performance.now();
-      draw(now);
-      paintInterval = Math.max(MIN_PAINT_INTERVAL, (performance.now() - started) * 4);
-      startLoop();
-    }
-
-    function startLoop() {
-      if (raf || timer || idle || !painted || !shouldRun()) return;
-      timer = window.setTimeout(() => {
-        timer = 0;
-        if (shouldRun()) raf = requestAnimationFrame(loop);
-      }, paintInterval);
-    }
-
-    function stopLoop() {
-      if (raf) cancelAnimationFrame(raf);
-      if (timer) window.clearTimeout(timer);
+    function cancelPaint() {
       if (idle) {
         if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
         else window.clearTimeout(idle);
       }
-      raf = 0;
-      timer = 0;
       idle = 0;
     }
 
     function queuePaint() {
-      stopLoop();
-      if (document.hidden) return;
+      if (idle || document.hidden || (cssW === window.innerWidth && cssH === window.innerHeight)) return;
       const paint = () => {
         idle = 0;
-        if (document.hidden) return;
-        const started = performance.now();
-        draw(started);
-        painted = true;
-        paintInterval = Math.max(MIN_PAINT_INTERVAL, (performance.now() - started) * 4);
-        startLoop();
+        if (document.hidden || (cssW === window.innerWidth && cssH === window.innerHeight)) return;
+        resize();
+        init();
+        draw();
       };
       // Render content first; a decorative canvas does not need to block it.
       idle = window.requestIdleCallback
@@ -384,33 +342,19 @@
         : window.setTimeout(paint, 25);
     }
 
-    function handleResize() {
-      resize();
-      init();
-      queuePaint();
-    }
-
-    resize();
-    init();
     queuePaint();
 
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("pagehide", stopLoop);
-    reduceMotion.addEventListener("change", queuePaint);
+    window.addEventListener("resize", queuePaint);
+    window.addEventListener("pagehide", cancelPaint);
     document.addEventListener("visibilitychange", queuePaint);
 
     window.__chalkWallpaperState = {
       canvas,
-      resume() {
-        if (cssW !== window.innerWidth || cssH !== window.innerHeight) handleResize();
-        else if (painted) startLoop();
-        else if (!idle) queuePaint();
-      },
+      resize: queuePaint,
       destroy() {
-        stopLoop();
-        window.removeEventListener("resize", handleResize);
-        window.removeEventListener("pagehide", stopLoop);
-        reduceMotion.removeEventListener("change", queuePaint);
+        cancelPaint();
+        window.removeEventListener("resize", queuePaint);
+        window.removeEventListener("pagehide", cancelPaint);
         document.removeEventListener("visibilitychange", queuePaint);
       },
     };

@@ -6,17 +6,18 @@ import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
+import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
+import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
 import { dailyMetadata } from '../lib/games/daily-calendar.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'quantum-signals', get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
-let mode = 'tutorial', campaignIndex = 0, puzzle = LEVELS.at(-1), placements = {}, sequence = [], states = [placements];
+let mode = 'tutorial', campaignIndex = 0, puzzle = TUTORIAL_PUZZLE, placements = {}, sequence = [], states = [placements];
 let selected = getHoles(puzzle)[0].id;
 // Puzzles and placements are replaced rather than mutated. Selection, replay
 // and leaderboard updates can reuse this single current-round result.
@@ -29,19 +30,19 @@ function isWon() {
   return cachedWin;
 }
 const choices = [...document.querySelectorAll('[data-choice]')];
+const paletteWires = new WeakMap();
 const tutorialBlocked = () => tutorial.active && !tutorial.executing;
 const canRecord = () => mode === 'campaign' || (mode === 'daily' && !daily.info?.offline);
 const selector = () => mode === 'tutorial' || mode === 'random' ? null : { game: GAME, ...(mode === 'daily' ? { date: puzzle.date } : { level: campaignIndex + 1 }) };
-const sharing = createReplayShare({ get, createGif: async (round, options) => {
-  const { createReplayGif } = await import('../lib/quantum-signals/replay-gif.js');
-  return createReplayGif(round, options);
-} });
+const sharing = createReplayShare({ get,
+  createWorker: () => new Worker(new URL('./quantum-signals-gif-worker.js', import.meta.url), { type: 'module' }),
+});
 const completions = createScoreboard({
   get, selector, completionOnly: true, sequence: () => sequence, update: () => update({ board: false }),
   canSubmit: () => !daily.loading && canRecord() && isWon(),
 });
 const daily = createDailySession({
-  game: GAME, startDate: DAILY_START, ranked: false, get, update: () => update(), offlineMessage: 'Offline puzzle.',
+  game: GAME, startDate: DAILY_START, ranked: false, get, update: () => update({ board: false }), offlineMessage: 'Offline puzzle.',
   selectedDate: () => mode === 'daily' ? puzzle.date : undefined,
   validatePuzzle,
   onPuzzle(info, select) {
@@ -101,18 +102,11 @@ function navigateHole(key) {
   candidates.sort((a, b) => a.across - b.across || a.forward - b.forward);
   if (candidates.length) { selectHole(candidates[0].id); focusSelected(); }
 }
-function renderTimeline() {
-  const fragment = document.createDocumentFragment();
-  sequence.forEach((move, index) => {
-    const button = document.createElement('button'); button.type = 'button'; button.dataset.step = index + 1;
-    button.textContent = move.gate === null ? '×' : move.gate === 'I' ? '—' : move.gate;
-    button.title = 'Placement ' + (index + 1) + ': ' + move.hole;
-    button.setAttribute('aria-label', button.title + ' · ' + (move.gate ?? 'erase'));
-    button.setAttribute('aria-current', review.step === index + 1 ? 'step' : 'false');
-    button.disabled = daily.loading; fragment.appendChild(button);
-  });
-  get('sequence').replaceChildren(fragment);
-}
+const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => {
+  const title = 'Placement ' + (index + 1) + ': ' + move.hole;
+  return { text: move.gate === null ? '×' : move.gate === 'I' ? '—' : move.gate,
+    title, label: title + ' · ' + (move.gate ?? 'erase') };
+});
 // Only play/navigation actions follow progress; network updates preserve exploration.
 function update({ board = true, follow = false } = {}) {
   const visible = review.step === null ? placements : states[review.step];
@@ -123,8 +117,12 @@ function update({ board = true, follow = false } = {}) {
     renderBoard(get('signal-board'), puzzle, visible, { selected: activeHole, locked });
     if (focused) focusSelected();
     renderFlow(get('signal-flow'), puzzle, visible, activeHole);
-  } else highlightFlow(get('signal-flow'), puzzle, activeHole);
+  } else {
+    for (const button of get('signal-board').querySelectorAll('[data-hole]')) button.disabled = locked;
+    highlightFlow(get('signal-flow'), puzzle, activeHole);
+  }
   const hole = holes.find(entry => entry.id === (activeHole ?? selected));
+  const wires = hole?.wires.join(':');
   const focusedControl = document.activeElement?.closest('.signal-palette button');
   let shortcut = 0;
   for (const button of choices) {
@@ -133,10 +131,12 @@ function update({ board = true, follow = false } = {}) {
     button.setAttribute('aria-pressed', String(visible[activeHole ?? selected] === button.dataset.choice));
     if (!button.hidden) {
       const key = String(++shortcut), gate = button.dataset.choice;
-      const label = gateLabel(gate, hole.wires);
-      button.replaceChildren(gateIcon(gate, hole.wires));
-      button.setAttribute('aria-label', label);
-      button.title = label + ' · ' + key;
+      if (paletteWires.get(button) !== wires) {
+        button.replaceChildren(gateIcon(gate, hole.wires));
+        button.setAttribute('aria-label', gateLabel(gate, hole.wires));
+        paletteWires.set(button, wires);
+      }
+      button.title = button.getAttribute('aria-label') + ' · ' + key;
       button.setAttribute('aria-keyshortcuts', key + (gate.length === 1 ? ' ' + gate : ''));
     } else button.removeAttribute('aria-keyshortcuts');
   }
@@ -145,7 +145,7 @@ function update({ board = true, follow = false } = {}) {
   if (focusedControl?.hidden) focusSelected();
   updateModeMenu(get, mode);
   get('campaign-controls').hidden = mode !== 'campaign'; get('custom-controls').hidden = mode !== 'random';
-  get('circuit-editor-controls').hidden = mode === 'daily' || mode === 'tutorial';
+  get('circuit-editor-controls').hidden = mode !== 'random';
   customJson.update({ visible: mode === 'random', disabled: daily.loading });
   get('leaderboard-section').hidden = mode === 'random' || mode === 'tutorial';
   get('daily-heading').hidden = mode !== 'daily';
@@ -158,10 +158,10 @@ function update({ board = true, follow = false } = {}) {
   get('show-results').hidden = mode === 'tutorial' || !won;
   for (const id of ['replay', 'replay-result']) get(id).disabled = daily.loading || !sequence.length || review.playing;
   get('replay').hidden = mode === 'tutorial' || !sequence.length;
-  for (const id of ['share-replay', 'share-result']) { get(id).hidden = mode === 'tutorial' || !won; get(id).disabled = daily.loading; }
+  for (const id of ['share-replay', 'share-result']) { get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = daily.loading; }
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : 'Placement ' + review.step + ' / ' + sequence.length;
-  renderTimeline();
+  renderTimeline(sequence, { step: review.step, disabled: daily.loading });
   const recordable = canRecord(), registered = Boolean(completions.player);
   get('score-form').hidden = !won || !recordable || registered || completions.automatic;
   get('win-results').hidden = !registered;
@@ -210,7 +210,7 @@ function place(gate) {
   } catch (error) { get('status').textContent = error.message; }
 }
 function share(source) {
-  if (tutorial.active || daily.loading || !isWon()) return;
+  if (tutorial.active || daily.loading || !isWon() || !sequence.length) return;
   sharing.open(source, { label: mode === 'daily' ? 'Daily puzzle : ' + formatPuzzleDate(puzzle.date) : mode === 'campaign' ? 'Level : ' + (campaignIndex + 1) : 'Custom circuit',
     puzzle: validatePuzzle(puzzle), sequence: sequence.map(move => ({ ...move })) },
   'quantum-signals-' + (puzzle.date ?? (mode === 'campaign' ? campaignIndex + 1 : 'custom')) + '.gif');
@@ -252,7 +252,7 @@ get('sequence').addEventListener('click', event => {
 });
 onClick('share-replay', () => share(get('share-replay'))); onClick('share-result', () => share(get('share-result')));
 for (const id of ['edit-circuit', 'new-circuit']) onClick(id, () => {
-  if (tutorialBlocked()) return;
+  if (mode !== 'random' || daily.loading) return;
   editor.load(id === 'edit-circuit' ? puzzle : undefined);
   get('custom-details').hidden = false;
   get('editor-wires').focus();
@@ -292,10 +292,10 @@ const tutorial = createTutorial({
   renderText: renderCircuitInstruction,
   get, isBlocked: () => daily.loading, intro: 'Fill the holes to match the target. This tutorial selects each hole for you.',
   controls: '#signal-board button, .signal-palette button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #circuit-editor-controls button, #custom-details select',
-  steps: TUTORIAL_STEPS.map(({ hole, gate, text }) => ({
-    text, target: '[data-choice="' + gate + '"]', prepare: () => selectHole(hole),
-    action: () => place(gate),
+  steps: TUTORIAL_STEPS.map(({ hole, gate, text, target }) => ({
+    text, target: target ?? '[data-choice="' + gate + '"]', prepare: hole ? () => selectHole(hole) : undefined,
+    action: () => { if (gate) place(gate); },
   })),
-  onReset: () => setPuzzle('tutorial', LEVELS.at(-1)),
+  onReset: () => setPuzzle('tutorial', TUTORIAL_PUZZLE),
 });
 tutorial.enter();

@@ -146,8 +146,8 @@ export function stateEqual(first, second) {
 export function simulate(input, placements = {}) {
   const puzzle = validatePuzzle(input), chosen = validatePlacements(puzzle, placements);
   const state = evolve(puzzle, chosen);
-  const filled = getHoles(puzzle).every(hole => Object.hasOwn(chosen, hole.id));
-  return { state, filled, solved: filled && stateEqual(state, puzzle.target) };
+  const complete = getHoles(puzzle).every(hole => Object.hasOwn(chosen, hole.id) || hole.choices.includes('I'));
+  return { state, solved: complete && stateEqual(state, puzzle.target) };
 }
 
 function findSolutions(puzzle, limit) {

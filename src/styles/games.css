@@ -24,9 +24,9 @@
   .quantum-game #tutorial-heading { margin-bottom: .3rem; color: var(--color-accent); font-size: .8rem; }
   .quantum-game .tutorial-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; }
   .quantum-game .tutorial-actions .button { padding: .4rem .65rem; font-size: .85rem; }
-  .quantum-game .tutorial-gate { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; line-height: 1; }
+  .quantum-game .tutorial-gate:not(.tutorial-letter) { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; line-height: 1; }
   .quantum-game .tutorial-gate > .gate-glyph { display: block; width: 24px; height: 24px; }
-  .quantum-game .tutorial-letter { min-width: 1.2em; font-family: var(--font-mono); font-weight: 700; }
+  .quantum-game .tutorial-letter { font-weight: 700; }
   .quantum-game .tutorial-letter[data-gate="H"] { color: var(--golf-h); }
   .quantum-game .tutorial-letter[data-gate="T"] { color: var(--golf-t); }
   .quantum-game .tutorial-pair { position: relative; display: inline-flex; flex-direction: column; align-items: center; width: 24px; height: 36px; }

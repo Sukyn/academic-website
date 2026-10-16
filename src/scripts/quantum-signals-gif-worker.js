@@ -1,14 +1,14 @@
 import * as gifenc from 'gifenc';
 import { applyPlacement, controlWire, simulate, validatePuzzle } from '../lib/quantum-signals/engine.js';
 import { CIRCUIT_COLORS as colors, drawGate } from '../lib/games/circuit-graphics.js';
-import { PHASE_COLORS, PHASE_PATH_COLOR, phaseColor, phaseOutline, alignTarget, targetRadius } from '../lib/quantum-signals/state-visuals.js';
+import { PHASE_COLORS, PHASE_PATH_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, alignTarget, targetRadius } from '../lib/quantum-signals/state-visuals.js';
 import { flowTrace } from '../lib/quantum-signals/flow.js';
 import { installReplayEncoder } from '../lib/games/replay-gif.js';
 
 const { GIFEncoder, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
 const WIDTH = 960;
 const WHITE = '#f5f5f2';
-const palette = [colors.background, colors.text, colors.h, colors.x, colors.z, colors.wire, WHITE, PHASE_PATH_COLOR, ...Object.values(PHASE_COLORS)]
+const palette = [colors.background, colors.text, colors.h, colors.x, colors.z, colors.wire, WHITE, ...Object.values(PHASE_PATH_COLORS), ...Object.values(PHASE_COLORS)]
   .filter((color, index, list) => list.indexOf(color) === index)
   .map(hex => [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16)));
 
@@ -45,7 +45,7 @@ function drawBoard(ctx, puzzle, placements, top, selected) {
 }
 
 function drawFlow(ctx, puzzle, placements, top) {
-  const { snapshots, columns } = flowTrace(puzzle, placements);
+  const { snapshots, columns, cancellations } = flowTrace(puzzle, placements);
   const step = Math.min(88, 740 / puzzle.columns.length), left = (WIDTH - step * puzzle.columns.length) / 2;
   const right = left + puzzle.columns.length * step, targetX = right + 54, y = basis => top + basis * 28;
   ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = colors.text;
@@ -62,14 +62,24 @@ function drawFlow(ctx, puzzle, placements, top) {
   columns.forEach((edges, column) => {
     const start = left + column * step, end = start + step;
     for (const edge of edges) {
-      ctx.strokeStyle = PHASE_PATH_COLOR; ctx.lineWidth = 2 + 4 * Math.abs(edge.amplitude);
+      ctx.strokeStyle = phasePathColor(edge.amplitude); ctx.lineWidth = 2 + 4 * Math.abs(edge.amplitude);
       ctx.beginPath(); ctx.moveTo(start, y(edge.from));
       ctx.bezierCurveTo(start + step / 2, y(edge.from), end - step / 2, y(edge.to), end, y(edge.to)); ctx.stroke();
     }
   });
+  ctx.strokeStyle = PHASE_COLORS.negative; ctx.lineWidth = 2;
+  cancellations.forEach((bases, column) => bases.forEach(basis => {
+    ctx.beginPath();
+    CANCELLATION_WALL.forEach(([dx, dy], index) => {
+      const x = left + (column + 1) * step + dx;
+      if (index) ctx.lineTo(x, y(basis) + dy);
+      else ctx.moveTo(x, y(basis) + dy);
+    });
+    ctx.stroke();
+  }));
   const dot = (x, basis, amplitude, target = false) => {
     if (Math.abs(amplitude) < 1e-9) return;
-    ctx.fillStyle = phaseColor(amplitude); ctx.strokeStyle = target ? PHASE_COLORS.negative : phaseOutline(amplitude); ctx.lineWidth = target ? 2 : 1.4;
+    ctx.fillStyle = phaseColor(amplitude); ctx.strokeStyle = PHASE_COLORS.negative; ctx.lineWidth = target ? 2 : 1.4;
     ctx.beginPath(); ctx.arc(x, y(basis), target ? targetRadius(amplitude) : 8 * Math.abs(amplitude), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   };
   snapshots.forEach((state, column) => state.forEach((amplitude, basis) => dot(left + column * step, basis, amplitude)));
@@ -81,16 +91,16 @@ function drawFlow(ctx, puzzle, placements, top) {
   });
 }
 
-export function encodeReplay(round, onProgress, onFinalFrame) {
+export function encodeReplay(round, onProgress, imageOnly = false) {
   if (typeof OffscreenCanvas !== 'function') throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
   const puzzle = validatePuzzle(round.puzzle);
   if (typeof round.label !== 'string' || round.label.length > 240 || !Array.isArray(round.sequence) ||
       !round.sequence.length || round.sequence.length > 1000) throw new Error('Finish a circuit before sharing its replay.');
-  const samples = Math.min(64, round.sequence.length), frames = [{ step: 0, placements: {} }];
+  const samples = Math.min(64, round.sequence.length), frames = imageOnly ? [] : [{ step: 0, placements: {} }];
   let placements = {}, sample = 1;
   for (let step = 1; step <= round.sequence.length; step++) {
     placements = applyPlacement(puzzle, placements, round.sequence[step - 1]);
-    if (step === Math.round(sample * round.sequence.length / samples)) {
+    if (!imageOnly && step === Math.round(sample * round.sequence.length / samples)) {
       frames.push({ step, placements }); sample++;
     }
   }
@@ -99,9 +109,8 @@ export function encodeReplay(round, onProgress, onFinalFrame) {
   const height = flowTop + (2 ** puzzle.wires - 1) * 28 + 100;
   const canvas = new OffscreenCanvas(WIDTH, height), ctx = canvas.getContext('2d');
   if (!ctx) throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
-  const gif = GIFEncoder();
-  onProgress?.(0);
-  for (const frame of frames) {
+  const gif = imageOnly ? null : GIFEncoder();
+  const drawFrame = frame => {
     const move = round.sequence[frame.step - 1];
     ctx.fillStyle = colors.background; ctx.fillRect(0, 0, WIDTH, height);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -110,13 +119,17 @@ export function encodeReplay(round, onProgress, onFinalFrame) {
     drawBoard(ctx, puzzle, frame.placements, 154, move?.hole);
     drawFlow(ctx, puzzle, frame.placements, flowTop);
     ctx.fillStyle = colors.h; ctx.font = '20px system-ui, sans-serif';
-    ctx.fillText(frame.step === round.sequence.length ? 'Target matched · GG' : move ? `${move.hole}: ${move.gate ?? 'clear'}` : 'Fill the holes', WIDTH / 2, height - 56);
+    ctx.fillText(frame.step === round.sequence.length ? 'Target matched · GG' : move ? `${move.hole}: ${move.gate ?? 'clear'}` : 'Match the target', WIDTH / 2, height - 56);
     ctx.fillStyle = colors.text; ctx.font = '14px system-ui, sans-serif'; ctx.fillText('colin-blake.eu/games/quantum-signals/', WIDTH / 2, height - 22);
-    const indexed = applyPalette(ctx.getImageData(0, 0, WIDTH, height).data, palette, 'rgb444');
-    gif.writeFrame(indexed, WIDTH, height, { palette, delay: frame.step === round.sequence.length ? 1800 : frame.step === 0 ? 1000 : 500 });
-    onProgress?.(frame.step / round.sequence.length);
-  }
-  gif.finish(); onFinalFrame?.(canvas); return gif.bytesView();
+    if (gif) {
+      const indexed = applyPalette(ctx.getImageData(0, 0, WIDTH, height).data, palette, 'rgb444');
+      gif.writeFrame(indexed, WIDTH, height, { palette, delay: frame.step === round.sequence.length ? 1800 : frame.step === 0 ? 1000 : 500 });
+    }
+  };
+  if (imageOnly) { drawFrame({ step: round.sequence.length, placements }); return canvas; }
+  onProgress?.(0);
+  for (const frame of frames) { drawFrame(frame); onProgress?.(frame.step / round.sequence.length); }
+  gif.finish(); return gif.bytesView();
 }
 
 installReplayEncoder(encodeReplay);

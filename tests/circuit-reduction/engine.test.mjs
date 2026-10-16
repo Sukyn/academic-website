@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RULES, applyMove, cloneCircuit, getLegalMoves, isIdentity,
-  isSolved, lowerBound, parseCircuit, sequenceCost, solveShortest, validateCircuit,
+  isSolved, lowerBound, sequenceCost, solveShortest, validateCircuit,
 } from '../../src/lib/circuit-reduction/engine.js';
+import { decodeCircuit } from '../../src/lib/circuit-reduction/stored-puzzles.js';
 import { generatePuzzle, LEVELS, dailyPuzzle } from '../../tools/circuit-reduction/witnesses.js';
 import { DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
 
@@ -105,9 +106,9 @@ test('Empty slots, partner endpoints, and padding are validated explicitly', () 
   assert.throws(() => applyMove([['H', 'H']], { rule: 'unknown', row: 0, column: 0 }), RangeError);
   assert.throws(() => applyMove([['H', 'H']], { rule: 'cancel-h', row: .5, column: 0 }), RangeError);
   assert.throws(() => applyMove([['H', 'H']], { rule: 'remove-column', row: 0, column: 0 }), RangeError);
-  assert.throws(() => parseCircuit('ZU .\n. .'), RangeError);
-  assert.throws(() => parseCircuit('X .\n. . .'), RangeError);
-  const original = parseCircuit('H . H\nX . X');
+  assert.throws(() => validateCircuit([['ZU', '.'], ['.', '.']]), RangeError);
+  assert.throws(() => validateCircuit([['X', '.'], ['.', '.', '.']]), RangeError);
+  const original = [['H', '.', 'H'], ['X', '.', 'X']];
   const compact = applyMove(original, { rule: 'remove-column', row: 0, column: 1 });
   assertMatrixEqual(circuitMatrix(original), circuitMatrix(compact), 'padding removal');
   assert.deepEqual(applyMove(compact, { rule: 'insert-column', row: 0, column: 1 }), original);
@@ -121,7 +122,7 @@ test('Identity recognition agrees with independent matrices, including both X en
     'ZU XU / XD ZD', 'H . / X .',
   ];
   for (const text of circuits) {
-    const circuit = parseCircuit(text.replaceAll(' / ', '\n'));
+    const circuit = validateCircuit(decodeCircuit(text));
     const matrix = circuitMatrix(circuit), expected = identity(matrix.length);
     const equalsIdentity = matrix.every((row, y) => row.every((cell, x) => Math.abs(cell - expected[y][x]) < 1e-9));
     assert.equal(isIdentity(circuit), equalsIdentity, text);

@@ -1,16 +1,24 @@
-/** Own the shared share dialog and its abortable export job, independent of gameplay. */
-export function createReplayShare({ createGif, get = id => document.getElementById(id) }) {
+import { createWorkerReplayGif, createWorkerReplayImage } from './replay-gif.js';
+
+/** Share a final still immediately; encode the replay only on download. */
+export function createReplayShare({ createWorker, get = id => document.getElementById(id) }) {
   const dialog = get('share-dialog');
   const download = get('download-gif');
   const preview = get('share-preview'), copyButton = get('copy-gif'), status = get('share-status');
-  let request, copyBlob, url, previewUrl, source, replay;
+  let request, imageRequest, copyBlob, url, previewUrl, source, replay;
+  let message = '', imageMessage = '';
+  const showStatus = () => { status.textContent = message || imageMessage; };
+  const canCopy = type => Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined' &&
+    (typeof ClipboardItem.supports === 'function' ? ClipboardItem.supports(type) : type === 'image/png'));
 
   function dispose() {
     request?.abort();
+    imageRequest?.abort();
     request = null;
+    imageRequest = null;
     replay = null;
     copyBlob = null;
-    if (previewUrl && previewUrl !== url) URL.revokeObjectURL(previewUrl);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     if (url) URL.revokeObjectURL(url);
     url = previewUrl = null;
     preview.removeAttribute('src');
@@ -18,12 +26,13 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     download.disabled = true;
     copyButton.disabled = true;
     copyButton.textContent = 'Copy image';
-    status.textContent = '';
+    message = imageMessage = '';
+    showStatus();
   }
 
   function close() { dialog.close(); dispose(); }
 
-  function open(trigger, round, filename) {
+  async function open(trigger, round, filename) {
     if (dialog.open) return;
     dispose();
     source = trigger;
@@ -31,6 +40,26 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     download.disabled = false;
     dialog.showModal();
     get('close-share').focus();
+    const job = imageRequest = new AbortController();
+    imageMessage = 'Preparing image…';
+    showStatus();
+    try {
+      const image = await createWorkerReplayImage(round, createWorker, { signal: job.signal });
+      if (imageRequest !== job) return;
+      previewUrl = URL.createObjectURL(image);
+      preview.src = previewUrl;
+      preview.hidden = false;
+      if (copyBlob?.type !== 'image/gif' && canCopy('image/png')) {
+        copyBlob = image;
+        copyButton.disabled = false;
+      }
+      imageMessage = '';
+    } catch {
+      if (imageRequest !== job) return;
+      imageMessage = 'Could not prepare the image. You can still download the replay.';
+    } finally {
+      if (imageRequest === job) { imageRequest = null; showStatus(); }
+    }
   }
 
   function save() {
@@ -47,36 +76,35 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     if (!dialog.open || !replay || download.disabled) return;
     if (url) { save(); return; }
     const job = request = new AbortController();
-    copyBlob = null;
     download.disabled = true;
-    status.textContent = 'Preparing your replay…';
+    message = 'Preparing your replay…';
+    showStatus();
     try {
-      const canCopy = Boolean(navigator.clipboard?.write && typeof ClipboardItem !== 'undefined');
-      const copyGif = canCopy && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('image/gif');
-      const copyImage = !copyGif && canCopy && (typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports('image/png'));
-      const blob = await createGif(replay.round, {
+      const blob = await createWorkerReplayGif(replay.round, createWorker, {
         signal: job.signal,
-        onImage: copyImage ? png => { if (request === job) copyBlob = png; } : undefined,
         onProgress: progress => {
-          if (request === job) status.textContent = `Preparing your replay… ${Math.round(progress * 100)}%`;
+          if (request === job) { message = `Preparing your replay… ${Math.round(progress * 100)}%`; showStatus(); }
         },
       });
       if (request !== job) return;
       url = URL.createObjectURL(blob);
-      if (copyGif) copyBlob = blob;
-      previewUrl = copyBlob?.type === 'image/png' ? URL.createObjectURL(copyBlob) : url;
-      preview.src = previewUrl;
-      preview.hidden = false;
-      copyButton.textContent = copyGif ? 'Copy the GIF' : 'Copy image';
-      copyButton.disabled = !copyBlob;
-      status.textContent = '';
+      if (canCopy('image/gif')) {
+        copyBlob = blob;
+        copyButton.textContent = 'Copy the GIF';
+        copyButton.disabled = false;
+      }
+      message = '';
+      showStatus();
       save();
     } catch (error) {
-      if (request === job) status.textContent = error.name === 'NotSupportedError'
-        ? 'Replay export isn’t available in this browser. Try another browser.'
-        : 'Could not prepare the replay. Please try again.';
+      if (request === job) {
+        message = error.name === 'NotSupportedError'
+          ? 'Replay export isn’t available in this browser. Try another browser.'
+          : 'Could not prepare the replay. Please try again.';
+        showStatus();
+      }
     } finally {
-      if (request === job) download.disabled = false;
+      if (request === job) { request = null; download.disabled = false; }
     }
   }
 
@@ -85,9 +113,9 @@ export function createReplayShare({ createGif, get = id => document.getElementBy
     if (!ready || copyButton.disabled) return;
     try {
       await navigator.clipboard.write([new ClipboardItem({ [ready.type]: ready })]);
-      if (copyBlob === ready) status.textContent = ready.type === 'image/gif' ? 'GIF copied.' : 'Image copied.';
+      if (copyBlob === ready) { message = ready.type === 'image/gif' ? 'GIF copied.' : 'Image copied.'; showStatus(); }
     } catch {
-      if (copyBlob === ready) status.textContent = 'Could not copy. Use Download the replay instead.';
+      if (copyBlob === ready) { message = 'Could not copy. Use Download the replay instead.'; showStatus(); }
     }
   }
 

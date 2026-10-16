@@ -51,7 +51,7 @@ import '../../styles/quantum-signals.css';
               </div>
             </div>
             <div id="sequence" role="group" aria-label="Gate placements in chronological order"></div>
-            <div id="circuit-editor-controls">
+            <div id="circuit-editor-controls" hidden>
               <div class="replay-actions">
                 <button class="button ghost" id="edit-circuit" type="button" aria-controls="custom-details">Edit this circuit</button>
                 <button class="button ghost" id="new-circuit" type="button" aria-controls="custom-details">Start from scratch</button>
@@ -87,9 +87,9 @@ import '../../styles/quantum-signals.css';
     </div>
     <GameDialogs gameTitle="Quantum signals" completionOnly>
       <Fragment slot="rules">
-        <p>Fill each hole to make the output match the target. Choose a hole, then a gate. The straight wire leaves the state unchanged.</p>
-        <p>The white wires show the circuit. Below, each lane is a complete state of its qubits. Lit paths show amplitudes splitting, moving and interfering. Black dots mean + phase; white dots mean − phase. Larger dots mean a greater chance of that result.</p>
-        <p>Match the output dots to the target, including their relative phases. Empty lanes stay dark.</p>
+        <p>Match the output to the target. Choose a hole, then a gate. Leave holes empty to use identity when it is offered.</p>
+        <p>The white wires show the circuit. Below, each lane represents a bit string. Lit paths show amplitudes splitting, moving and interfering. Black dots mean + phase; white dots mean − phase. Larger dots mean a greater chance of that result.</p>
+        <p>Match the output dots to the target, including their relative phases. Unlit lanes have zero amplitude.</p>
         <p>Yellow squares are H, red ⊕ gates are X, and green dots are Z. Linked dots are CZ. The two CNOT choices swap the control dot and ⊕.</p>
         <p>Arrow keys move between holes. H, X, Z, I or 1–4 place gates. Right-click or Delete clears a hole; Ctrl/Cmd+Z undoes.</p>
       </Fragment>

@@ -165,35 +165,30 @@ test('shared content dialogs open nested triggers and close only on a close butt
   assert.equal(dialog.openCount, 2);
 });
 
-async function wallpaperFixture({ reducedMotion = false, paintCost = 0, idleSupported = true, devicePixelRatio = 1 } = {}) {
+async function wallpaperFixture({ idleSupported = true, hidden = false } = {}) {
   let gradientCount = 0;
   let paintCount = 0;
-  let time = 0;
   let nextId = 0;
   const timers = new Map();
   const idleJobs = new Map();
-  const frames = new Map();
   const context = new Proxy({
     createLinearGradient() { gradientCount += 1; return { addColorStop() {} }; },
-    clearRect() { paintCount += 1; time += paintCost; },
+    clearRect() { paintCount += 1; },
   }, { get: (target, key) => target[key] ?? (() => {}) });
   class Canvas { getContext() { return context; } }
-  const canvas = new Canvas();
-  const reduceMotion = events({ matches: reducedMotion });
-  const document = events({ hidden: false, querySelector: () => canvas });
+  let canvas = new Canvas();
+  const document = events({ hidden, querySelector: () => canvas });
   const window = events({
-    innerWidth: 1280, innerHeight: 800, devicePixelRatio, matchMedia: () => reduceMotion,
-    setTimeout(callback, delay) { const id = ++nextId; timers.set(id, { callback, delay, due: time + delay }); return id; },
+    innerWidth: 1280, innerHeight: 800, devicePixelRatio: 3,
+    setTimeout(callback, delay) { const id = ++nextId; timers.set(id, { callback, delay }); return id; },
     clearTimeout: id => timers.delete(id),
   });
   if (idleSupported) {
     window.requestIdleCallback = callback => { const id = ++nextId; idleJobs.set(id, callback); return id; };
     window.cancelIdleCallback = id => idleJobs.delete(id);
   }
-  const sandbox = vm.createContext({ window, document, HTMLCanvasElement: Canvas, performance: { now: () => time },
+  const sandbox = vm.createContext({ window, document, HTMLCanvasElement: Canvas,
     Path2D: class { moveTo() {} lineTo() {} },
-    requestAnimationFrame: callback => { const id = ++nextId; frames.set(id, callback); return id; },
-    cancelAnimationFrame: id => frames.delete(id),
   });
   vm.runInContext(await read('../src/scripts/wallpaper.js'), sandbox);
   function flushIdle() {
@@ -205,81 +200,98 @@ async function wallpaperFixture({ reducedMotion = false, paintCost = 0, idleSupp
     assert.equal(timers.size, 1);
     const [id, timer] = [...timers][0];
     timers.delete(id);
-    time = timer.due;
     timer.callback();
-    const callbacks = [...frames.values()];
-    frames.clear();
-    for (const callback of callbacks) callback(time);
   }
-  return { window, document, canvas, reduceMotion, timers, idleJobs, frames, flushIdle, tick,
+  return { window, document, get canvas() { return canvas; }, timers, idleJobs, flushIdle, tick,
+    replaceCanvas() { canvas = new Canvas(); document.emit('astro:page-load'); },
     counts: () => ({ gradients: gradientCount, paints: paintCount }) };
 }
 
-test('wallpaper defers its first paint, caps updates, reuses gradients, and avoids duplicate pageshow work', async () => {
-  const fixture = await wallpaperFixture({ devicePixelRatio: 3 });
-  assert.equal(fixture.canvas.width, fixture.window.innerWidth);
-  assert.equal(fixture.canvas.height, fixture.window.innerHeight);
+test('wallpaper paints once after content and stays static across page and visibility events', async () => {
+  const fixture = await wallpaperFixture();
   assert.deepEqual(fixture.counts(), { gradients: 0, paints: 0 });
   assert.equal(fixture.idleJobs.size, 1);
   fixture.window.emit('pageshow');
   assert.equal(fixture.idleJobs.size, 1);
   fixture.flushIdle();
-  assert.deepEqual(fixture.counts(), { gradients: 4, paints: 1 });
-  fixture.window.emit('pageshow');
+  assert.equal(fixture.canvas.width, fixture.window.innerWidth, 'Decoration needs no extra high-DPI raster work');
+  assert.equal(fixture.canvas.height, fixture.window.innerHeight);
   assert.deepEqual(fixture.counts(), { gradients: 4, paints: 1 });
   for (let index = 0; index < 8; index += 1) {
-    assert.equal([...fixture.timers.values()][0].delay, 125);
-    assert.equal(fixture.frames.size, 0, 'no continuous animation-frame loop');
-    fixture.tick();
+    fixture.window.emit('pageshow');
+    fixture.document.emit('astro:page-load');
+    fixture.document.emit('visibilitychange');
   }
-  assert.deepEqual(fixture.counts(), { gradients: 4, paints: 9 });
+  assert.equal(fixture.timers.size + fixture.idleJobs.size, 0, 'No recurring background work');
+  assert.deepEqual(fixture.counts(), { gradients: 4, paints: 1 });
 });
 
-test('wallpaper adapts its paint gap to measured raster cost on a slow device', async () => {
-  const fixture = await wallpaperFixture({ paintCost: 200 });
-  fixture.flushIdle();
-  assert.equal([...fixture.timers.values()][0].delay, 800);
-  fixture.tick();
-  assert.equal([...fixture.timers.values()][0].delay, 800);
-  assert.equal(fixture.counts().paints, 2);
-});
-
-test('wallpaper cancels pending work when hidden and paints once with reduced motion', async () => {
-  const fixture = await wallpaperFixture({ reducedMotion: true });
-  fixture.flushIdle();
-  assert.equal(fixture.counts().paints, 1);
-  assert.equal(fixture.timers.size, 0);
-  fixture.reduceMotion.matches = false;
-  fixture.reduceMotion.emit('change');
-  fixture.flushIdle();
-  assert.equal(fixture.timers.size, 1);
-  fixture.document.hidden = true;
-  fixture.document.emit('visibilitychange');
-  assert.equal(fixture.timers.size + fixture.idleJobs.size + fixture.frames.size, 0);
-  fixture.document.hidden = false;
-  fixture.document.emit('visibilitychange');
-  fixture.flushIdle();
-  assert.equal(fixture.timers.size, 1);
-  fixture.window.emit('pagehide');
-  assert.equal(fixture.timers.size, 0);
-  fixture.window.emit('pageshow');
-  assert.equal(fixture.timers.size, 1);
-  fixture.window.__chalkWallpaperState.destroy();
-  assert.equal(fixture.timers.size + fixture.idleJobs.size + fixture.frames.size, 0);
-  assert.equal(fixture.document.listenerCount('visibilitychange'), 0);
-});
-
-test('wallpaper coalesces resize painting and works without idle-callback support', async () => {
+test('wallpaper coalesces viewport changes into one static repaint at the latest size', async () => {
   const fixture = await wallpaperFixture();
   fixture.flushIdle();
   fixture.window.innerWidth = 1000;
   fixture.window.emit('resize');
+  fixture.window.innerWidth = 900;
+  fixture.window.innerHeight = 600;
   fixture.window.emit('resize');
   assert.equal(fixture.idleJobs.size, 1);
   assert.equal(fixture.counts().paints, 1);
   fixture.flushIdle();
+  assert.equal(fixture.canvas.width, 900);
+  assert.equal(fixture.canvas.height, 600);
   assert.deepEqual(fixture.counts(), { gradients: 8, paints: 2 });
-  const fallback = await wallpaperFixture({ idleSupported: false, reducedMotion: true });
+  fixture.window.emit('resize');
+  assert.equal(fixture.idleJobs.size, 0, 'Unchanged dimensions do not repaint');
+  assert.equal(fixture.counts().paints, 2);
+});
+
+test('wallpaper defers hidden work and recovers an interrupted first paint on pageshow', async () => {
+  const fixture = await wallpaperFixture({ hidden: true });
+  assert.equal(fixture.idleJobs.size, 0);
+  fixture.document.hidden = false;
+  fixture.document.emit('visibilitychange');
+  assert.equal(fixture.idleJobs.size, 1);
+  fixture.window.emit('pagehide');
+  assert.equal(fixture.idleJobs.size, 0);
+  fixture.window.emit('pageshow');
+  fixture.document.hidden = true;
+  fixture.flushIdle();
+  assert.equal(fixture.counts().paints, 0);
+  fixture.document.hidden = false;
+  fixture.document.emit('visibilitychange');
+  fixture.flushIdle();
+  assert.equal(fixture.counts().paints, 1);
+  assert.equal(fixture.timers.size, 0);
+  fixture.document.hidden = true;
+  fixture.window.innerWidth = 1000;
+  fixture.window.emit('resize');
+  assert.equal(fixture.idleJobs.size, 0);
+  fixture.document.hidden = false;
+  fixture.document.emit('visibilitychange');
+  fixture.flushIdle();
+  assert.equal(fixture.counts().paints, 2);
+  fixture.window.innerWidth = 900;
+  fixture.window.emit('resize');
+  fixture.window.__chalkWallpaperState.destroy();
+  assert.equal(fixture.timers.size + fixture.idleJobs.size, 0);
+  assert.equal(fixture.document.listenerCount('visibilitychange'), 0);
+});
+
+test('wallpaper replaces its canvas without retaining duplicate event handlers', async () => {
+  const fixture = await wallpaperFixture();
+  fixture.flushIdle();
+  const firstCanvas = fixture.canvas;
+  fixture.replaceCanvas();
+  assert.equal(fixture.idleJobs.size, 1);
+  fixture.flushIdle();
+  assert.notEqual(fixture.canvas, firstCanvas);
+  assert.equal(fixture.counts().paints, 2);
+  for (const name of ['resize', 'pagehide', 'pageshow']) assert.equal(fixture.window.listenerCount(name), 1);
+  assert.equal(fixture.document.listenerCount('visibilitychange'), 1);
+});
+
+test('wallpaper paints once without idle-callback support', async () => {
+  const fallback = await wallpaperFixture({ idleSupported: false });
   assert.equal([...fallback.timers.values()][0].delay, 25);
   assert.equal(fallback.counts().paints, 0);
   fallback.tick();

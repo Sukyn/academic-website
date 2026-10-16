@@ -3,11 +3,12 @@ export function renderLeaderboard({ entries = [], currentPlayer = null, total = 
   { optimalMoves, benchmarkLabel = 'Optimal', unit = 'move', completionOnly = false, get = id => document.getElementById(id) } = {}) {
   if (!completionOnly) get('player-rank').textContent = currentPlayer
     ? `Your rank: ${currentPlayer.rank} / ${total} · Best: ${currentPlayer.moves} ${currentPlayer.moves === 1 ? unit : `${unit}s`}` : '';
-  const rows = completionOnly ? entries : [{ rank: '—', name: benchmarkLabel, moves: optimalMoves ?? '—' }, ...entries];
+  const hasBenchmark = !completionOnly && optimalMoves != null;
+  const rows = hasBenchmark ? [{ rank: '—', name: benchmarkLabel, moves: optimalMoves }, ...entries] : entries;
   for (const id of ['leaderboard-body', 'result-leaderboard-body']) {
     get(id).replaceChildren(...rows.map((entry, index) => {
       const row = document.createElement('tr');
-      const benchmark = !completionOnly && index === 0, own = !benchmark && entry.id === currentPlayer?.id;
+      const benchmark = hasBenchmark && index === 0, own = !benchmark && entry.id === currentPlayer?.id;
       row.className = benchmark ? 'benchmark' : own ? 'current-player' : '';
       const name = entry.name + (own ? ' (you)' : '');
       for (const value of completionOnly ? [name] : [entry.rank, name, entry.moves]) {

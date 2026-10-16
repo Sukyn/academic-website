@@ -1,11 +1,27 @@
-// Worked solution of paper mission 12 (campaign lesson 17). Layout actions are free.
-export const TUTORIAL_CIRCUIT = [
+// Basic cancellations and a basis change, then paper mission 12 (campaign lesson 17).
+// Layout actions are free.
+const PAPER_CIRCUIT = [
   ['X', '.', 'XU', '.', 'X', 'XU'],
   ['.', '.', 'ZD', '.', '.', 'ZD'],
 ];
 
+export const TUTORIAL_CIRCUIT = [
+  ['X', 'X', 'H', 'H', 'H', 'Z', 'H', 'X', ...PAPER_CIRCUIT[0]],
+  ['.', '.', '.', '.', '.', '.', '.', '.', ...PAPER_CIRCUIT[1]],
+];
+
 export const TUTORIAL_STEPS = [
-  { text: 'Expand the CNOT into H–CZ–H, with both H gates on the target wire.',
+  { text: 'Two neighbouring X gates cancel. Choose the rule that replaces them with empty wire.',
+    move: { rule: 'cancel-x', row: 0, column: 0 } },
+  { text: 'Two neighbouring H gates cancel too. Match the selected pair to its rule.',
+    move: { rule: 'cancel-h', row: 0, column: 2 } },
+  { text: 'Replace H–Z–H with X. Rules work in either direction.',
+    move: { rule: 'basis-x', row: 0, column: 4 } },
+  { text: 'Cancel the two X gates.',
+    layout: [['X', 'X', ...PAPER_CIRCUIT[0]], ['.', '.', ...PAPER_CIRCUIT[1]]],
+    move: { rule: 'cancel-x', row: 0, column: 0 } },
+  { text: 'Some rules have a controlled version. Expand CNOT into H–CZ–H.',
+    layout: PAPER_CIRCUIT,
     move: { rule: 'basis-up', row: 0, column: 1 } },
   { text: 'Add space between X and CNOT. Empty slots cost no moves.',
     target: '[data-space="0:5"]',
@@ -15,7 +31,7 @@ export const TUTORIAL_STEPS = [
     move: { rule: 'basis-up', row: 0, column: 5 } },
   { text: 'Replace H–X–H with Z.',
     move: { rule: 'basis-z', row: 0, column: 3 } },
-  { text: 'Move Z past CZ; they commute. This brings the two CZ gates together.',
+  { text: 'Move Z past CZ; they commute.',
     layout: [['X', 'H', 'ZU', 'Z', 'ZU', '.', 'H'], ['.', '.', 'ZD', '.', 'ZD', '.', '.']],
     move: { rule: 'phase-up', row: 0, column: 3 } },
   { text: 'Cancel the two CZ gates: applying CZ twice changes nothing.',

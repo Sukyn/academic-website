@@ -1,0 +1,101 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import GameShell from '../../components/games/GameShell.astro';
+import GameModeMenu from '../../components/games/GameModeMenu.astro';
+import GameToolbar from '../../components/games/GameToolbar.astro';
+import GameTutorial from '../../components/games/GameTutorial.astro';
+import GameLeaderboard from '../../components/games/GameLeaderboard.astro';
+import GameDialogs from '../../components/games/GameDialogs.astro';
+import GameJsonActions from '../../components/games/GameJsonActions.astro';
+import GameRoundControls from '../../components/games/GameRoundControls.astro';
+import GameReviewControls from '../../components/games/GameReviewControls.astro';
+import { LEVELS } from '../../lib/graph-states/puzzles.js';
+import { CORRECTION_LABELS } from '../../lib/graph-states/correction-graphics.js';
+import '../../styles/graph-states.css';
+---
+
+<BaseLayout title="Graph states" description="Transform a graph state by local complementation and pivoting. Follow the Clifford circuit as you restore the chain.">
+  <GameShell>
+    <a class="back" href="/games/">← Games</a>
+    <h1>Graph states</h1>
+    <div class="game-layout">
+      <GameModeMenu />
+      <div class="game-content">
+        <GameToolbar levels={LEVELS} />
+        <GameTutorial />
+        <section class="graph-game" aria-label="Graph states">
+          <div class="graph-workspace">
+            <div class="graph-board-panel">
+              <div id="graph-board" aria-label="Playable graph"></div>
+            </div>
+            <div class="graph-target-panel">
+              <h2>Target</h2>
+              <div id="graph-target" role="img" aria-label="Target chain"></div>
+            </div>
+          </div>
+          <p class="message" id="shot-count" role="status" hidden></p>
+          <GameRoundControls resultLabel="Results" />
+          <div class="custom-controls" id="custom-controls" hidden>
+            <label for="difficulty">Difficulty</label>
+            <select id="difficulty"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select>
+            <button class="button ghost" id="new-puzzle" type="button">New puzzle</button>
+            <GameJsonActions />
+          </div>
+          <details class="advanced-features" id="advanced-features">
+            <summary>Advanced</summary>
+            <div class="graph-circuit-panel">
+              <h2>Clifford corrections <span class="graph-circuit-badge">Simplified</span></h2>
+              <div class="game-scroll" id="circuit-scroll" role="region" aria-label="Simplified Clifford corrections" tabindex="0">
+                <svg id="clifford-circuit" role="img" aria-label="Clifford corrections on the starting graph state"></svg>
+              </div>
+              <button class="button ghost" id="show-gate-legend" type="button" aria-haspopup="dialog" aria-controls="gate-legend-dialog">What are these gates?</button>
+            </div>
+            <div class="replay-actions" id="replay-actions">
+              <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
+              <button class="button ghost" id="share-replay" type="button" hidden>Share your replay</button>
+            </div>
+            <div id="sequence" role="group" aria-label="Graph operations in chronological order"></div>
+            <div id="graph-editor-controls" hidden>
+              <div class="replay-actions">
+                <button class="button ghost" id="edit-graph" type="button" aria-controls="custom-details">Edit this graph</button>
+                <button class="button ghost" id="new-graph" type="button" aria-controls="custom-details">Start from chain</button>
+              </div>
+              <div id="custom-details" hidden>
+                <form class="graph-editor-controls" id="graph-editor-form" aria-label="Graph editor">
+                  <label>Vertices<select id="editor-vertices">{[3, 4, 5, 6, 7, 8].map(value => <option value={value}>{value}</option>)}</select></label>
+                  <button class="button" id="save-graph" type="submit">Play puzzle</button>
+                </form>
+                <p class="message" id="custom-status" role="status"></p>
+              </div>
+            </div>
+          </details>
+          <GameReviewControls />
+          <p class="message" id="status" role="status"></p>
+          <noscript>Enable JavaScript to play.</noscript>
+        </section>
+        <GameLeaderboard unit="Shots" />
+      </div>
+    </div>
+    <dialog class="game-dialog gate-legend-dialog" id="gate-legend-dialog" aria-labelledby="gate-legend-title">
+      <button class="close-dialog" id="close-gate-legend" type="button" aria-label="Close gate guide">×</button>
+      <h2 id="gate-legend-title">What are these gates?</h2>
+      <p>For readers familiar with quantum circuits:</p>
+      <ul class="gate-legend">
+        {Object.entries(CORRECTION_LABELS).map(([gate, label]) => (
+          <li><svg data-correction-gate={gate} viewBox="0 0 44 44" width="32" height="32" aria-hidden="true"></svg><span>{label}</span></li>
+        ))}
+      </ul>
+    </dialog>
+    <GameDialogs gameTitle="Graph states" unit="Shots">
+      <Fragment slot="rules">
+        <p>Match the target chain, keeping the numbered vertices in place.</p>
+        <p>Click a vertex to complement its neighbourhood: add each missing edge between its neighbours and remove each existing one. Edges touching the chosen vertex stay unchanged.</p>
+        <p>Each local complementation counts as one shot. Fewer shots rank higher.</p>
+        <p>Undo reverses the last operation. Ctrl/Cmd+Z also works.</p>
+        <p>Advanced: click an edge to pivot. Complement its lower-numbered endpoint, its other endpoint, then the first again. A pivot costs 3 shots.</p>
+        <p><a href="https://arxiv.org/abs/quant-ph/0308151" target="_blank" rel="noopener noreferrer">Graph states and local Clifford operations</a></p>
+      </Fragment>
+    </GameDialogs>
+  </GameShell>
+</BaseLayout>
+<script>import '../../scripts/graph-states.js';</script>

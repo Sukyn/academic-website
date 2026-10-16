@@ -1,4 +1,4 @@
-import { gateGlyph } from './circuit-graphics.js';
+import { CIRCUIT_COLORS, gateGlyph, svgNode } from './circuit-graphics.js';
 
 // Build trusted gate icons without interpreting the surrounding prose as HTML.
 function renderInstruction(node, text, icon) {
@@ -22,14 +22,20 @@ export function renderGolfInstruction(node, text) {
   });
 }
 
-export function renderCircuitInstruction(node, text, cnot = 'CX') {
+export function renderCircuitInstruction(node, text, { singleWire = false } = {}) {
   renderInstruction(node, text, label => {
-    const gate = label === 'CNOT' ? cnot : label, span = gateToken(gate, label);
-    if (gate === 'CX' || gate === 'XC' || gate === 'CZ') {
+    const gate = label === 'CNOT' ? (singleWire ? 'XU' : 'CX') : label === 'CZ' && singleWire ? 'ZU' : label;
+    const span = gateToken(gate, label);
+    if (gate === 'CX' || gate === 'CZ') {
       const pair = document.createElement('span'); pair.className = 'tutorial-pair';
-      for (const cell of gate === 'CZ' ? ['Z', 'Z'] : gate === 'CX' ? ['Z', 'X'] : ['X', 'Z']) pair.appendChild(gateGlyph(cell));
+      for (const cell of gate === 'CZ' ? ['Z', 'Z'] : ['Z', 'X']) pair.appendChild(gateGlyph(cell));
       span.appendChild(pair);
-    } else span.appendChild(gateGlyph(gate));
+    } else {
+      const glyph = gateGlyph(gate);
+      // Match the single-wire rule diagrams: the connector continues below the endpoint.
+      if (gate.endsWith('U')) glyph.prepend(svgNode('path', { d: 'M22 22V44', stroke: CIRCUIT_COLORS.z, 'stroke-width': 2.4 }));
+      span.appendChild(glyph);
+    }
     return span;
   });
 }

@@ -19,13 +19,13 @@ Point `.env.local` at the database to back up:
 node --env-file=.env.local tools/quantum-golf/export.mjs quantum-golf-scores.json
 ```
 
-Exports include all attempts, IDs and timestamps, and never overwrite files. Keep a private copy outside the hosting account. To restore, point `.env.local` at an **empty Preview database** and use an absolute backup path:
+Exports include all scores and completions, preserving IDs and score timestamps. Existing files are never overwritten. Keep a private copy outside the hosting account. To restore, point `.env.local` at an **empty Preview database** and use an absolute backup path:
 
 ```sh
 node --env-file=.env.local tools/quantum-golf/migrate.mjs --scores "C:\absolute\path\quantum-golf-scores.json"
 ```
 
-The command installs the schema and imports scores without replacing conflicting records. Check rankings in Preview before switching Production. Omit `--scores` only to install/update the schema; requests never migrate it.
+The command installs the schema and imports records without replacing conflicts. Check rankings in Preview before switching Production. Omit `--scores` only to install/update the schema; requests never migrate it.
 
 For a live upgrade from the old `sequence` column: make it nullable, create `scores_submission_moves` from `schema.sql`, deploy the API, then run the migration to drop the old column. Requests must fit Vercel's 4.5 MB payload limit.
 

@@ -6,7 +6,8 @@ const files = [
   'src/scripts/quantum-golf.js',
   'src/scripts/quantum-golf-worker.js',
   'src/scripts/quantum-golf-gif-worker.js',
-  ...['quantum', 'sphere', 'solver', 'daily', 'replay-gif'].map((name) => `src/lib/quantum-golf/${name}.js`),
+  ...['quantum', 'sphere', 'solver', 'daily'].map((name) => `src/lib/quantum-golf/${name}.js`),
+  'src/lib/games/replay-gif.js',
 ];
 for (const file of files) {
   const result = spawnSync(process.execPath, ['--check', fileURLToPath(websiteFile(file))], { stdio: 'inherit' });

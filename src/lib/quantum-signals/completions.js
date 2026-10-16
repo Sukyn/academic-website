@@ -38,6 +38,6 @@ export function validateSubmission(input, now = Date.now()) {
   } catch {
     throw new SubmissionError('That replay contains an invalid gate placement.');
   }
-  if (!simulate(board.puzzle, placements).solved) throw new SubmissionError('Fill every hole and match the target state.');
+  if (!simulate(board.puzzle, placements).solved) throw new SubmissionError('Match the target with the offered gates.');
   return { campaign: board.campaign, level: board.level, name };
 }

@@ -7,7 +7,9 @@ import { resolve } from 'node:path';
 import { getHoles, solvePuzzle, puzzleData, validateCustomPuzzle, simulate, stateEqual } from '../../src/lib/quantum-signals/engine.js';
 import { LEVELS, dailyPuzzle } from '../../src/lib/quantum-signals/puzzles.js';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
-import { phaseColor, phaseOutline, PHASE_COLORS, PHASE_PATH_COLOR } from '../../src/lib/quantum-signals/state-visuals.js';
+import { gateLabel } from '../../src/lib/quantum-signals/rendering.js';
+import { phaseColor, phasePathColor, PHASE_COLORS, CANCELLATION_WALL } from '../../src/lib/quantum-signals/state-visuals.js';
+import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
@@ -83,6 +85,7 @@ async function pageFor(options, { blockedStorage = false, api = fixture, now = p
   await page.locator('[data-hole]').first().waitFor();
   assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true', 'Tutorial is the default mode');
   assert.equal(await page.locator('#tutorial-panel').isVisible(), true);
+  assert.equal(await page.locator('#circuit-editor-controls').evaluate(node => node.hidden), true, 'The tutorial hides custom editing controls');
   assert.equal(await page.locator('#leaderboard-section').isVisible(), false, 'The tutorial has no completion list');
   assert.equal(pageCompletions, 0, 'Opening the tutorial never requests a completion list');
   await activate(page, page.locator('#mode-campaign'));
@@ -247,7 +250,19 @@ async function gateGeometry(page, puzzle, placements = {}) {
   assert.deepEqual(report, [], 'Gate glyphs, vertical links and signal paths share exact junctions');
 }
 
-async function basisFlow(page, puzzle, placements = {}) {
+async function placedGates(page, puzzle) {
+  const holes = new Map(getHoles(puzzle).map(hole => [hole.id, hole]));
+  const visible = await page.locator('#signal-board [data-hole][data-filled="true"]').evaluateAll(nodes =>
+    nodes.map(node => ({ id: node.dataset.hole, label: node.title.split(' · ')[0] })));
+  return Object.fromEntries(visible.map(({ id, label }) => {
+    const hole = holes.get(id), gate = hole?.choices.find(gate => gateLabel(gate, hole.wires) === label);
+    assert.ok(gate, 'Each displayed placement identifies a gate offered by its hole');
+    return [id, gate];
+  }));
+}
+
+async function basisFlow(page, puzzle, placements = undefined) {
+  placements ??= await placedGates(page, puzzle);
   const expected = flowTrace(puzzle, placements);
   const flow = page.locator('#signal-flow');
   assert.equal(await flow.getAttribute('role'), 'img', 'The mirrored basis-state diagram has graphical semantics');
@@ -272,17 +287,34 @@ async function basisFlow(page, puzzle, placements = {}) {
     lanes: [...svg.querySelectorAll('.signal-flow-lane')].map(node => ({ basis: Number(node.dataset.basis), end: node.x2.baseVal.value })),
     targets: [...svg.querySelectorAll('.signal-flow-target')].map(node => ({ basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
       x: node.cx.baseVal.value, ...style(node) })),
+    cancellations: [...svg.querySelectorAll('.signal-flow-cancellation')].map(node => ({ boundary: Number(node.dataset.boundary),
+      basis: Number(node.dataset.basis), path: node.getAttribute('d'), label: node.getAttribute('aria-label'), ...style(node), fill: node.getAttribute('fill') })),
     divider: svg.querySelector('.signal-flow-divider')?.getBBox().x,
   }; });
   assert.deepEqual(actual.lanes.map(lane => lane.basis), Array.from({ length: 2 ** puzzle.wires }, (_, basis) => basis), 'Every complete basis state has its own fixed lane');
+  assert.deepEqual(actual.cancellations.map(({ boundary, basis }) => ({ boundary, basis })),
+    expected.cancellations.flatMap((bases, column) => bases.map(basis => ({ boundary: column + 1, basis }))),
+    'Walls mark exactly the outcomes whose opposite contributions cancel');
+  for (const wall of actual.cancellations) {
+    assert.equal(wall.stroke, PHASE_COLORS.negative);
+    assert.equal(wall.fill, 'none');
+    assert.equal(wall.strokeWidth, 2);
+    assert.equal(wall.path, CANCELLATION_WALL.map(([dx, dy], index) =>
+      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (44 + wall.basis * 34 + dy)).join(' '));
+    assert.ok(wall.label.includes('opposite phases cancel'));
+    assert.ok(!actual.nodes.some(node => node.boundary === wall.boundary && node.basis === wall.basis),
+      'Canceled outcomes have a wall instead of a photon dot');
+    assert.ok(!actual.edges.some(edge => edge.column === wall.boundary && edge.from === wall.basis),
+      'No amplitude leaves a wall in the next column');
+  }
   for (const item of [...actual.nodes, ...actual.targets]) {
     assert.equal(item.fill, phaseColor(item.amplitude), 'Positive phases have black dots; negative phases have white dots');
     assert.ok(item.strokeWidth > 0, 'The phase outline remains visible, including matched targets');
   }
-  for (const node of actual.nodes) assert.equal(node.stroke, phaseOutline(node.amplitude), 'Intermediate phase dots have the opposite black or white outline');
+  for (const node of actual.nodes) assert.equal(node.stroke, PHASE_COLORS.negative, 'Both intermediate phases have white outlines');
   for (const target of actual.targets) assert.equal(target.stroke, PHASE_COLORS.negative, 'Both target phases have white outlines');
   for (const edge of actual.edges) {
-    assert.equal(edge.stroke, PHASE_PATH_COLOR, 'Connecting paths stay neutral; dots carry the phase');
+    assert.equal(edge.stroke, phasePathColor(edge.amplitude), 'Negative paths are white; positive paths are darker');
   }
   for (const item of [...actual.nodes, ...actual.edges, ...actual.targets]) assert.equal(item.dash, 'none', 'Paths and markers use solid strokes');
   for (const item of [...actual.nodes, ...actual.targets]) assert.ok(item.title.includes(item.amplitude < 0 ? '− phase' : '+ phase'),
@@ -392,6 +424,8 @@ async function keyboardAndMouse(page) {
   await page.locator('[data-choice="I"]').focus();
   const keypadPuzzle = LEVELS[10], solution = solutionFor(keypadPuzzle);
   for (const hole of getHoles(keypadPuzzle)) {
+    if (await page.locator('#win-dialog').evaluate(dialog => dialog.open)) break;
+    if (solution[hole.id] === 'I') continue;
     assert.equal(await page.locator(`[data-hole="${hole.id}"]`).getAttribute('aria-pressed'), 'true', 'Numbered placement advances to the next hole');
     await visibleChoices(page, hole);
     await numberedGate(page, solution[hole.id]);
@@ -508,7 +542,8 @@ async function progressNavigation(page) {
   const columns = Array.from({ length: 16 }, () => []);
   columns[0] = [0, 1, 2, 3].map(wire => ({ gate: 'H', wires: [wire] }));
   for (const [index, column] of [3, 6, 9, 12].entries()) columns[column] = [{ id: 'h' + (index + 1), wires: [0], choices: ['I', 'X'] }];
-  const puzzle = { wires: 4, columns, target: Array(16).fill(.25) };
+  columns[12][0].choices = ['I', 'Z'];
+  const puzzle = { wires: 4, columns, target: Array.from({ length: 16 }, (_, basis) => basis < 8 ? .25 : -.25) };
   const load = () => importPuzzle(page, puzzleData(puzzle));
   await load();
   await centeredProgress(page, 'h1', 3);
@@ -525,7 +560,7 @@ async function progressNavigation(page) {
   await centeredProgress(page, 'h3', 9);
   await actionKeepsPage(page, page.locator('[data-choice="I"]'));
   await centeredProgress(page, 'h4', 12);
-  await activate(page, page.locator('[data-choice="I"]'));
+  await activate(page, page.locator('[data-choice="Z"]'));
   await page.locator('#win-dialog[open]').waitFor();
   await closeWin(page);
   await completionInView(page, columns.length);
@@ -614,21 +649,29 @@ async function place(page, hole, gate) {
 async function finish(page, puzzle) {
   noBenchmark(puzzle, 'The playable circuit');
   const solution = solutionFor(puzzle);
+  let chosen = await placedGates(page, puzzle);
   for (const hole of getHoles(puzzle)) {
+    if (simulate(puzzle, chosen).solved) break;
+    const gate = solution[hole.id];
+    if (chosen[hole.id] === gate || (gate === 'I' && !Object.hasOwn(chosen, hole.id))) continue;
     await activate(page, page.locator(`[data-hole="${hole.id}"]`));
     await visibleChoices(page, hole);
-    await activate(page, page.locator(`[data-choice="${solution[hole.id]}"]`));
+    await activate(page, page.locator(gate === 'I' ? '#erase-gate' : `[data-choice="${gate}"]`));
+    chosen = await placedGates(page, puzzle);
   }
+  assert.equal(simulate(puzzle, chosen).solved, true, 'The chosen gates reach the target with optional identities omitted');
+  if (!await page.locator('#win-dialog').evaluate(dialog => dialog.open)) await activate(page, page.locator('#show-results'));
   await page.locator('#win-dialog[open]').waitFor();
   await page.waitForFunction(() => document.getElementById('score-status').textContent !== 'Saving…');
   await completionBoard(page);
-  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), getHoles(puzzle).length, 'The solved circuit shows every hole filled');
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), Object.keys(chosen).length,
+    'The solved circuit shows only gates actually placed, leaving optional identities empty');
   assert.equal(await page.locator('#win-summary').innerText(), 'Target reached.');
   const [current, target] = await finalAmplitudes(page, puzzle);
   assert.ok(stateEqual(current, target), 'The solved mirror endpoints match the complete target state');
-  await gateGeometry(page, puzzle, solution);
-  await basisFlow(page, puzzle, solution);
-  return solution;
+  await gateGeometry(page, puzzle, chosen);
+  await basisFlow(page, puzzle, chosen);
+  return chosen;
 }
 
 async function closeWin(page) { await activate(page, page.locator('#close-win')); }
@@ -711,20 +754,23 @@ async function downloadReplay(page) {
     await page.locator('#share-dialog[open]').waitFor();
     assert.equal(await page.locator('#share-title').innerText(), 'Share your replay');
     await completionBoard(page);
-    assert.equal(workers.length, 0, 'Sharing alone does not encode the replay');
-    assert.equal(await page.locator('#share-preview').isVisible(), false);
+    await page.locator('#share-preview').waitFor({ state: 'visible' });
+    await page.locator('#share-preview').evaluate(image => image.decode());
+    const preview = await page.locator('#share-preview').getAttribute('src');
+    assert.equal(workers.length, 1, 'Sharing renders one still image without encoding the replay');
+    assert.equal(await page.locator('#copy-gif').isEnabled(), true, 'The still image can be copied before downloading');
     const pending = page.waitForEvent('download');
     await activate(page, page.getByRole('button', { name: 'Download the replay', exact: true }));
     const download = await pending, bytes = await readFile(await download.path());
     assert.match(download.suggestedFilename(), /\.gif$/);
     assert.match(bytes.toString('ascii', 0, 6), /^GIF8[79]a$/);
     assert.ok(bytes.length > 1000, 'The replay contains actual animation data');
-    assert.equal(workers.length, 1, 'Download starts one GIF worker');
-    await page.locator('#share-preview').evaluate(image => image.decode());
+    assert.equal(workers.length, 2, 'Download starts one GIF worker after the still renderer');
+    assert.equal(await page.locator('#share-preview').getAttribute('src'), preview, 'Downloading keeps the still preview');
     const cached = page.waitForEvent('download');
     await activate(page, page.locator('#download-gif'));
     assert.deepEqual(await readFile(await (await cached).path()), bytes);
-    assert.equal(workers.length, 1, 'Repeated downloads reuse the completed encoding');
+    assert.equal(workers.length, 2, 'Repeated downloads reuse the completed encoding');
     await activate(page, page.locator('#close-share'));
     await activate(page, page.locator('#advanced-features > summary'));
   } finally { page.off('worker', track); }
@@ -774,6 +820,11 @@ async function visualEditor(page) {
   await activate(page, page.locator('#mode-campaign'));
   await page.locator('#level').selectOption('1');
   await openDetails(page, '#advanced-features');
+  for (const selector of ['#circuit-editor-controls', '#edit-circuit', '#new-circuit']) {
+    assert.equal(await page.locator(selector).isVisible(), false, 'Levels hide custom editing controls');
+  }
+  await activate(page, page.locator('#mode-random'));
+  await importPuzzle(page, puzzleData(LEVELS[0]));
   const originalBoard = await page.locator('#signal-board').innerHTML();
   assert.equal(await page.locator('#copy-puzzle, details#custom-details').count(), 0, 'The editor opens with explicit actions');
   await activate(page, page.locator('#new-circuit'));
@@ -930,7 +981,8 @@ async function visualEditor(page) {
   assert.equal(await page.locator('[data-editor-target]').count(), 4);
 
   await cell(0, 1, 'empty'); await cell(0, 0, 'H'); await connect(1, 0, 1, 'control');
-  await cell(2, 0, 'Z'); await cell(3, 1, 'hole'); await offered(3, 1, ['I', 'Z']);
+  await cell(2, 0, 'Z'); await cell(2, 0, 'empty');
+  await cell(3, 1, 'hole'); await offered(3, 1, ['I', 'Z']);
   await target(3, -1);
   await submit();
   const bellData = await exportedPuzzle(page, true), bell = validateCustomPuzzle(bellData);
@@ -981,6 +1033,10 @@ async function visualEditor(page) {
   assert.equal(await page.locator('#puzzle-json-dialog').isVisible(), false, 'Entering daily mode closes a stale JSON dialog');
   await dailyEditorHidden(page);
   await activate(page, page.locator('#mode-campaign'));
+  for (const selector of ['#circuit-editor-controls', '#edit-circuit', '#new-circuit', '#custom-details', '#puzzle-editor-form']) {
+    assert.equal(await page.locator(selector).isVisible(), false, 'Levels hide an existing custom draft');
+  }
+  await activate(page, page.locator('#mode-random'));
   assert.equal(await page.locator('#edit-circuit').isVisible(), true);
   assert.equal(await page.locator('#new-circuit').isVisible(), true);
   assert.equal(await page.locator('#puzzle-editor-form').isVisible(), true);
@@ -1069,6 +1125,11 @@ async function jointStateExamples(page) {
     const width = await page.evaluate(() => innerWidth);
     await page.screenshot({ path: resolve(output, `${width}-${screenshot}.png`), fullPage: true });
     await finish(page, puzzle); await closeWin(page);
+  }
+  // Keep a real placement to review/export even when this custom target was
+  // already matched by its fixed gates and empty identity hole.
+  if (!await page.locator('#sequence button').count()) {
+    await place(page, 'h1', 'I'); await closeWin(page);
   }
   console.log('Joint-state mirror: Bell and opposite Bell states occupy different lanes; relative phase and destructive interference are preserved.');
 }
@@ -1215,6 +1276,207 @@ async function recovery(page) {
   assert.equal(await page.locator('#daily-status').innerText(), '', 'A successful daily retry clears the offline status');
 }
 
+async function tutorialGateAppearance(page) {
+  const report = await page.evaluate(() => {
+    const board = [...document.querySelectorAll('#signal-board .signal-hole')];
+    const palette = [...document.querySelectorAll('.signal-palette [data-choice]')].filter(button => !button.hidden);
+    const glyphs = [...document.querySelectorAll('#signal-board .gate-glyph, .signal-palette [data-choice]:not([hidden]) .gate-glyph, #tutorial-text .gate-glyph')];
+    return {
+      opaque: [...board, ...palette, ...glyphs].every(node => getComputedStyle(node).opacity === '1'),
+      locked: board.every(button => button.disabled) && palette.every(button => button.disabled === !button.hasAttribute('data-tutorial-focus')),
+    };
+  });
+  assert.equal(report.opaque, true, 'Tutorial gates retain their normal circuit, palette and inline opacity');
+  assert.equal(report.locked, true, 'Only the highlighted tutorial gate is enabled; the other gates remain locked');
+}
+
+async function cancellationTutorial(page, profile) {
+  await activate(page, page.locator('#mode-tutorial'));
+  await tutorialGateAppearance(page);
+  await activate(page, page.locator('#tutorial-start'));
+  await activate(page, page.locator('[data-choice="H"]'));
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 1);
+  await activate(page, page.locator('#tutorial-start'));
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 0, 'Restart clears the worked example');
+  const placements = {};
+  for (const [index, { hole, gate }] of TUTORIAL_STEPS.entries()) {
+    assert.equal(await page.locator('#tutorial-heading').innerText(), `Step ${index + 1} of ${TUTORIAL_STEPS.length}`);
+    const history = await page.locator('#sequence').innerHTML();
+    if (hole) {
+      await activate(page, page.locator(`[data-choice="${gate}"]`));
+      placements[hole] = gate;
+    } else {
+      assert.match(await page.locator('#tutorial-text').innerText(), /walls.*white.*dark.*cancel/i);
+      assert.equal(await page.locator('#signal-flow').getAttribute('data-match'), 'false', 'The wall explanation precedes matching the target');
+      assert.equal(await page.locator('[data-hole="e"]').getAttribute('data-filled'), 'false');
+      assert.equal(await page.locator('#signal-board').evaluate(board =>
+        parseFloat(board.querySelector('[data-hole="e"]').style.left) > parseFloat(board.querySelector('[data-hole="f"]').style.left)), true,
+      'The remaining gate is physically after the recombination');
+      const focused = page.locator('.signal-flow-cancellation[data-tutorial-focus]');
+      assert.equal(await focused.count(), 1, 'The observation highlights a real cancellation wall');
+      assert.deepEqual(await page.locator('.signal-flow-cancellation').evaluateAll(nodes => nodes.map(node => Number(node.dataset.basis))), [1, 3, 4, 6]);
+      await page.waitForFunction(() => {
+        const wall = document.querySelector('.signal-flow-cancellation[data-tutorial-focus]').getBoundingClientRect();
+        const region = document.getElementById('flow-scroll').getBoundingClientRect();
+        return wall.left >= region.left && wall.right <= region.right && wall.top >= region.top && wall.bottom <= region.bottom;
+      });
+      await page.screenshot({ path: resolve(output, `${profile}-tutorial-cancellation.png`), fullPage: true });
+      await activate(page, page.locator('#tutorial-next'));
+      assert.equal(await page.locator('#sequence').innerHTML(), history, 'Observing the wall places no extra gate');
+    }
+    const heading = index === TUTORIAL_STEPS.length - 1 ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL_STEPS.length}`;
+    await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text,
+      heading);
+    assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'The tutorial never interrupts its explanation with a win popup');
+    await tutorialGateAppearance(page);
+    await basisFlow(page, TUTORIAL_PUZZLE, placements);
+    if (placements.f) assert.equal(await page.locator('#signal-flow').evaluate(svg => [1, 3, 4, 6].every(basis =>
+      !svg.querySelector(`.signal-flow-path[data-column="7"][data-from="${basis}"]`) &&
+      !svg.querySelector(`.signal-flow-node[data-boundary="8"][data-basis="${basis}"]`))), true,
+    'Stopped paths remain absent through the later gate and at the output');
+  }
+  assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 6,
+    'The seven-step guide still demonstrates all six explicit gate placements');
+  assert.equal(await page.locator('#sequence button').count(), 6, 'Observing interference adds no placement');
+  assert.equal(await page.locator('.signal-flow-cancellation').count(), 4, 'The completed tutorial retains its cancellation walls');
+  await page.locator('#flow-scroll').screenshot({ path: resolve(output, `${profile}-tutorial-downstream.png`) });
+  await activate(page, page.locator('#tutorial-levels'));
+  assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
+}
+
+async function focusedCancellations() {
+  for (const [profile, options] of [['desktop', { viewport: { width: 1440, height: 1100 } }],
+    ['mobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 }]]) {
+    const page = await pageFor(options);
+    await cancellationTutorial(page, profile);
+    await page.locator('#level').selectOption('4');
+    await basisFlow(page, LEVELS[3]);
+    assert.equal(await page.locator('.signal-flow-cancellation').count(), 0, 'An unfilled identity hole produces no false wall');
+    await finish(page, LEVELS[3]); await closeWin(page);
+    assert.equal(await page.locator('.signal-flow-cancellation').count(), 1);
+    assert.equal(await page.locator('.signal-flow-cancellation').getAttribute('data-basis'), '1');
+    await page.locator('#flow-scroll').screenshot({ path: resolve(output, `${profile}-hh-cancellation.png`) });
+    await openDetails(page, '#advanced-features');
+    await activate(page, page.locator('#share-replay'));
+    await page.locator('#share-preview').waitFor({ state: 'visible' });
+    const column = LEVELS[3].columns.findIndex(entries => entries.some(entry => entry.id === 'a'));
+    const step = Math.min(88, 740 / LEVELS[3].columns.length), left = (960 - step * LEVELS[3].columns.length) / 2;
+    const pixel = await page.locator('#share-preview').evaluate(async (image, x) => {
+      await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+      return [...context.getImageData(x, 274, 1, 1).data];
+    }, left + (column + 1) * step);
+    assert.deepEqual(pixel, [255, 255, 255, 255], 'The actual static PNG contains the cancellation wall at the canceled output');
+    const pending = page.waitForEvent('download');
+    await activate(page, page.locator('#download-gif'));
+    assert.equal((await readFile(await (await pending).path())).subarray(0, 6).toString('ascii'), 'GIF89a');
+    await activate(page, page.locator('#close-share'));
+    await page.locator('#level').selectOption('3');
+    await finish(page, LEVELS[2]); await closeWin(page);
+    assert.equal(await page.locator('.signal-flow-cancellation').count(), 0, 'Nonzero positive and negative outputs do not create cancellation walls');
+    await noOverflow(page);
+    await page.context().close();
+  }
+  assert.deepEqual(errors, []);
+  console.log('Desktop/mobile: seven-step tutorial, restart/Levels, visible cancellation focus, HH walls, mixed-phase controls and PNG/GIF exports verified.');
+}
+
+async function focusedBaits() {
+  for (const [profile, options] of [['desktop', { viewport: { width: 1440, height: 1100 } }],
+    ['mobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 }]]) {
+    const page = await pageFor(options), submissions = [];
+    try {
+      await cancellationTutorial(page, profile);
+      page.on('request', request => {
+        if (new URL(request.url()).pathname === '/api/leaderboard' && request.method() === 'POST') {
+          submissions.push(request.postDataJSON());
+        }
+      });
+      for (const [level, count] of [[4, 1], [7, 1], [11, 3]]) {
+        await page.locator('#level').selectOption(String(level));
+        assert.equal(await page.locator('#signal-board [data-hole]').count(), count,
+          `Official level ${level} retains its original holes`);
+        if (level !== 11) { await finish(page, LEVELS[level - 1]); await closeWin(page); }
+      }
+      await completionBoard(page);
+      await activate(page, page.locator('#mode-random'));
+      await openDetails(page, '#advanced-features');
+      const customRequests = completionRequests;
+      const puzzle = await importPuzzle(page, { wires: 1,
+        columns: [[{ gate: 'H', wires: [0] }], [{ wires: [0], choices: ['I', 'H', 'X', 'Z'] }],
+          [{ wires: [0], choices: ['I', 'X'] }]], target: { '0': 1 } });
+      const [active, bait] = getHoles(puzzle);
+      await finish(page, puzzle);
+      await page.locator('#win-dialog[open]').waitFor();
+      assert.equal(await page.locator(`[data-hole="${bait.id}"]`).getAttribute('data-filled'), 'false',
+        'The identity bait can stay untouched when the target is reached');
+      assert.deepEqual(await placedGates(page, puzzle), { [active.id]: 'H' });
+      await basisFlow(page, puzzle);
+      assert.equal(await page.locator('#score-form').isVisible(), false, 'Custom bait puzzles have no completion registration');
+      await closeWin(page);
+      await downloadReplay(page);
+
+      await activate(page, page.locator('#restart'));
+      await place(page, bait.id, 'X');
+      await place(page, active.id, 'H');
+      assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false,
+        'An unnecessary X prevents completion');
+      await activate(page, page.locator(`[data-hole="${bait.id}"]`));
+      await activate(page, page.locator('#erase-gate'));
+      await page.locator('#win-dialog[open]').waitFor();
+      assert.deepEqual(await placedGates(page, puzzle), { [active.id]: 'H' }, 'Erasing the wrong bait restores the winning circuit');
+      await closeWin(page);
+      await activate(page, page.locator('#undo'));
+      assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false);
+      assert.equal(await page.locator('#show-results').isVisible(), false, 'Undoing erasure restores the unsolved circuit');
+      assert.deepEqual(await placedGates(page, puzzle), { [active.id]: 'H', [bait.id]: 'X' });
+      await basisFlow(page, puzzle);
+
+      await page.locator('#difficulty').selectOption('1');
+      await activate(page, page.locator('#new-puzzle'));
+      const random = await currentPuzzle(page);
+      const witness = solvePuzzle(random, { limit: 4096 }).find(solution => Object.values(solution).includes('I'));
+      assert.ok(witness, 'A generated one-wire puzzle permits an identity to stay empty');
+      for (const [hole, gate] of Object.entries(witness)) {
+        if (await page.locator('#win-dialog').evaluate(dialog => dialog.open)) break;
+        if (gate !== 'I') await place(page, hole, gate);
+      }
+      await page.locator('#win-dialog[open]').waitFor();
+      assert.ok(await page.locator('[data-hole][data-filled="false"]').count() > 0,
+        'A randomly generated puzzle completes with an identity slot untouched');
+      await basisFlow(page, random);
+      await closeWin(page);
+
+      const savedCompletions = submissions.length;
+      await openDetails(page, '#advanced-features');
+      const custom = await importPuzzle(page, { wires: 1,
+        columns: [[{ wires: [0], choices: ['I', 'X'] }]], target: { '0': 1 } });
+      assert.equal(simulate(custom).solved, true, 'A custom circuit may already match with no placements');
+      assert.equal(await page.locator('#sequence button').count(), 0);
+      assert.equal(await page.locator('#share-replay').isVisible(), false, 'A zero-action circuit has no replay to share');
+      await activate(page, page.locator('#show-results'));
+      await page.locator('#win-dialog[open]').waitFor();
+      await openDetails(page, '#result-advanced-features');
+      assert.equal(await page.locator('#share-result').isVisible(), false, 'Zero-action results also hide replay sharing');
+      assert.equal(await page.locator('#replay-result').isDisabled(), true);
+      assert.equal(await page.locator('#share-dialog').evaluate(dialog => dialog.open), false);
+      assert.equal(await page.locator('#score-form').isVisible(), false, 'Custom results never request completion registration');
+      assert.equal(submissions.length, savedCompletions, 'An already matched custom circuit never submits a completion');
+      assert.equal(await page.locator('#status').innerText(), '', 'Opening zero-action results causes no replay error');
+      await closeWin(page);
+      assert.equal(submissions.length, 0, 'Custom/random bait puzzles never submit completion records');
+      assert.equal(completionRequests, customRequests, 'Custom/random puzzles never request a completion list');
+      await noOverflow(page);
+    } finally {
+      await page.context().close();
+    }
+    console.log(`${profile}: original campaign holes, custom/random identity baits, PNG/GIF exports, erase/undo, zero-action custom results and seven-step tutorial passed.`);
+  }
+  assert.deepEqual(errors, [], 'Optional identity gameplay has no uncaught browser errors');
+}
+
 async function focusedFlow() {
   const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
   await noOverflow(desktop); await accessibility(desktop);
@@ -1274,7 +1536,9 @@ async function focusedRegistration() {
 }
 
 try {
-  if (process.env.GAME_BROWSER_FOCUS === 'flow') await focusedFlow();
+  if (process.env.GAME_BROWSER_FOCUS === 'baits') await focusedBaits();
+  else if (process.env.GAME_BROWSER_FOCUS === 'cancellations') await focusedCancellations();
+  else if (process.env.GAME_BROWSER_FOCUS === 'flow') await focusedFlow();
   else if (process.env.GAME_BROWSER_FOCUS === 'navigation') await focusedNavigation();
   else if (process.env.GAME_BROWSER_FOCUS === 'editor') await focusedEditor();
   else if (process.env.GAME_BROWSER_FOCUS === 'registration') await focusedRegistration();

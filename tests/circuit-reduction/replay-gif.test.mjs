@@ -15,6 +15,7 @@ function canvases(context) {
     constructor(width, height) {
       this.width = width; this.height = height; this.frames = [];
       let commands = [];
+      this.commands = () => commands;
       const record = name => (...args) => commands.push({ name, args, fillStyle: this.context.fillStyle, strokeStyle: this.context.strokeStyle, lineWidth: this.context.lineWidth });
       this.context = Object.fromEntries(['fillRect', 'strokeRect', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'arc', 'fill', 'fillText'].map(name => [name, record(name)]));
       this.context.getImageData = (_x, _y, w, h) => {
@@ -66,6 +67,21 @@ const selectedCells = frame => frame.filter(command => command.name === 'strokeR
 const move = (rule, row = 0, column = 0) => ({ rule, row, column });
 const round = { label: 'Level 1 · Two flips', circuit: [['.', 'X', 'X', '.']], sequence: [move('cancel-x', 0, 1)], optimalMoves: 1 };
 
+test('still image draws the completed identity once without palette conversion or GIF frames', context => {
+  const surfaces = canvases(context), progress = [], saved = structuredClone(round);
+  const image = encodeReplay(round, value => progress.push(value), true);
+  assert.equal(image, surfaces[0]);
+  assert.equal(image.width, 960); assert.equal(image.height, 304);
+  assert.equal(image.frames.length, 0, 'No GIF pixels are read');
+  assert.equal(image.commands().filter(command => command.name === 'fillRect' && command.args[2] === 960).length, 1);
+  assert.ok(texts(image.commands()).includes('Identity circuit · GG'));
+  assert.ok(texts(image.commands()).includes('My score: 1 moves · Optimal: 1'));
+  assert.equal(image.commands().filter(command => command.name === 'arc').length, 0);
+  assert.deepEqual(progress, []);
+  assert.deepEqual(round, saved);
+  assert.throws(() => encodeReplay({ ...round, sequence: [move('slide-h')] }, undefined, true));
+});
+
 test('GIF shows every rule window, includes the full replay, and ends on an empty identity circuit', context => {
   const surfaces = canvases(context);
   for (const rule of RULES) {
@@ -79,12 +95,10 @@ test('GIF shows every rule window, includes the full replay, and ends on an empt
     const solution = solveShortest(circuit, { maxDepth: 18, maxNodes: 25000 });
     assert.equal(solution.status, 'optimal', rule.id);
     const sequence = [move(rule.id, row), move(rule.id, row), ...solution.solution], saved = cloneCircuit(circuit), progress = [];
-    let finalCanvas;
-    const bytes = encodeReplay({ ...round, circuit, sequence, optimalMoves: solution.optimalMoves }, value => progress.push(value), canvas => { finalCanvas = canvas; });
+    const bytes = encodeReplay({ ...round, circuit, sequence, optimalMoves: solution.optimalMoves }, value => progress.push(value));
     const surface = surfaces.at(-1), frames = gifFrames(bytes, 224 + circuit.length * 80);
     assert.equal(frames.length, sequence.length + 1);
     assert.equal(surface.frames.length, frames.length);
-    assert.equal(finalCanvas, surface, 'PNG callback receives the completed encoded canvas');
     assert.equal(selectedCells(surface.frames[0]).length, rule.left.length * rule.left[0].length, rule.id);
     assert.ok(texts(surface.frames[0]).includes(`${moveCost(sequence[0]) ? 'Move 1' : 'Layout'}: ${rule.title}`));
     const final = surface.frames.at(-1);
@@ -168,7 +182,7 @@ test('Unsupported drawing, invalid rules and unfinished replay fail explicitly',
   assert.throws(() => encodeReplay(round), { name: 'NotSupportedError' });
 });
 
-test('Worker serializes errors and transfers successful GIF bytes after progress', async context => {
+test('Worker independently returns one PNG or transfers a GIF, and serializes export failures', async context => {
   replace(context, globalThis, 'WorkerGlobalScope', class {
     static [Symbol.hasInstance](value) { return value === globalThis; }
   });
@@ -181,38 +195,43 @@ test('Worker serializes errors and transfers successful GIF bytes after progress
     conversions++;
     assert.deepEqual(options, { type: 'image/png' });
     assert.equal(this, surfaces.at(-1));
-    assert.ok(texts(this.frames.at(-1)).includes('Identity circuit · GG'));
+    assert.ok(texts(this.commands()).includes('Identity circuit · GG'));
+    assert.equal(this.frames.length, 0, 'A static preview reads no GIF frames');
     return new Promise(resolve => { finishConversion = resolve; });
   };
   await import('../../src/scripts/circuit-reduction-gif-worker.js?worker-message-test');
-  const encoding = globalThis.onmessage({ data: { round, image: true } });
+  const encoding = globalThis.onmessage({ data: { round, imageOnly: true } });
   assert.equal(conversions, 1);
-  assert.deepEqual(messages.at(-1).data, { progress: 1 }, 'Worker waits for PNG before transferring the GIF');
+  assert.equal(messages.length, 0, 'A static preview has no GIF progress');
   const image = new Blob(['png'], { type: 'image/png' });
   finishConversion(image);
   await encoding;
   const completed = messages.at(-1);
   assert.equal(completed.data.image, image);
-  assert.equal(gifFrames(completed.data.bytes, 304).length, 2);
-  assert.deepEqual(completed.transfer, [completed.data.bytes.buffer]);
-  assert.deepEqual(messages.slice(0, -1).map(item => item.data), [{ progress: 0 }, { progress: 1 }]);
+  assert.equal(completed.data.bytes, undefined);
+  assert.equal(completed.transfer, undefined);
 
   messages.length = 0;
-  await globalThis.onmessage({ data: { round, image: false } });
+  await globalThis.onmessage({ data: { round, imageOnly: false } });
   assert.equal(conversions, 1, 'GIF-only exports never convert the final frame to PNG');
   assert.equal(messages.at(-1).data.image, undefined);
   assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2);
+  assert.deepEqual(messages.at(-1).transfer, [messages.at(-1).data.bytes.buffer]);
+  assert.deepEqual(messages.slice(0, -1).map(item => item.data), [{ progress: 0 }, { progress: 1 }]);
 
   messages.length = 0;
   globalThis.OffscreenCanvas.prototype.convertToBlob = async () => { throw new Error('PNG unsupported'); };
-  await globalThis.onmessage({ data: { round, image: true } });
-  assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2);
-  assert.equal(messages.at(-1).data.image, undefined, 'PNG conversion failure preserves the GIF');
+  await globalThis.onmessage({ data: { round, imageOnly: true } });
+  assert.equal(messages.at(-1).data.error, 'PNG unsupported');
+  assert.equal(messages.at(-1).data.bytes, undefined);
   messages.length = 0;
-  await globalThis.onmessage({ data: { round: { ...round, sequence: [move('unknown')] }, image: false } });
+  await globalThis.onmessage({ data: { round, imageOnly: false } });
+  assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2, 'PNG failure leaves GIF export available');
+  messages.length = 0;
+  await globalThis.onmessage({ data: { round: { ...round, sequence: [move('unknown')] }, imageOnly: false } });
   assert.deepEqual(messages, [{ data: { error: 'Unknown circuit rule.', name: 'RangeError' }, transfer: undefined }]);
   globalThis.OffscreenCanvas = undefined;
-  await globalThis.onmessage({ data: { round, image: false } });
+  await globalThis.onmessage({ data: { round, imageOnly: false } });
   assert.equal(messages.at(-1).data.name, 'NotSupportedError');
   assert.match(messages.at(-1).data.error, /browser cannot create GIFs/);
   assert.equal(messages.at(-1).transfer, undefined);

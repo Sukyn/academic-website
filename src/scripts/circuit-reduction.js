@@ -25,6 +25,7 @@ const rulesById = Object.fromEntries(RULES.map(rule => [rule.id, rule]));
 const cellNames = { '.': 'empty slot', H: 'H', X: 'X', Z: 'Z', ZU: 'upper Z endpoint', ZD: 'lower Z endpoint', XU: 'upper X endpoint', XD: 'lower X endpoint' };
 let mode = 'campaign', level = LEVELS[0], campaignLevel = level, editing = false;
 let circuit = level.circuit, sequence = [], states = [circuit];
+let boardLocked;
 const selection = new Set();
 let searchWorker, guide;
 const tutorialLocked = () => guide?.active && !guide.executing;
@@ -36,11 +37,10 @@ function cancelSelectionDrag() {
 }
 function clearSelection() { cancelSelectionDrag(); selection.clear(); selectionAnchor = null; }
 function cancelSearch() { searchWorker?.terminate(); searchWorker = null; }
-const sharing = createReplayShare({ get, createGif: async (round, options) => {
-  const { createReplayGif } = await import('../lib/circuit-reduction/replay-gif.js');
-  return createReplayGif(round, options);
-} });
-const customJson = createCustomPuzzleJson({ get, game: GAME,
+const sharing = createReplayShare({ get,
+  createWorker: () => new Worker(new URL('./circuit-reduction-gif-worker.js', import.meta.url), { type: 'module' }),
+});
+const customJson = createCustomPuzzleJson({ get, game: 'circuit-simplification',
   exportPuzzle: () => ({ circuit: cloneCircuit(editing ? circuit : level.circuit) }),
   importPuzzle: value => playCustom(customCircuit(value)),
 });
@@ -56,7 +56,7 @@ const scores = createScoreboard({
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
 const daily = createDailySession({
-  game: GAME, startDate: DAILY_START, get, update, settleDelay: 20,
+  game: GAME, startDate: DAILY_START, get, update: () => update({ board: false }), settleDelay: 20,
   validatePuzzle: puzzle => validateCircuit(puzzle.circuit),
   selectedDate: () => mode === 'daily' ? level.date : undefined,
   onPuzzle(info, select) {
@@ -83,9 +83,9 @@ const review = createStepReplay({
 });
 guide = createTutorial({
   get, isBlocked: () => daily.loading,
-  renderText: (node, text) => renderCircuitInstruction(node, text, 'XC'),
+  renderText: (node, text) => renderCircuitInstruction(node, text, { singleWire: true }),
   controls: '[data-cell], [data-space], [data-rule], #undo, #restart, #compact-identities, #replay, #replay-result, #share-score, #share-result, #show-results',
-  intro: 'Remove every gate without changing the circuit’s effect. This tutorial selects the gate blocks for you.',
+  intro: 'Reach the identity: empty wires that leave every input unchanged. Choose a rule matching the selected gates.',
   onReset: () => setPuzzle('tutorial', { circuit: cloneCircuit(TUTORIAL_CIRCUIT), optimalMoves: null }),
   onLeave: () => { review.clear(); clearSelection(); },
   steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => ({
@@ -173,7 +173,12 @@ function renderCircuit() {
 function update({ board = true } = {}) {
   const solved = isSolved(circuit), won = !editing && solved, locked = daily.loading || review.step !== null;
   const scorable = canScore(), hasPlayer = Boolean(scores.player);
-  if (board) renderCircuit();
+  if (board) { renderCircuit(); boardLocked = locked; }
+  else if (boardLocked !== locked) {
+    if (locked) { cancelSelectionDrag(); cancelTouchPress(); }
+    for (const button of get('circuit-board').querySelectorAll('button')) button.disabled = locked;
+    boardLocked = locked;
+  }
   const scoreMoves = sequenceCost(sequence);
   const score = `${scoreMoves} ${scoreMoves === 1 ? 'move' : 'moves'}`;
   get('move-count').textContent = score;
@@ -309,7 +314,7 @@ function playCustom(custom) {
 
 function share(source) {
   if (mode === 'tutorial' || editing || daily.loading || !isSolved(circuit) || !sequence.length) return;
-  sharing.open(source, { label: mode === 'daily' ? `Daily puzzle : ${formatPuzzleDate(level.date)}` : mode === 'campaign' ? `Level : ${level.id}` : 'Custom circuit', circuit: cloneCircuit(level.circuit), sequence: sequence.map(move => ({ ...move })), optimalMoves: level?.optimalMoves ?? null }, `circuit-reduction-${level?.date ?? (mode === 'campaign' ? `level-${level.id}` : 'custom')}.gif`);
+  sharing.open(source, { label: mode === 'daily' ? `Daily puzzle : ${formatPuzzleDate(level.date)}` : mode === 'campaign' ? `Level : ${level.id}` : 'Custom circuit', circuit: cloneCircuit(level.circuit), sequence: sequence.map(move => ({ ...move })), optimalMoves: level?.optimalMoves ?? null }, `circuit-simplification-${level?.date ?? (mode === 'campaign' ? `level-${level.id}` : 'custom')}.gif`);
 }
 
 get('circuit-board').addEventListener('click', event => {

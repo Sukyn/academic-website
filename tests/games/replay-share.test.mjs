@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createReplayShare } from '../../src/lib/games/replay-share.js';
+import { replayWorkers } from './replay-worker-fixture.mjs';
 
 function setup(context, { formats = ['image/gif', 'image/png'], clipboard = true } = {}) {
-  const jobs = [], downloads = [], writes = [], revoked = [], blobs = new Map();
+  const { ReplayWorker, gifs: jobs, images } = replayWorkers();
+  const downloads = [], writes = [], revoked = [], blobs = new Map();
   let clipboardFailure, clipboardDelay;
   class Element {
     constructor(tagName = 'BUTTON') {
@@ -34,7 +36,7 @@ function setup(context, { formats = ['image/gif', 'image/png'], clipboard = true
   const elements = new Map(['share-dialog', 'download-gif', 'copy-gif', 'share-preview', 'share-status', 'close-share']
     .map(id => [id, new Element(id === 'share-dialog' ? 'DIALOG' : 'BUTTON')]));
   const get = id => elements.get(id), dialog = get('share-dialog'), trigger = new Element();
-  const previous = ['document', 'navigator', 'ClipboardItem'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  const previous = ['document', 'navigator', 'ClipboardItem', 'Worker'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
   context.after(() => {
     for (const [name, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
@@ -49,14 +51,14 @@ function setup(context, { formats = ['image/gif', 'image/png'], clipboard = true
     constructor(items) { this.items = items; }
     static supports(type) { return formats.includes(type); }
   } });
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, value: ReplayWorker });
   context.mock.method(URL, 'createObjectURL', blob => {
     const url = `blob:replay-${blobs.size}`; blobs.set(url, blob); return url;
   });
   context.mock.method(URL, 'revokeObjectURL', url => revoked.push(url));
-  // Intentionally ignore cancellation: late callbacks must also be guarded.
-  const sharing = createReplayShare({ get, createGif: (round, options) => new Promise((resolve, reject) => jobs.push({ round, options, resolve, reject })) });
+  const sharing = createReplayShare({ get, createWorker: () => new ReplayWorker() });
   return {
-    sharing, get, dialog, trigger, jobs, downloads, writes, revoked, blobs,
+    sharing, get, dialog, trigger, jobs, images, downloads, writes, revoked, blobs,
     open: (round = { sequence: 'HH' }, filename = 'round.gif') => sharing.open(trigger, round, filename),
     click: id => get(id).dispatch('click'),
     failClipboard: error => { clipboardFailure = error; },
@@ -64,78 +66,84 @@ function setup(context, { formats = ['image/gif', 'image/png'], clipboard = true
   };
 }
 
-test('opening and closing sharing never starts an encoder or allocates replay URLs', async context => {
-  const h = setup(context);
-  h.open();
+const png = () => new Blob(['png'], { type: 'image/png' });
+const gif = () => new Blob(['GIF89a'], { type: 'image/gif' });
+async function preview(h) {
+  const opening = h.open();
+  const image = png();
+  h.images.at(-1).resolve(image);
+  await opening;
+  return image;
+}
+
+test('opening sharing renders a copyable still without generating or downloading a GIF', async context => {
+  const h = setup(context), opening = h.open();
   assert.equal(h.dialog.open, true);
-  assert.equal(h.get('download-gif').hidden, false);
   assert.equal(h.get('download-gif').disabled, false);
   assert.equal(h.get('copy-gif').disabled, true);
   assert.equal(h.get('share-preview').hidden, true);
+  assert.match(h.get('share-status').textContent, /Preparing image/);
+  const image = png();
+  h.images[0].resolve(image); await opening;
+  assert.equal(h.get('share-preview').hidden, false);
+  assert.equal(h.blobs.get(h.get('share-preview').src), image);
+  assert.equal(h.get('copy-gif').disabled, false);
+  assert.equal(h.get('copy-gif').textContent, 'Copy image');
   assert.equal(h.get('share-status').textContent, '');
-  await h.click('copy-gif');
-  h.open({ sequence: 'XX' }, 'other.gif');
   assert.equal(h.jobs.length, 0);
-  assert.equal(h.blobs.size, 0);
+  assert.equal(h.downloads.length, 0);
   assert.equal(h.writes.length, 0);
+  await h.click('copy-gif');
+  assert.equal(h.writes[0][0].items['image/png'], image);
+  assert.equal(h.get('share-status').textContent, 'Image copied.');
+  await h.open({ sequence: 'XX' });
+  assert.equal(h.images.length, 1, 'An already open dialog does not duplicate its preview');
+  const url = h.get('share-preview').src;
   await h.click('close-share');
-  assert.equal(h.dialog.open, false);
   assert.equal(h.trigger.focusCount, 1);
-  assert.deepEqual(h.revoked, []);
+  assert.deepEqual(h.revoked, [url]);
   await h.click('download-gif');
-  assert.equal(h.jobs.length, 0, 'A closed dialog cannot start an export');
+  assert.equal(h.jobs.length, 0, 'A closed dialog cannot export');
 });
 
-test('one Download click encodes and saves, while subsequent clicks reuse the completed replay', async context => {
-  const h = setup(context), round = { label: 'Level : 2', sequence: 'HH' };
-  h.open(round, 'level-2.gif');
+test('Download generates one GIF and reuses it while retaining the original still', async context => {
+  const h = setup(context), image = await preview(h), previewUrl = h.get('share-preview').src;
   const pending = h.click('download-gif'), job = h.jobs[0];
-  assert.equal(h.jobs.length, 1);
-  assert.equal(job.round, round);
-  assert.equal(job.options.signal.aborted, false);
-  assert.equal(h.get('download-gif').disabled, true);
-  assert.equal(h.downloads.length, 0);
-  job.options.onProgress(0.42);
+  assert.equal(job.worker.terminated, false);
+  assert.equal(job.worker.request.imageOnly, false, 'The still is not regenerated with the replay');
+  assert.equal(h.get('copy-gif').disabled, false, 'The still remains copyable while encoding');
+  job.progress(0.42);
   assert.match(h.get('share-status').textContent, /42%/);
   await h.click('download-gif');
-  assert.equal(h.jobs.length, 1, 'Even a synthetic repeated click cannot start a duplicate worker');
-  const gif = new Blob(['GIF89a'], { type: 'image/gif' });
-  assert.equal(job.options.onImage, undefined, 'Direct GIF copying does not request a redundant PNG');
-  job.resolve(gif); await pending;
-  assert.equal(h.downloads.length, 1, 'The initial click saves automatically after generation');
+  assert.equal(h.jobs.length, 1);
+  const animation = gif();
+  job.resolve(animation); await pending;
   const saved = h.downloads[0];
-  assert.equal(h.blobs.get(saved.href), gif);
-  assert.equal(saved.filename, 'level-2.gif');
-  assert.equal(saved.parent, h.dialog, 'A download anchor stays inside the active modal');
-  assert.equal(h.dialog.children.length, 0, 'Temporary download anchors are removed');
-  assert.equal(h.get('download-gif').disabled, false);
-  assert.equal(h.get('share-preview').src, saved.href);
-  assert.equal(h.get('share-preview').hidden, false);
-  assert.equal(h.get('copy-gif').disabled, false);
-  assert.equal(h.writes.length, 0, 'Generation does not write the clipboard without a copy gesture');
+  assert.deepEqual(await h.blobs.get(saved.href).arrayBuffer(), await animation.arrayBuffer());
+  assert.equal(saved.filename, 'round.gif');
+  assert.equal(saved.parent, h.dialog);
+  assert.equal(h.dialog.children.length, 0);
+  assert.equal(h.get('share-preview').src, previewUrl);
+  assert.equal(h.blobs.get(previewUrl), image);
+  assert.equal(h.get('copy-gif').textContent, 'Copy the GIF');
   await h.click('copy-gif');
-  assert.equal(h.writes[0][0].items['image/gif'], gif);
+  assert.equal(h.writes[0][0].items['image/gif'], h.blobs.get(saved.href));
   await h.click('download-gif');
   assert.equal(h.jobs.length, 1);
   assert.equal(h.downloads.length, 2);
   assert.equal(h.downloads[1].href, saved.href);
   h.sharing.close();
-  assert.deepEqual(h.revoked, [saved.href], 'A shared preview/download URL is released only once');
+  assert.deepEqual(new Set(h.revoked), new Set([previewUrl, saved.href]));
+  assert.equal(h.revoked.length, 2);
 });
 
-test('PNG clipboard fallback preserves the GIF download and handles clipboard rejection', async context => {
-  const h = setup(context, { formats: ['image/png'] });
-  h.open();
-  const pending = h.click('download-gif'), job = h.jobs[0];
-  const png = new Blob(['png'], { type: 'image/png' }), gif = new Blob(['GIF89a'], { type: 'image/gif' });
-  job.options.onImage(png); job.resolve(gif); await pending;
-  const preview = h.get('share-preview').src, saved = h.downloads[0].href;
-  assert.notEqual(preview, saved);
-  assert.equal(h.blobs.get(preview), png);
-  assert.equal(h.blobs.get(saved), gif);
+test('PNG-only clipboard keeps the ready image through download and clipboard rejection', async context => {
+  const h = setup(context, { formats: ['image/png'] }), image = await preview(h);
+  const pending = h.click('download-gif');
+  h.jobs[0].resolve(gif()); await pending;
   assert.equal(h.get('copy-gif').textContent, 'Copy image');
   await h.click('copy-gif');
-  assert.equal(h.writes[0][0].items['image/png'], png);
+  assert.equal(h.writes[0][0].items['image/png'], image);
   h.failClipboard(new DOMException('Denied', 'NotAllowedError'));
   await h.click('copy-gif');
   assert.match(h.get('share-status').textContent, /download/i);
@@ -143,63 +151,88 @@ test('PNG clipboard fallback preserves the GIF download and handles clipboard re
   assert.equal(h.downloads.length, 2);
   assert.equal(h.jobs.length, 1);
   h.sharing.close();
-  assert.deepEqual(new Set(h.revoked), new Set([preview, saved]));
-  assert.equal(h.revoked.length, 2);
 });
 
-test('export failures allow a direct retry and clipboard absence does not prevent downloading', async context => {
-  const h = setup(context, { clipboard: false });
-  h.open();
-  const failed = h.click('download-gif');
-  assert.equal(h.jobs[0].options.onImage, undefined, 'Downloading without clipboard support does not request a PNG');
-  h.jobs[0].reject(new Error('Encoding failed')); await failed;
-  assert.equal(h.dialog.open, true);
-  assert.equal(h.get('download-gif').disabled, false);
-  assert.equal(h.get('download-gif').hidden, false);
-  assert.match(h.get('share-status').textContent, /could|failed|unable|unavailable/i);
-  assert.equal(h.get('copy-gif').disabled, true);
-  assert.equal(h.blobs.size, 0);
-  const retry = h.click('download-gif');
-  assert.equal(h.jobs.length, 2);
-  h.jobs[1].resolve(new Blob(['GIF89a'], { type: 'image/gif' })); await retry;
+test('preview and download finish independently, including download before the image', async context => {
+  const h = setup(context, { formats: ['image/png'] }), opening = h.open();
+  const pending = h.click('download-gif');
+  h.jobs[0].progress(0.5);
+  h.jobs[0].resolve(gif()); await pending;
   assert.equal(h.downloads.length, 1);
-  assert.equal(h.get('copy-gif').disabled, true);
-  assert.equal(h.get('share-preview').hidden, false);
+  assert.equal(h.get('share-preview').hidden, true);
+  assert.match(h.get('share-status').textContent, /Preparing image/);
+  const image = png();
+  h.images[0].resolve(image); await opening;
+  assert.equal(h.get('copy-gif').disabled, false);
+  assert.equal(h.get('share-status').textContent, '');
+  await h.click('copy-gif');
+  assert.equal(h.writes[0][0].items['image/png'], image);
   h.sharing.close();
 });
 
-test('closed export jobs cannot update a replacement dialog or download a stale replay', async context => {
-  const h = setup(context, { formats: ['image/png'] });
-  h.open();
-  const abandoned = h.click('download-gif'), stale = h.jobs[0];
+test('preview failure leaves download usable; GIF failure leaves the still copyable and allows retry', async context => {
+  const h = setup(context), opening = h.open();
+  h.images[0].reject(new Error('PNG unavailable')); await opening;
+  assert.match(h.get('share-status').textContent, /image.*download/);
+  const pending = h.click('download-gif');
+  h.jobs[0].resolve(gif()); await pending;
+  assert.equal(h.downloads.length, 1);
+  h.sharing.close();
+  const image = await preview(h);
+  const failed = h.click('download-gif');
+  h.jobs[1].reject(new Error('Encoding failed')); await failed;
+  assert.equal(h.get('download-gif').disabled, false);
+  assert.equal(h.get('copy-gif').disabled, false);
+  assert.match(h.get('share-status').textContent, /Could not prepare the replay/);
+  await h.click('copy-gif');
+  assert.equal(h.writes.at(-1)[0].items['image/png'], image);
+  const retry = h.click('download-gif');
+  h.jobs[2].resolve(gif()); await retry;
+  assert.equal(h.downloads.length, 2);
+  h.sharing.close();
+});
+
+test('clipboard absence or unsupported formats do not hide the preview or prevent download', async context => {
+  for (const options of [{ clipboard: false }, { formats: [] }]) {
+    const h = setup(context, options);
+    await preview(h);
+    assert.equal(h.get('share-preview').hidden, false);
+    assert.equal(h.get('copy-gif').disabled, true);
+    const pending = h.click('download-gif');
+    h.jobs[0].resolve(gif()); await pending;
+    assert.equal(h.downloads.length, 1);
+    assert.equal(h.get('copy-gif').disabled, true);
+    h.sharing.close();
+  }
+});
+
+test('closing cancels both jobs; late previews, GIFs and clipboard replies cannot affect a new dialog', async context => {
+  const h = setup(context, { formats: ['image/png'] }), opening = h.open();
+  const abandoned = h.click('download-gif'), oldImage = h.images[0], oldGif = h.jobs[0];
   h.dialog.close();
-  assert.equal(stale.options.signal.aborted, true, 'Native dialog closing cancels work');
-  h.open({ sequence: 'XX' }, 'replacement.gif');
-  const current = h.click('download-gif'), replacement = h.jobs[1];
+  assert.equal(oldImage.worker.terminated, true);
+  assert.equal(oldGif.worker.terminated, true);
+  const current = h.open({ sequence: 'XX' }, 'replacement.gif');
   const status = h.get('share-status').textContent;
-  stale.options.onProgress(0.99);
-  stale.options.onImage(new Blob(['old png'], { type: 'image/png' }));
-  stale.resolve(new Blob(['old gif'], { type: 'image/gif' })); await abandoned;
+  oldGif.progress(0.99);
+  oldImage.resolve(png()); oldGif.resolve(gif());
+  await Promise.all([opening, abandoned]);
   assert.equal(h.get('share-status').textContent, status);
   assert.equal(h.blobs.size, 0);
   assert.equal(h.downloads.length, 0);
-  const png = new Blob(['current png'], { type: 'image/png' });
-  replacement.options.onImage(png);
-  replacement.resolve(new Blob(['current gif'], { type: 'image/gif' })); await current;
-  assert.equal(h.downloads.length, 1);
-  assert.equal(h.downloads[0].filename, 'replacement.gif');
-  stale.options.onImage(new Blob(['late png'], { type: 'image/png' }));
+  const image = png();
+  h.images[1].resolve(image); await current;
   let finishCopy;
   h.delayClipboard(new Promise(resolve => { finishCopy = resolve; }));
   const copying = h.click('copy-gif');
-  assert.equal(h.writes[0][0].items['image/png'], png);
   h.sharing.close();
-  h.open();
-  const idleStatus = h.get('share-status').textContent;
+  const next = h.open();
+  const nextStatus = h.get('share-status').textContent;
   finishCopy(); await copying;
-  assert.equal(h.get('share-status').textContent, idleStatus, 'An earlier clipboard result cannot overwrite a new dialog');
+  assert.equal(h.get('share-status').textContent, nextStatus);
   assert.equal(h.get('copy-gif').disabled, true);
-  assert.equal(h.get('share-preview').hidden, true);
-  assert.equal(h.jobs.length, 2, 'Reopening remains idle until Download is clicked');
   h.sharing.close();
+  h.images[2].resolve(png()); await next;
+  assert.equal(h.get('share-preview').hidden, true);
+  assert.equal(h.jobs.length, 1);
 });

@@ -1,6 +1,6 @@
 /** A fixed worked example. Games own the moves; this guide owns their order.
  * Each step has text, a target selector, an optional selection/layout preparation
- * and an action that may return an animation promise.
+ * and an action that may return an animation promise. Returning false cancels a step.
  */
 export function createTutorial({ get, steps, onReset, controls, onLeave = () => {}, isBlocked = () => false,
   renderText = (node, text) => { node.textContent = text; },
@@ -63,8 +63,8 @@ export function createTutorial({ get, steps, onReset, controls, onLeave = () => 
     const current = revision;
     executing = true; render();
     try {
-      await step.action();
-      if (!active || current !== revision) return;
+      const completed = await step.action();
+      if (!active || current !== revision || completed === false) return;
       index++; steps[index]?.prepare?.();
     } catch {
       if (current === revision) failed = true;

@@ -21,7 +21,13 @@ const { DAILY_START: SIGNAL_START, LEVELS: SIGNAL_LEVELS, dailyPuzzle: signalDai
 const { CAMPAIGN: SIGNAL_CAMPAIGN, DAILY_CAMPAIGN: SIGNAL_DAILY_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_SIGNAL_BYTES } =
   await import(websiteFile('src/lib/quantum-signals/completions.js'));
 const { solvePuzzle: solveSignals } = await import(websiteFile('src/lib/quantum-signals/engine.js'));
-const signalSequence = puzzle => Object.entries(solveSignals(puzzle, { limit: 1 })[0]).map(([hole, gate]) => ({ hole, gate }));
+const signalSequence = puzzle => Object.entries(solveSignals(puzzle, { limit: 1 })[0])
+  .filter(([, gate]) => gate !== 'I').map(([hole, gate]) => ({ hole, gate }));
+const { LEVELS: GRAPH_LEVELS, DAILY_START: GRAPH_START, dailyPuzzle: graphDailyPuzzle } =
+  await import(websiteFile('src/lib/graph-states/puzzles.js'));
+const { optimalShots: graphOptimalShots, sequenceCost: graphSequenceCost, solutionForGraph: graphSequence } = await import(websiteFile('src/lib/graph-states/engine.js'));
+const { CAMPAIGN: GRAPH_CAMPAIGN, DAILY_CAMPAIGN: GRAPH_DAILY_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_GRAPH_BYTES } =
+  await import(websiteFile('src/lib/graph-states/leaderboard.js'));
 
 // Replace only the database transport. The Vercel handler, score validation and
 // parameterized ranking SQL still run unchanged against real PostgreSQL.
@@ -52,6 +58,7 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
     await mkdir(new URL('src/lib/quantum-golf/', compiledRoot), { recursive: true });
     await mkdir(new URL('src/lib/circuit-reduction/', compiledRoot), { recursive: true });
     await mkdir(new URL('src/lib/quantum-signals/', compiledRoot), { recursive: true });
+    await mkdir(new URL('src/lib/graph-states/', compiledRoot), { recursive: true });
     await mkdir(new URL('src/lib/games/', compiledRoot), { recursive: true });
     await writeFile(new URL('api/leaderboard.js', compiledRoot), await compileApiFixture('api/leaderboard.ts', { neonReplacement, absoluteImports: false }));
     await writeFile(new URL('api/daily.js', compiledRoot), await compileApiFixture('api/daily.ts', { absoluteImports: false }));
@@ -61,6 +68,7 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
     }
     for (const path of ['games/server.js', 'games/daily-calendar.js', 'games/submission.js', 'games/random.js',
       'quantum-signals/engine.js', 'quantum-signals/puzzles.js', 'quantum-signals/completions.js',
+      'graph-states/engine.js', 'graph-states/puzzles.js', 'graph-states/leaderboard.js',
       'circuit-reduction/leaderboard.js',
       'circuit-reduction/engine.js', 'circuit-reduction/puzzles.js',
       'circuit-reduction/generator.js', 'circuit-reduction/generated-catalogue.js',
@@ -86,6 +94,9 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
     const selectedSignals = await compiled.fetch(new Request(`${endpoint}?game=quantum-signals&level=unknown`));
     assert.equal(selectedSignals.status, 400);
     assert.deepEqual(await selectedSignals.json(), { error: `Choose a campaign level from 1 to ${SIGNAL_LEVELS.length}.` });
+    const selectedGraph = await compiled.fetch(new Request(`${endpoint}?game=graph-states&level=unknown`));
+    assert.equal(selectedGraph.status, 400);
+    assert.deepEqual(await selectedGraph.json(), { error: 'Choose a campaign level from 1 to 10.' });
     const signalSubmission = await compiled.fetch(new Request(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(valid({ game: 'quantum-signals', sequence: [{ hole: 'a', gate: 'H' }] })),
@@ -108,6 +119,9 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
     assert.equal(signalDaily.status, 400);
     assert.deepEqual(await signalDaily.json(), { error: 'Choose an available daily puzzle.' },
       'Signal daily puzzles and completion validation resolve in the deployed package');
+    const graphDaily = await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=graph-states&date=invalid`));
+    assert.equal(graphDaily.status, 400);
+    assert.deepEqual(await graphDaily.json(), { error: 'Choose an available daily puzzle.' });
     const unsupportedDaily = await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=unknown`));
     assert.equal(unsupportedDaily.status, 400);
     assert.deepEqual(await unsupportedDaily.json(), { error: 'Choose a supported game.' });
@@ -483,7 +497,7 @@ test('database waits stop on request cancellation or timeout and errors never ex
   }
 });
 
-test('JSON export restores all historical scores and refuses to overwrite a backup', async () => {
+test('JSON export restores scores and completions safely and refuses to overwrite a backup', async () => {
   const { migrate } = await import(websiteFile('tools/quantum-golf/migrate.mjs'));
   const { exportScores } = await import(websiteFile('tools/quantum-golf/export.mjs'));
   const databases = [new PGlite(), new PGlite()];
@@ -500,18 +514,53 @@ test('JSON export restores all historical scores and refuses to overwrite a back
     { id: 101, campaign: 'quantum-golf-v2-plus', level: 15, name: 'Ada', moves: 2, created_at: 9007199254740991 },
     { id: 202, campaign: 'quantum-golf-v2-plus', level: 11, name: 'Colin', moves: 1358, created_at: 1791810123456 },
   ];
+  const completions = [
+    { id: 9, campaign: SIGNAL_CAMPAIGN, level: 1, name: 'Zoë 🦊' },
+    { id: 777, campaign: SIGNAL_DAILY_CAMPAIGN, level: 20261017, name: 'Ada' },
+  ];
   try {
-    await migrate(adapter(databases[0]), rows);
+    assert.equal(await migrate(adapter(databases[0]), rows, completions), 5);
     const source = { query: async query => (await databases[0].query(query)).rows };
-    assert.equal(await exportScores(source, path), 3);
+    assert.equal(await exportScores(source, path), 5);
     const saved = await readFile(path, 'utf8');
     const backup = JSON.parse(saved);
     assert.ok(Number.isFinite(Date.parse(backup.exportedAt)));
     assert.deepEqual(backup.rows, rows);
+    assert.deepEqual(backup.completions, completions, 'Checkbox completions are included alongside ranked scores');
     await assert.rejects(() => exportScores(source, path), { code: 'EEXIST' });
     assert.equal(await readFile(path, 'utf8'), saved);
-    await migrate(adapter(databases[1]), backup.rows);
+    await migrate(adapter(databases[1]), backup.rows, backup.completions);
+    await migrate(adapter(databases[1]), backup.rows, backup.completions);
     assert.deepEqual((await databases[1].query('SELECT * FROM scores ORDER BY id')).rows, rows);
+    assert.deepEqual((await databases[1].query('SELECT * FROM completions ORDER BY id')).rows, completions,
+      'Restoring or retrying preserves completion identities and names');
+    assert.equal((await databases[1].query(`INSERT INTO scores (campaign, level, name, moves, created_at)
+      VALUES ('new-campaign', 1, 'New score', 1, 0) RETURNING id`)).rows[0].id, 203);
+    assert.equal((await databases[1].query(`INSERT INTO completions (campaign, level, name)
+      VALUES ('new-campaign', 1, 'New completion') RETURNING id`)).rows[0].id, 778,
+      'Both identity sequences continue above their restored records');
+    const snapshot = async table => (await databases[1].query(`SELECT * FROM ${table} ORDER BY id`)).rows;
+    const intactScores = await snapshot('scores'), intactCompletions = await snapshot('completions');
+    const freshScore = { ...rows[0], id: 500, name: 'Fresh score' };
+    const freshCompletion = { ...completions[0], id: 900, name: 'Fresh completion' };
+    for (const conflict of [
+      { ...completions[0], name: 'Conflicting identity' },
+      { ...completions[0], id: 901 },
+    ]) {
+      await assert.rejects(() => migrate(adapter(databases[1]), [freshScore], [freshCompletion, conflict]));
+      assert.deepEqual(await snapshot('scores'), intactScores);
+      assert.deepEqual(await snapshot('completions'), intactCompletions,
+        'A conflicting completion rolls back all score and completion inserts');
+    }
+    for (const invalid of [null, [completions[0], completions[0]],
+      [{ ...completions[0], id: '9007199254740992' }], [{ ...completions[0], level: 2147483648 }],
+      [{ ...completions[0], name: 'Ada\u202e' }], [{ ...completions[0], name: '🦊'.repeat(25) }],
+    ]) {
+      let queries = 0;
+      const validationOnly = { query() { queries++; }, transaction() { queries++; } };
+      await assert.rejects(() => migrate(validationOnly, [], invalid));
+      assert.equal(queries, 0, 'Malformed completions fail before any database statements');
+    }
   } finally {
     await Promise.all(databases.map(database => database.close()));
     assert.equal(dirname(directory), resolve(tmpdir()));
@@ -818,7 +867,7 @@ test('circuit reduction shares ranking SQL while isolating campaigns, replays an
   }
 });
 
-test('signals records verified completions once, lists bounded names and accepts archived puzzles without ranks', async () => {
+test('Signals records verified completions in the shared table without ranks', async () => {
   const database = new PGlite();
   const originalUrl = process.env.DATABASE_URL, originalNow = Date.now;
   process.env.DATABASE_URL = 'postgresql://test.invalid/games';
@@ -932,6 +981,7 @@ test('signals records verified completions once, lists bounded names and accepts
     for (const date of ['2026-10-14', '2026-10-26', '2026-02-30']) {
       assert.equal((await post({ ...dailyPayload, date }, origin, address)).status, 400);
     }
+
   } finally {
     Date.now = originalNow;
     if (originalUrl === undefined) delete process.env.DATABASE_URL;
@@ -939,6 +989,125 @@ test('signals records verified completions once, lists bounded names and accepts
     delete globalThis.__quantumGolfPostgres;
     await database.close();
   }
+});
+
+test('graph states ranks verified shots and enforces daily database deadlines', async () => {
+  const database = new PGlite();
+  const originalUrl = process.env.DATABASE_URL, originalNow = Date.now;
+  process.env.DATABASE_URL = 'postgresql://test.invalid/games';
+  globalThis.__quantumGolfPostgres = async (strings, ...values) => {
+    const query = strings.reduce((sql, part, index) => sql + (index ? `$${index}` : '') + part, '');
+    return (await database.query(query, values)).rows.map(row => Object.fromEntries(Object.entries(row)
+      .map(([key, value]) => [key, value !== null && ['id', 'rank', 'total'].includes(key) ? String(value) : value])));
+  };
+  const address = `${endpoint}?game=graph-states`;
+  const sequence = graphSequence(GRAPH_LEVELS[0]);
+  const payload = { game: 'graph-states', level: 1, name: 'Ada', sequence };
+  const list = (selector = 'level=1', player) => route.fetch(new Request(`${address}&${selector}${player ? `&player=${player}` : ''}`));
+  const count = async table => Number((await database.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows[0].n);
+  const bounds = dailyBounds(GRAPH_START);
+  const databaseNow = instant => database.query("SELECT set_config('graph.test_now', $1, false)", [new Date(instant).toISOString()]);
+  try {
+    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(`
+      CREATE SCHEMA test_clock;
+      CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
+        AS $$ SELECT current_setting('graph.test_now')::timestamptz $$;
+      SET search_path TO test_clock, pg_catalog, public;
+    `);
+    Date.now = () => bounds.opensAt;
+    for (const invalid of [[], [{ vertex: 0 }], [{ edge: [0, 3] }], [{ vertex: 0, moves: 0 }]]) {
+      assert.equal((await post({ ...payload, sequence: invalid }, origin, address)).status, 400);
+    }
+    assert.equal((await post({ ...payload, ignored: 'x'.repeat(MAX_GRAPH_BYTES) }, origin, address)).status, 413);
+    assert.equal((await post({ ...payload, ignored: 'x'.repeat(MAX_GRAPH_BYTES) })).status, 413,
+      'Body-selected graph scores retain the graph request budget');
+    assert.equal(await count('scores'), 0);
+
+    const detour = [{ vertex: 0 }, { vertex: 0 }];
+    const initial = await (await post({ ...payload, moves: 0, sequence: [...detour, ...sequence] }, origin, address)).json();
+    assert.equal(initial.currentPlayer.moves, graphSequenceCost(sequence) + 2, 'Every complementation counts even when the replay includes a reversible detour');
+    assert.equal(initial.currentPlayer.rank, 1);
+    const response = await post({ ...payload, moves: -100 }, origin, address);
+    assert.equal(response.status, 201);
+    const improved = await response.json();
+    assert.equal(improved.currentPlayer.moves, graphSequenceCost(sequence), 'Client-supplied shot counts cannot change a replay score');
+    assert.notEqual(improved.currentPlayer.id, initial.currentPlayer.id);
+    assert.equal(improved.total, 1, 'Only the best attempt for a nickname enters the rankings');
+    assert.deepEqual(await (await post(payload, origin, address)).json(), improved, 'Identical graph score retries are idempotent');
+    assert.equal(await count('scores'), 2);
+    assert.deepEqual(await (await list('level=1', initial.currentPlayer.id)).json(), improved, 'Older player IDs resolve the current best score');
+    const saved = (await database.query('SELECT * FROM scores WHERE id = $1', [improved.currentPlayer.id])).rows[0];
+    assert.equal(saved.campaign, GRAPH_CAMPAIGN);
+    assert.deepEqual(Object.keys(saved).sort(), ['campaign', 'created_at', 'id', 'level', 'moves', 'name']);
+    assert.equal(await count('completions'), 0, 'Graph rankings use the existing score table');
+
+    const slower = await (await post({ ...payload, name: 'Grace', sequence: [...detour, ...sequence] }, origin, address)).json();
+    assert.deepEqual(slower.entries.map(({ name, moves, rank }) => ({ name, moves, rank })), [
+      { name: 'Ada', moves: graphSequenceCost(sequence), rank: 1 },
+      { name: 'Grace', moves: graphSequenceCost(sequence) + 2, rank: 2 },
+    ]);
+    for (const [index, graph] of GRAPH_LEVELS.entries()) {
+      const solved = await post({ ...payload, level: index + 1, sequence: graphSequence(graph) }, origin, address);
+      assert.equal(solved.status, 201, 'Every official graph level supports ranked scores');
+      assert.equal((await solved.json()).currentPlayer.moves, graphSequenceCost(graphSequence(graph)));
+    }
+    const pivot = await (await post({ ...payload, level: 2, sequence: [{ edge: [0, 1] }] }, origin, address)).json();
+    assert.equal(pivot.currentPlayer.moves, 3, 'A pivot counts as three local complementations');
+    assert.equal((await post({ game: 'quantum-signals', level: 1, name: 'Ada', sequence: [{ hole: 'a', gate: 'X' }] })).status, 201);
+    assert.equal(await count('completions'), 1, 'Signals retains its separate checkbox completion table');
+    assert.equal((await (await list('level=1', initial.currentPlayer.id)).json()).total, 2);
+    assert.equal((await (await get()).json()).total, 0, 'Graph scores never appear in Golf');
+
+    const dailyPayload = { game: 'graph-states', date: GRAPH_START, name: 'Daily Ada', sequence: graphSequence(graphDailyPuzzle(GRAPH_START)) };
+    await databaseNow(bounds.opensAt - 1);
+    assert.equal((await post(dailyPayload, origin, address)).status, 409, 'The database rejects early graph scores');
+    await databaseNow(bounds.opensAt);
+    const dailyResponse = await post(dailyPayload, origin, address);
+    assert.equal(dailyResponse.status, 201);
+    const daily = await dailyResponse.json();
+    assert.equal(daily.currentPlayer.moves, graphSequenceCost(dailyPayload.sequence));
+    const dailyRow = (await database.query('SELECT * FROM scores WHERE id = $1', [daily.currentPlayer.id])).rows[0];
+    assert.equal(dailyRow.campaign, GRAPH_DAILY_CAMPAIGN);
+    assert.equal(dailyRow.level, 20261016);
+    assert.equal(Number(dailyRow.created_at), bounds.opensAt);
+    assert.deepEqual(await (await post(dailyPayload, origin, address)).json(), daily);
+    await databaseNow(bounds.closesAt);
+    assert.equal((await post(dailyPayload, origin, address)).status, 409, 'A queued graph retry cannot cross Paris midnight');
+    Date.now = () => bounds.closesAt;
+    assert.equal((await post(dailyPayload, origin, address)).status, 409, 'Archived graph puzzles reject new ranked scores');
+    assert.deepEqual(await (await list(`date=${GRAPH_START}`, daily.currentPlayer.id)).json(), daily, 'Archived graph rankings remain readable');
+    assert.equal((await (await list('level=1', daily.currentPlayer.id)).json()).currentPlayer, null);
+  } finally {
+    Date.now = originalNow;
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+    delete globalThis.__quantumGolfPostgres;
+    await database.close();
+  }
+});
+
+test('graph daily API serves ranked days with their exact shot benchmark', async () => {
+  const originalNow = Date.now;
+  Date.now = () => dailyBounds(GRAPH_START).opensAt;
+  try {
+    const address = `${endpoint.replace('leaderboard', 'daily')}?game=graph-states`;
+    const response = await dailyRoute.fetch(new Request(address));
+    assert.equal(response.status, 200);
+    const info = await response.json();
+    assert.equal(info.acceptingScores, true);
+    assert.equal(info.startDate, GRAPH_START);
+    assert.deepEqual(Object.keys(info.puzzle).sort(), ['edges', 'optimalMoves', 'vertices']);
+    const graph = graphDailyPuzzle(GRAPH_START), { vertices, edges } = graph;
+    assert.deepEqual(info.puzzle, { vertices, edges, optimalMoves: graphOptimalShots(graph) });
+    assert.equal((await dailyRoute.fetch(new Request(`${address}&date=2026-10-15`))).status, 400);
+    assert.equal((await dailyRoute.fetch(new Request(`${address}&date=2026-10-17`))).status, 400);
+    Date.now = () => dailyBounds('2026-10-17').opensAt;
+    const archived = await (await dailyRoute.fetch(new Request(`${address}&date=${GRAPH_START}`))).json();
+    assert.equal(archived.acceptingScores, false);
+    assert.deepEqual(archived.puzzle, info.puzzle);
+    assert.equal(archived.nextChangeAt, dailyBounds('2026-10-17').closesAt);
+  } finally { Date.now = originalNow; }
 });
 
 test('signal daily API keeps current and archived puzzles playable without scores', async () => {

@@ -7,6 +7,7 @@ import { layoutMoves } from '../../tools/circuit-reduction/layout-moves.js';
 import { DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
 import { dailyBounds, dailyDate } from '../../src/lib/games/daily-calendar.js';
 import { expandGameControls } from '../games/markup.mjs';
+import { replayWorkers } from '../games/replay-worker-fixture.mjs';
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../../src/lib/circuit-reduction/tutorial.js';
 
 const root = new URL('../../', import.meta.url);
@@ -79,6 +80,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
       else { child.remove(); child.parentElement = this; this.children.push(child); }
       return child;
     }
+    prepend(child) { child.remove(); child.parentElement = this; this.children.unshift(child); }
     remove() { const siblings = this.parentElement?.children; if (siblings) siblings.splice(siblings.indexOf(this), 1); this.parentElement = null; }
     replaceChildren(...children) { for (const child of this.children) child.parentElement = null; this.children = []; this._text = ''; for (const child of children) this.appendChild(child); }
     get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
@@ -122,13 +124,14 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   };
   get('difficulty').value = '6';
   get('editor-wires').value = '2';
-  const globals = ['document', 'window', 'navigator', 'fetch', 'performance', 'Worker', 'setTimeout', 'clearTimeout', 'localStorage', '__circuitGif'];
+  const globals = ['document', 'window', 'navigator', 'fetch', 'performance', 'Worker', 'setTimeout', 'clearTimeout', 'localStorage'];
   const descriptors = new Map(globals.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   context.after(() => { for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } });
   const originalDateNow = Date.now;
   Date.now = () => Date.parse('2026-10-14T12:00:00Z');
   context.after(() => { Date.now = originalDateNow; });
-  const windowMock = new Element('WINDOW'), requests = [], workers = [], gifs = [], timers = new Map();
+  const { ReplayWorker, gifs } = replayWorkers();
+  const windowMock = new Element('WINDOW'), requests = [], workers = [], timers = new Map();
   let monotonic = 0;
   Object.defineProperty(globalThis, 'document', { configurable: true, value: documentMock });
   Object.defineProperty(globalThis, 'window', { configurable: true, value: windowMock });
@@ -144,20 +147,24 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   globalThis.setTimeout = (callback, delay) => { const timer = { callback, delay }; timers.set(timer, timer); return timer; };
   globalThis.clearTimeout = timer => timers.delete(timer);
   let failPosting = false;
-  const WorkerMock = class {
-    constructor() { this.onmessage = null; this.onerror = null; workers.push(this); }
-    postMessage(message) { if (failPosting) throw new Error('Message could not be posted'); this.message = message; }
-    terminate() { this.terminated = true; }
+  const WorkerMock = class extends ReplayWorker {
+    constructor(url, options) {
+      super(url, options);
+      this.exporting = url.pathname.endsWith('/circuit-reduction-gif-worker.js');
+      if (!this.exporting) workers.push(this);
+    }
+    postMessage(message) {
+      if (failPosting) throw new Error('Message could not be posted');
+      if (this.exporting) super.postMessage(message); else this.message = message;
+    }
     respond(data) { this.onmessage?.({ data }); }
   };
   globalThis.Worker = WorkerMock;
-  globalThis.__circuitGif = (...args) => new Promise((resolve, reject) => gifs.push({ args, resolve, reject }));
   const scriptURL = new URL('src/scripts/circuit-reduction.js', root);
   const original = await readFile(scriptURL, 'utf8');
   const instrumented = original
-    .replace(/import\(['"]\.\.\/lib\/circuit-reduction\/replay-gif\.js['"]\)/g, 'Promise.resolve({ createReplayGif: globalThis.__circuitGif })')
     .replace(/from (['"])(\.\.\/lib\/[^'"]+)\1/g, (_, _quote, path) => `from '${new URL(path, scriptURL).href}'`)
-    .replace(/new URL\(['"]\.\/circuit-reduction-worker\.js['"], import\.meta\.url\)/g, `new URL('${new URL('./circuit-reduction-worker.js', scriptURL).href}')`);
+    .replace(/new URL\(['"](\.\/circuit-reduction(?:-gif)?-worker\.js)['"], import\.meta\.url\)/g, (_, path) => `new URL('${new URL(path, scriptURL).href}')`);
   await import(`data:text/javascript;base64,${Buffer.from(instrumented).toString('base64')}`);
 
   const click = id => get(id).click();
@@ -270,7 +277,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     }
     assert.equal(get('win-dialog').open, false, 'Tutorial completion never opens scoring');
   }
-  assert.equal(tutorialMoves, 7, 'Layout lessons preserve the seven-rewrite solution');
+  assert.equal(tutorialMoves, 11, 'Cancellations and the uncontrolled basis change precede the seven-rewrite example');
   assert.ok(isSolved(boardCircuit()));
   assert.equal(get('tutorial-heading').textContent, 'Tutorial complete');
   assert.equal(get('tutorial-levels').hidden, false);
@@ -612,8 +619,8 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await click('share-result'); await settle();
   assert.equal(gifs.length, beforeExport, 'Opening sharing does not encode a replay');
   click('download-gif'); await settle(); const exportJob = gifs.at(-1);
-  assert.equal(exportJob.args[0].label, 'Custom circuit'); assert.deepEqual(exportJob.args[0].circuit, [['.', 'X', 'X', '.']]);
-  await click('restart'); assert.equal(exportJob.args[1].signal.aborted, true); assert.equal(get('share-dialog').open, false);
+  assert.equal(exportJob.round.label, 'Custom circuit'); assert.deepEqual(exportJob.round.circuit, [['.', 'X', 'X', '.']]);
+  await click('restart'); assert.equal(exportJob.worker.terminated, true); assert.equal(get('share-dialog').open, false);
   exportJob.resolve(new Blob(['GIF89a'], { type: 'image/gif' })); await settle(); assert.equal(get('share-preview').hidden, true);
 
   // An interrupted advisory search leaves an honest status on return and
@@ -685,7 +692,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   const savedBoard = boardSignature(), savedMoves = moveCount();
   await click('share-result'); click('download-gif'); await settle(); const restoredExport = gifs.at(-1);
   await windowMock.dispatch('pagehide');
-  assert.equal(restoredExport.args[1].signal.aborted, true);
+  assert.equal(restoredExport.worker.terminated, true);
   assert.equal(get('share-dialog').open, false, 'Navigation closes the disposed sharing dialog');
   await windowMock.dispatch('pageshow', { persisted: true });
   const restoredRanking = requests.at(-1);

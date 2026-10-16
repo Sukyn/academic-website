@@ -60,6 +60,7 @@ test('preview waits for Start; each explanation prepares and highlights only its
   assert.equal(get('gate-1').disabled, false);
   await guide.next();
   assert.equal(guide.finished, true); assert.equal(get('tutorial-next').hidden, true);
+  assert.equal(get('tutorial-text').textContent, '');
   assert.equal(get('tutorial-levels').hidden, false);
   assert.equal(get('gate-1').disabled, true);
   await guide.next(); assert.deepEqual(calls.filter(call => call.startsWith('move:')), ['move:0', 'move:1']);
@@ -102,6 +103,19 @@ test('a previous animation cannot advance a freshly restarted example', async co
   guide.leave(); guide.enter(); guide.start();
   resolve(); await advancing;
   assert.equal(get('tutorial-heading').textContent, 'Step 1 of 2'); assert.equal(guide.finished, false);
+});
+
+test('cancelling an animation leaves its tutorial step ready to retry', async context => {
+  let resolve;
+  const pending = new Promise(done => { resolve = done; });
+  const { guide, get, calls } = fixture(context, [() => pending, () => {}]);
+  guide.enter(); guide.start(); const advancing = guide.next();
+  resolve(false); await advancing;
+  assert.equal(guide.executing, false);
+  assert.equal(get('tutorial-heading').textContent, 'Step 1 of 2');
+  assert.equal(get('gate-0').disabled, false);
+  assert.equal(get('tutorial-next').disabled, false);
+  assert.equal(calls.includes('prepare:1'), false);
 });
 
 test('failed steps offer restart without silently advancing the worked solution', async context => {

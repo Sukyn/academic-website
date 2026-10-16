@@ -7,7 +7,7 @@ import { installReplayEncoder } from '../lib/games/replay-gif.js';
 const { GIFEncoder, quantize, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
 const WIDTH = 480, HEIGHT = 560, HEADER = 128;
 
-export function encodeReplay(round, onProgress, onFinalFrame) {
+export function encodeReplay(round, onProgress, imageOnly = false) {
   if (typeof OffscreenCanvas !== 'function') {
     throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
   }
@@ -44,11 +44,17 @@ export function encodeReplay(round, onProgress, onFinalFrame) {
     ctx.drawImage(sphereCanvas, 0, HEADER);
     return ctx.getImageData(0, 0, WIDTH, HEIGHT).data;
   };
+  let finalState = START_STATE;
+  for (const gate of sequence) finalState = applyGate(finalState, gate);
+  if (imageOnly) {
+    sphere.cameraTo(finalState)(1);
+    sphere.setState({ state: finalState, sequence });
+    ctx.drawImage(sphereCanvas, 0, HEADER);
+    return canvas;
+  }
   onProgress?.(0);
   // Seed one palette with both the empty sphere and the complete trace.
   const first = pixels();
-  let finalState = START_STATE;
-  for (const gate of sequence) finalState = applyGate(finalState, gate);
   sphere.cameraTo(finalState)(1);
   sphere.setState({ state: finalState, sequence });
   const seed = new Uint8Array(first.length * 2);
@@ -91,7 +97,6 @@ export function encodeReplay(round, onProgress, onFinalFrame) {
     onProgress?.(i / samples);
   }
   gif.finish();
-  onFinalFrame?.(canvas);
   return gif.bytesView();
 }
 

@@ -7,12 +7,16 @@ export function updateModeMenu(get, mode, disabled = false) {
 }
 
 /** Common overlay actions; each game still decides which controls are enabled. */
-export function bindGameDialogs(get = id => document.getElementById(id)) {
-  const rules = get('rules-dialog'), win = get('win-dialog'), showRules = get('show-rules');
-  showRules.addEventListener('click', () => { if (!showRules.disabled && !rules.open) rules.showModal(); });
-  get('close-rules').addEventListener('click', () => rules.close());
+export function bindGameDialogs(get = id => document.getElementById(id), extraDialogs = []) {
+  const win = get('win-dialog'), dialogs = [win];
+  for (const name of ['rules', ...extraDialogs]) {
+    const dialog = get(name + '-dialog'), show = get('show-' + name);
+    show.addEventListener('click', () => { if (!show.disabled && !dialog.open) dialog.showModal(); });
+    get('close-' + name).addEventListener('click', () => dialog.close());
+    dialogs.push(dialog);
+  }
   get('close-win').addEventListener('click', () => win.close());
-  for (const dialog of [rules, win]) dialog.addEventListener('click', event => {
+  for (const dialog of dialogs) dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
     if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();

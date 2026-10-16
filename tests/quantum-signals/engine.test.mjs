@@ -112,9 +112,9 @@ test('All gate matrices agree with an independent dense evaluator in random four
   }
 });
 
-test('Every hole must be explicitly filled; edits and simulated states remain independent', () => {
+test('Gate edits and simulated states remain independent', () => {
   const puzzle = LEVELS[0], empty = simulate(puzzle);
-  assert.equal(empty.filled, false); assert.equal(empty.solved, false);
+  assert.equal(empty.solved, false);
   const chosen = applyPlacement(puzzle, {}, { hole: 'a', gate: 'X' });
   assert.deepEqual(chosen, { a: 'X' });
   assert.equal(simulate(puzzle, chosen).solved, true);
@@ -126,6 +126,22 @@ test('Every hole must be explicitly filled; edits and simulated states remain in
   const result = simulate(puzzle, chosen);
   result.state[0] = 20;
   assert.deepEqual(simulate(puzzle, chosen).state, [0, 1]); assert.equal(puzzle.target[0], 0);
+});
+
+test('Unfilled holes use offered identity, including after erasing a wrong gate', () => {
+  const puzzle = { wires: 1, columns: [[hole('a', [0], ['I', 'X'])], [hole('b', [0], ['I', 'H'])]], target: [0, 1] };
+  const solution = { a: 'X' };
+  assert.equal(simulate(puzzle, solution).solved, true);
+  assert.deepEqual(simulate(puzzle, solution), simulate(puzzle, { ...solution, b: 'I' }));
+  const wrong = applyPlacement(puzzle, solution, { hole: 'b', gate: 'H' });
+  assert.equal(simulate(puzzle, wrong).solved, false);
+  const erased = applyPlacement(puzzle, wrong, { hole: 'b', gate: null });
+  assert.equal(simulate(puzzle, erased).solved, true);
+  assert.deepEqual(wrong, { a: 'X', b: 'H' }, 'Undo snapshots keep the wrong gate until an actual undo');
+  const required = { wires: 1, columns: [[hole('required', [0], ['X', 'H'])]], target: [1, 0] };
+  assert.equal(simulate(required).solved, false, 'A missing gate cannot bypass choices that exclude identity');
+  const matched = { ...required, columns: [[hole('optional', [0], ['I', 'H'])]] };
+  assert.equal(simulate(matched).solved, true, 'An already matched custom identity needs no artificial action');
 });
 
 test('State comparison distinguishes basis outcomes and rejects invalid states', () => {
@@ -246,7 +262,7 @@ test('Object prototype names are ordinary hole IDs and redundant gate fields can
     const input = { ...LEVELS[0], columns: [[{ ...hole(id, [0], ['I', 'X']), gate: 'H' }]] };
     const puzzle = validatePuzzle(input);
     assert.equal(Object.hasOwn(puzzle.columns[0][0], 'gate'), false);
-    assert.equal(simulate(puzzle).filled, false);
+    assert.equal(simulate(puzzle).solved, false);
     assert.deepEqual(simulate(puzzle).state, [1, 0]);
     const placements = applyPlacement(puzzle, {}, { hole: id, gate: 'X' });
     assert.equal(Object.hasOwn(placements, id), true);
@@ -315,7 +331,7 @@ test('Daily seeds use validated civil dates, stay reproducible and cannot leak m
   assert.equal(first.date, DAILY_START);
   assert.deepEqual(Object.keys(first), ['wires', 'columns', 'target', 'date']);
   assert.equal(Object.hasOwn(first, 'optimalMoves'), false);
-  assert.equal(DAILY_VERSION, 'quantum-signals-daily-v3');
+  assert.equal(DAILY_VERSION, 'quantum-signals-daily-v4');
   assert.deepEqual(first.target, generatePuzzle(`${DAILY_VERSION}:${DAILY_START}`, 3).target);
   first.columns[0][0].gate = 'X';
   assert.notDeepEqual(first, dailyPuzzle(DAILY_START));

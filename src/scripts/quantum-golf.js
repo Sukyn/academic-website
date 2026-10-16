@@ -2,6 +2,7 @@ import { createScoreboard } from '../lib/games/scoreboard.js';
 import { formatPuzzleDate as dateLabel, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
+import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
 import { createTutorial } from '../lib/games/tutorial.js';
@@ -25,7 +26,8 @@ let level = LEVELS[0], campaignLevel = level, freeEpsilon = Number(get('epsilon'
 let state = START_STATE, target = level.target, sequence = '';
 let busy = false, picking = false, won = false;
 let following = true, precision = false, optimalMoves = null;
-let reviewStep = null, stopReplay, renderedSequence = '', sequenceLocked = false, reviewedButton;
+let reviewStep = null, stopReplay;
+const renderTimeline = createMoveTimeline(get('sequence'), (gate, index) => ({ text: gate, label: `Step ${index + 1}: ${gate}` }));
 let worker, tutorial, tutorialMode = false, stopGate, finishGate;
 const tutorialBlocked = () => tutorialMode && !tutorial.executing;
 const epsilon = () => level ? level.epsilon : freeEpsilon;
@@ -40,10 +42,9 @@ const canScore = () => Boolean(!tutorialMode && level && (!level.date ||
   (level.acceptingScores && daily.serverTime() >= level.opensAt && daily.serverTime() < level.closesAt)));
 const scoreSelector = () => level.date ? { date: level.date } : { level: level.id };
 const sphere = new BlochSphere(get('sphere'), { onPick: setTarget });
-const sharing = createReplayShare({ get, createGif: async (...args) => {
-  const { createReplayGif } = await import('../lib/quantum-golf/replay-gif.js');
-  return createReplayGif(...args);
-} });
+const sharing = createReplayShare({ get,
+  createWorker: () => new Worker(new URL('./quantum-golf-gif-worker.js', import.meta.url), { type: 'module' }),
+});
 const scores = createScoreboard({
   get, selector: () => !tutorialMode && level ? scoreSelector() : null,
   benchmark: () => tutorialMode ? {} : { optimalMoves: level?.optimalMoves, unit: 'stroke' },
@@ -109,36 +110,7 @@ function update(visibleState) {
   won = traceDistance(state, target) <= holeSize + 1e-12;
   get('epsilon').value = holeSize;
   get('epsilon-value').textContent = `ε = ${holeSize.toFixed(3)}`;
-  const gateButtons = get('sequence');
-  if (renderedSequence !== sequence) {
-    let shared = 0;
-    while (shared < Math.min(renderedSequence.length, sequence.length) && renderedSequence[shared] === sequence[shared]) shared++;
-    while (gateButtons.children.length > shared) gateButtons.lastElementChild.remove();
-    const added = document.createDocumentFragment();
-    for (let index = shared; index < sequence.length; index++) {
-      const gate = sequence[index];
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = gate;
-      button.disabled = locked;
-      button.setAttribute('data-step', String(index + 1));
-      button.setAttribute('aria-label', `Step ${index + 1}: ${gate}`);
-      button.setAttribute('aria-current', 'false');
-      added.appendChild(button);
-    }
-    gateButtons.appendChild(added);
-    renderedSequence = sequence;
-  }
-  if (sequenceLocked !== locked) {
-    for (const button of gateButtons.children) button.disabled = locked;
-    sequenceLocked = locked;
-  }
-  const active = reviewStep === null ? null : gateButtons.children[reviewStep - 1];
-  if (reviewedButton !== active) {
-    reviewedButton?.setAttribute('aria-current', 'false');
-    active?.setAttribute('aria-current', 'step');
-    reviewedButton = active;
-  }
+  renderTimeline(sequence, { step: reviewStep, disabled: locked });
   get('review-controls').hidden = reviewStep === null;
   get('review-note').textContent = reviewStep === null ? '' : `Step ${reviewStep} / ${sequence.length}`;
   get('replay').hidden = !sequence;

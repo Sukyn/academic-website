@@ -13,16 +13,16 @@ import { LEVELS } from '../../lib/circuit-reduction/puzzles.js';
 import { RULES } from '../../lib/circuit-reduction/engine.js';
 ---
 
-<BaseLayout title="Circuit reduction" description="Simplify quantum circuits to the identity using reversible rewrite rules. Play levels, custom circuits and a daily puzzle.">
+<BaseLayout title="Circuit simplification" description="Simplify quantum circuits to the identity using reversible rewrite rules. Play levels, custom circuits and a daily puzzle.">
   <GameShell>
     <a class="back" href="/games/">← Games</a>
-    <h1>Circuit reduction</h1>
+    <h1>Circuit simplification</h1>
     <div class="game-layout">
       <GameModeMenu />
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
         <GameTutorial />
-        <section aria-label="Circuit reduction">
+        <section aria-label="Circuit simplification">
           <div class="circuit-heading"><p id="move-count" role="status">0 moves</p></div>
           <div class="generator-controls circuit-editor-controls" id="circuit-editor-controls" hidden>
             <label for="editor-wires">Wires</label>
@@ -61,7 +61,7 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
         <GameLeaderboard unit="Moves" />
       </div>
     </div>
-    <GameDialogs gameTitle="Circuit reduction">
+    <GameDialogs gameTitle="Circuit simplification">
       <Fragment slot="rules">
         <p>Reduce every wire to empty slots: this is the <strong>identity circuit</strong>. Read the circuit from left to right. Use as few moves as possible.</p>
         <p>Select the cells shown in a rule, including empty slots, then choose that rule. Drag or Shift-click for a rectangle; Enter applies the sole matching rule.</p>

@@ -7,6 +7,7 @@ function fixture(context) {
     constructor(tag) { this.tag = tag; this.attrs = {}; this.children = []; this.textContent = ''; }
     setAttribute(name, value) { this.attrs[name] = String(value); }
     appendChild(child) { this.children.push(child); }
+    prepend(child) { this.children.unshift(child); }
     replaceChildren(...children) { this.children = children; }
   }
   const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
@@ -28,16 +29,23 @@ test('Golf instructions keep their prose and mark standalone H/T tokens for the 
   assert.ok(gates.every(gate => gate.className === 'tutorial-gate tutorial-letter'));
 });
 
-test('Circuit instructions use accessible gate drawings with the actual CNOT direction', context => {
+test('Circuit instructions use accessible pairs or the single-wire endpoints from the rules', context => {
   const node = fixture(context);
-  for (const [direction, endpoints] of [['CX', ['circle', 'circle']], ['XC', ['circle', 'circle']]]) {
-    renderCircuitInstruction(node, 'Use H–X–H, Z, CNOT and CZ.', direction);
+  for (const singleWire of [false, true]) {
+    renderCircuitInstruction(node, 'Use H–X–H, Z, CNOT and CZ.', { singleWire });
     const gates = node.children.filter(child => child.attrs['data-gate']);
-    assert.deepEqual(gates.map(gate => gate.attrs['data-gate']), ['H', 'X', 'H', 'Z', direction, 'CZ']);
+    assert.deepEqual(gates.map(gate => gate.attrs['data-gate']), ['H', 'X', 'H', 'Z', singleWire ? 'XU' : 'CX', singleWire ? 'ZU' : 'CZ']);
     assert.ok(gates.every(gate => gate.textContent === '' && gate.attrs.role === 'img'));
-    const pair = gates[4].children[0].children;
-    assert.deepEqual(pair.map(glyph => glyph.children[0].tag), endpoints);
-    assert.deepEqual(pair.map(glyph => glyph.children.length), direction === 'CX' ? [1, 2] : [2, 1]);
+    if (singleWire) {
+      for (const gate of gates.slice(4)) {
+        assert.equal(gate.children[0].tag, 'svg');
+        assert.equal(gate.children[0].children[0].attrs.d, 'M22 22V44');
+      }
+    } else {
+      const pair = gates[4].children[0].children;
+      assert.deepEqual(pair.map(glyph => glyph.children[0].tag), ['circle', 'circle']);
+      assert.deepEqual(pair.map(glyph => glyph.children.length), [1, 2]);
+    }
     assert.equal(gates[4].attrs['aria-label'], 'CNOT');
   }
 });

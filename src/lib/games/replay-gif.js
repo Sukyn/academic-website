@@ -1,24 +1,25 @@
-const unavailable = 'Your browser cannot create GIFs. Try an up-to-date browser.';
-const failed = 'Could not create the GIF. Please try again.';
-
 /** Run a game's synchronous encoder inside its worker and transfer the result. */
 export function installReplayEncoder(encodeReplay) {
   if (typeof WorkerGlobalScope === 'undefined' || !(globalThis instanceof WorkerGlobalScope)) return;
   globalThis.onmessage = async ({ data }) => {
     try {
-      let finalFrame, image;
-      const bytes = encodeReplay(data.round, progress => globalThis.postMessage({ progress }),
-        data.image ? canvas => { finalFrame = canvas; } : undefined);
-      // PNG support is optional: a conversion failure must preserve the GIF.
-      if (data.image) try { image = await finalFrame.convertToBlob({ type: 'image/png' }); } catch {}
-      globalThis.postMessage({ bytes, ...(image ? { image } : {}) }, [bytes.buffer]);
+      if (data.imageOnly) {
+        const canvas = encodeReplay(data.round, undefined, true);
+        const image = await canvas.convertToBlob({ type: 'image/png' });
+        globalThis.postMessage({ image });
+      } else {
+        const bytes = encodeReplay(data.round, progress => globalThis.postMessage({ progress }));
+        globalThis.postMessage({ bytes }, [bytes.buffer]);
+      }
     } catch (error) {
-      globalThis.postMessage({ error: error.message || failed, name: error.name });
+      globalThis.postMessage({ error: error.message || 'Could not create the export. Please try again.', name: error.name });
     }
   };
 }
 
-export function createWorkerReplayGif(round, createWorker, { signal, onProgress, onImage } = {}) {
+function createWorkerReplay(round, createWorker, { signal, onProgress } = {}, imageOnly = false) {
+  const format = imageOnly ? 'image' : 'GIF';
+  const failed = `Could not create the ${format}. Please try again.`;
   return new Promise((resolve, reject) => {
     let worker, settled = false;
     const finish = (error, bytes) => {
@@ -30,11 +31,11 @@ export function createWorkerReplayGif(round, createWorker, { signal, onProgress,
         worker.terminate();
       }
       if (error) reject(error);
-      else resolve(new Blob([bytes], { type: 'image/gif' }));
+      else resolve(imageOnly ? bytes : new Blob([bytes], { type: 'image/gif' }));
     };
-    const cancel = () => finish(new DOMException('GIF creation cancelled.', 'AbortError'));
+    const cancel = () => finish(new DOMException('Export cancelled.', 'AbortError'));
     if (signal?.aborted) return cancel();
-    if (typeof Worker !== 'function') return finish(new DOMException(unavailable, 'NotSupportedError'));
+    if (typeof Worker !== 'function') return finish(new DOMException(`Your browser cannot create this ${format}. Try an up-to-date browser.`, 'NotSupportedError'));
     try {
       worker = createWorker();
       worker.onmessage = ({ data }) => {
@@ -44,10 +45,8 @@ export function createWorkerReplayGif(round, createWorker, { signal, onProgress,
           error.name = data.name || 'Error';
           finish(error);
         }
-        else if (data.bytes) {
-          if (data.image instanceof Blob && data.image.type === 'image/png') onImage?.(data.image);
-          finish(null, data.bytes);
-        }
+        else if (imageOnly && data.image instanceof Blob && data.image.type === 'image/png') finish(null, data.image);
+        else if (!imageOnly && data.bytes) finish(null, data.bytes);
         else if (Number.isFinite(data.progress)) onProgress?.(Math.max(0, Math.min(1, data.progress)));
       };
       worker.onerror = event => {
@@ -57,9 +56,17 @@ export function createWorkerReplayGif(round, createWorker, { signal, onProgress,
       worker.onmessageerror = () => finish(new Error(failed));
       signal?.addEventListener('abort', cancel, { once: true });
       if (signal?.aborted) return cancel();
-      worker.postMessage({ round, image: typeof onImage === 'function' });
+      worker.postMessage({ round, imageOnly });
     } catch {
       finish(new Error(failed));
     }
   });
+}
+
+export function createWorkerReplayGif(round, createWorker, options) {
+  return createWorkerReplay(round, createWorker, options);
+}
+
+export function createWorkerReplayImage(round, createWorker, options) {
+  return createWorkerReplay(round, createWorker, options, true);
 }

@@ -3,7 +3,7 @@ import { dateTimestamp } from '../games/daily-calendar.js';
 import { seededRandom } from '../games/random.js';
 
 export const DAILY_START = '2026-10-15';
-export const DAILY_VERSION = 'quantum-signals-daily-v3';
+export const DAILY_VERSION = 'quantum-signals-daily-v4';
 const single = (id, wire, choices = ['I', 'H', 'X', 'Z']) => ({ id, wires: [wire], choices });
 const pair = (id, first, second) => ({ id, wires: [first, second], choices: ['I', 'CX', 'XC', 'CZ'] });
 const fixed = (gate, ...wires) => ({ gate, wires });
@@ -61,16 +61,27 @@ export function generatePuzzle(seed, difficulty = 2) {
     [pair('d', 1, 2)], [fixed('H', 1)], [single('e', 0)], [pair('f', 2, 0)], [fixed('H', 2)],
   ];
   const holes = columns.flat().filter(entry => entry.id);
+  const singles = holes.filter(hole => hole.wires.length === 1);
+  const identity = random() < .5 ? singles[Math.floor(random() * singles.length)] : null;
+  // In real Clifford circuits, an extra H flips the parity of log2(populated
+  // basis states). Other hole choices only permute or change signs, so cannot compensate.
+  if (identity) for (const hole of singles) {
+    hole.choices = hole === identity ? ['I', 'H'] : hole.choices.filter(gate => gate !== 'H');
+  }
   const puzzle = puzzleFromSolution(wires, columns, {});
   for (let attempt = 0; attempt < 32; attempt++) {
-    const solution = Object.fromEntries(holes.map(hole => [hole.id, hole.choices[Math.floor(random() * hole.choices.length)]]));
+    const solution = Object.fromEntries(holes.map(hole => [hole.id, hole === identity ? 'I' : hole.choices[Math.floor(random() * hole.choices.length)]]));
     const target = simulate(puzzle, solution).state;
     if (!stateEqual(target, puzzle.target)) return { ...puzzle, target };
   }
-  // This filling changes the baseline in each template, even if all samples
-  // happened to return the identity filling's output.
-  const solution = Object.fromEntries(holes.map((hole, index) => [hole.id, index ? 'I' : 'H']));
-  return { ...puzzle, target: simulate(puzzle, solution).state };
+  // X and Z cannot both leave the baseline unchanged on this wire. Try one
+  // gate if the random fillings all happened to reproduce the untouched state.
+  const active = singles.find(hole => hole !== identity);
+  for (const gate of active.choices.filter(gate => gate !== 'I')) {
+    const target = simulate(puzzle, { [active.id]: gate }).state;
+    if (!stateEqual(target, puzzle.target)) return { ...puzzle, target };
+  }
+  throw new Error('Could not generate a nontrivial circuit.');
 }
 
 const dailyCache = new Map();

@@ -1,8 +1,8 @@
-# Circuit reduction
+# Circuit simplification
 
 Rules and printed missions come from [`jeu-circuits-quantiques.pdf`](../../public/outreach/jeu-circuits-quantiques.pdf), pages 7–11. Rules unlock progressively; custom and daily puzzles use all 20 learned rules. Identity spacing is free and unbounded. Only rewrites count towards the score.
 
-The first 20 tutorial levels have certified shortest solutions. The last two have **Best known** solutions of 15 and 19 moves; their optima are unproved.
+The first 20 campaign levels have certified shortest solutions. The last two have **Best known** solutions of 15 and 19 moves; their optima are unproved.
 
 ## Puzzle data
 

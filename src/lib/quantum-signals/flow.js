@@ -7,9 +7,9 @@ const EPSILON = 1e-9;
 export function flowTrace(input, placements = {}) {
   const puzzle = validatePuzzle(input), chosen = validatePlacements(puzzle, placements);
   const size = 2 ** puzzle.wires;
-  const snapshots = [[1, ...Array(size - 1).fill(0)]], columns = [];
+  const snapshots = [[1, ...Array(size - 1).fill(0)]], columns = [], cancellations = [];
   for (const column of puzzle.columns) {
-    const incoming = snapshots.at(-1), outgoing = Array(size).fill(0), edges = [];
+    const incoming = snapshots.at(-1), outgoing = Array(size).fill(0), phases = Array(size).fill(0), edges = [];
     for (let from = 0; from < size; from++) {
       if (Math.abs(incoming[from]) < EPSILON) continue;
       const contribution = Array(size).fill(0);
@@ -23,10 +23,13 @@ export function flowTrace(input, placements = {}) {
         if (Math.abs(amplitude) < EPSILON) continue;
         edges.push({ from, to, amplitude });
         outgoing[to] += amplitude;
+        phases[to] |= amplitude > 0 ? 1 : 2; // Positive, negative, or both (3).
       }
     }
     columns.push(edges);
+    cancellations.push(phases.flatMap((phase, basis) =>
+      phase === 3 && Math.abs(outgoing[basis]) < EPSILON ? [basis] : []));
     snapshots.push(outgoing);
   }
-  return { snapshots, columns };
+  return { snapshots, columns, cancellations };
 }

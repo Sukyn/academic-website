@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getBoard, validateSubmission, MAX_REPLAY_MOVES, MAX_SUBMISSION_BYTES } from '../../src/lib/quantum-signals/completions.js';
 import { SubmissionError } from '../../src/lib/games/submission.js';
-import { DAILY_START, DAILY_VERSION } from '../../src/lib/quantum-signals/puzzles.js';
+import { DAILY_START, DAILY_VERSION, dailyPuzzle } from '../../src/lib/quantum-signals/puzzles.js';
+import { solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
 
 const valid = changes => ({ level: 1, name: 'Ada', sequence: [{ hole: 'a', gate: 'X' }], ...changes });
 
-test('opposite-direction CNOT completions use the current daily puzzle version', () => {
-  const filling = { a: 'H', b: 'I', c: 'H', d: 'I', e: 'I', f: 'XC' };
-  const sequence = Object.entries(filling).map(([hole, gate]) => ({ hole, gate }));
+test('daily completions use the current puzzle version and accept omitted identities', () => {
+  const filling = solvePuzzle(dailyPuzzle(DAILY_START), { limit: 1 })[0];
+  const sequence = Object.entries(filling).filter(([, gate]) => gate !== 'I').map(([hole, gate]) => ({ hole, gate }));
   const record = validateSubmission({ date: DAILY_START, name: 'Ada', sequence }, Date.parse(`${DAILY_START}T12:00:00Z`));
   assert.equal(record.campaign, DAILY_VERSION);
   assert.deepEqual(Object.keys(record).sort(), ['campaign', 'level', 'name']);

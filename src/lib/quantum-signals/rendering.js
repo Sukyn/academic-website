@@ -1,7 +1,7 @@
 import { gateGlyph, svgNode } from '../games/circuit-graphics.js';
 import { controlWire, stateEqual } from './engine.js';
 import { flowTrace } from './flow.js';
-import { PHASE_COLORS, PHASE_PATH_COLOR, phaseColor, phaseOutline, alignTarget, targetRadius } from './state-visuals.js';
+import { PHASE_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, alignTarget, targetRadius } from './state-visuals.js';
 
 const SLOT = 88, ROW = 88, LEFT = 92, TOP = 46;
 const boardWidth = puzzle => LEFT + puzzle.columns.length * SLOT + 64;
@@ -77,7 +77,7 @@ export function pinFlowLabels(svg, scrollLeft) {
 }
 
 export function renderFlow(svg, puzzle, placements, selected) {
-  const { snapshots, columns } = flowTrace(puzzle, placements), output = snapshots.at(-1);
+  const { snapshots, columns, cancellations } = flowTrace(puzzle, placements), output = snapshots.at(-1);
   const target = alignTarget(puzzle.target, output), count = output.length;
   const width = boardWidth(puzzle), height = count * 34 + 62;
   const x = boundaryX, y = basis => 44 + basis * 34;
@@ -88,6 +88,8 @@ export function renderFlow(svg, puzzle, placements, selected) {
   const describe = state => state.flatMap((amplitude, basis) => Math.abs(amplitude) < 1e-9 ? [] :
     [basis.toString(2).padStart(puzzle.wires, '0') + ', ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? 'minus' : 'plus') + ' phase']).join('; ');
   description.textContent = snapshots.map((state, boundary) => (boundary ? 'After column ' + boundary : 'Input') + ': ' + describe(state)).join('. ') + '. Target: ' + describe(target);
+  description.textContent += cancellations.flatMap((bases, column) => bases.length ?
+    ['. Opposite phases cancel after column ' + (column + 1) + ' at ' + bases.map(basis => basis.toString(2).padStart(puzzle.wires, '0')).join(', ')] : []).join('');
   fragment.appendChild(description);
   const selectedColumn = selected ? puzzle.columns.findIndex(column => column.some(entry => entry.id === selected)) : -1;
   if (selectedColumn >= 0) fragment.appendChild(svgNode('rect', { class: 'signal-flow-selection', 'data-column': selectedColumn,
@@ -110,14 +112,23 @@ export function renderFlow(svg, puzzle, placements, selected) {
       'data-amplitude': edge.amplitude, 'data-phase': edge.amplitude < 0 ? '-' : '+',
       d: 'M' + x(column) + ',' + y(edge.from) + ' C' + (x(column) + SLOT / 2) + ',' + y(edge.from) + ' ' +
         (x(column + 1) - SLOT / 2) + ',' + y(edge.to) + ' ' + x(column + 1) + ',' + y(edge.to),
-      stroke: PHASE_PATH_COLOR, 'stroke-width': 2 + 4 * Math.abs(edge.amplitude) });
+      stroke: phasePathColor(edge.amplitude), 'stroke-width': 2 + 4 * Math.abs(edge.amplitude) });
     fragment.appendChild(path);
+  }));
+  cancellations.forEach((bases, column) => bases.forEach(basis => {
+    const wall = svgNode('path', { class: 'signal-flow-cancellation', 'data-boundary': column + 1, 'data-basis': basis,
+      d: CANCELLATION_WALL.map(([dx, dy], index) => (index ? 'L' : 'M') + (x(column + 1) + dx) + ',' + (y(basis) + dy)).join(' '),
+      fill: 'none', stroke: PHASE_COLORS.negative, 'stroke-width': 2, 'stroke-linejoin': 'round', role: 'img',
+      'aria-label': basis.toString(2).padStart(puzzle.wires, '0') + ': opposite phases cancel' });
+    const title = svgNode('title', {});
+    title.textContent = 'Opposite phases cancel: no outgoing amplitude';
+    wall.appendChild(title); fragment.appendChild(wall);
   }));
   snapshots.forEach((state, boundary) => state.forEach((amplitude, basis) => {
     if (Math.abs(amplitude) < 1e-9) return;
     const node = svgNode('circle', { class: 'signal-flow-node', 'data-boundary': boundary, 'data-basis': basis,
       'data-amplitude': amplitude, 'data-phase': amplitude < 0 ? '-' : '+', cx: x(boundary), cy: y(basis),
-      r: 8 * Math.abs(amplitude), fill: phaseColor(amplitude), stroke: phaseOutline(amplitude) });
+      r: 8 * Math.abs(amplitude), fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative });
     const title = svgNode('title', {});
     title.textContent = basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase';
     node.appendChild(title); fragment.appendChild(node);

@@ -7,12 +7,13 @@
 #signal-board .signal-hole[data-filled="true"]::before { border-style: solid; border-color: var(--color-border); }
 #signal-board .signal-hole[aria-pressed="true"] { outline: 2px solid var(--color-accent); outline-offset: 3px; background: rgba(154,217,209,.12); }
 #signal-board .signal-hole:focus-visible { outline: 3px solid var(--color-heading); outline-offset: 3px; }
-#signal-board .signal-hole:disabled { cursor: default; opacity: .7; }
+#signal-board .signal-hole:disabled { cursor: default; opacity: 1; }
 #signal-board .signal-fixed { pointer-events: none; }
 #signal-board .signal-endpoint { position: absolute; top: var(--endpoint-top); left: 50%; transform: translateX(-50%); width: 44px; height: 44px; display: grid; place-items: center; }
 #signal-board .signal-link { position: absolute; left: 50%; transform: translateX(-50%); width: 2px; background: #9ad9d1; }
 .signal-palette { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; }
 .signal-palette [data-choice] { display: grid; place-items: center; min-width: 52px; min-height: 52px; padding: 3px; }
+.signal-palette [data-choice]:disabled { opacity: 1; }
 .signal-palette [data-choice][aria-pressed="true"] { background: #273c32; border-color: var(--color-accent); }
 .signal-palette .gate-glyph { width: 38px; height: 38px; }
 .signal-twin { position: relative; width: 36px; height: 44px; display: flex; flex-direction: column; align-items: center; }

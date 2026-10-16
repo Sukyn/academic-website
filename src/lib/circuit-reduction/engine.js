@@ -338,11 +338,6 @@ export function solveShortest(circuit, { maxDepth = 16, maxNodes = 150000, allow
   return { status: 'limit', nodes };
 }
 
-export function parseCircuit(text) {
-  const rows = text.trim().split(/\n/).map(row => row.trim().split(/[\s,]+/));
-  return validateCircuit(rows);
-}
-
 // Independently evaluate up to four wires for custom-circuit validation. A linked
 // X endpoint is a Z endpoint conjugated by H on that wire (also covers two X ends).
 export function isIdentity(circuit) {

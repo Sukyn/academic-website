@@ -5,7 +5,7 @@ import { createScoreboard } from '../../src/lib/games/scoreboard.js';
 const NAME_KEY = 'games.nickname.v1';
 const settled = () => new Promise(resolve => setImmediate(resolve));
 
-function setup(context, { completionOnly = false, nickname = null, blockedStorage = false } = {}) {
+function setup(context, { completionOnly = false, nickname = null, blockedStorage = false, benchmark = { optimalMoves: 2 } } = {}) {
   class Element {
     constructor(tag = '') { this.tagName = tag.toUpperCase(); this.textContent = ''; this.children = []; this.value = ''; this.valid = true; this.attributes = {}; this.listeners = new Map(); }
     appendChild(child) { this.children.push(child); }
@@ -45,7 +45,7 @@ function setup(context, { completionOnly = false, nickname = null, blockedStorag
   globalThis.fetch = (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }));
   let selected = { game: completionOnly ? 'quantum-signals' : 'circuit-reduction', level: 1 }, eligible = true, updates = 0, closed = 0;
   const scores = createScoreboard({
-    get, selector: () => selected, completionOnly, ...(!completionOnly && { benchmark: () => ({ optimalMoves: 2 }) }),
+    get, selector: () => selected, completionOnly, ...(!completionOnly && { benchmark: () => benchmark }),
     canSubmit: () => eligible, sequence: () => completionOnly ? [{ hole: 'a', gate: 'X' }] : [{ rule: 'cancel-h', row: 0, column: 1 }],
     update: () => updates++, onDailyClosed: () => closed++,
   });
@@ -63,6 +63,20 @@ function setup(context, { completionOnly = false, nickname = null, blockedStorag
     get updates() { return updates; }, get closed() { return closed; },
   };
 }
+
+test('shot rankings omit absent benchmarks and keep the first player row and shot units', async context => {
+  const app = setup(context, { benchmark: { unit: 'shot' } });
+  const load = app.scores.load();
+  assert.equal(app.get('leaderboard-body').children.length, 0);
+  app.reply(app.requests[0], app.board(1)); await load;
+  assert.deepEqual(app.get('leaderboard-body').children.map(row => row.children.map(cell => cell.textContent)), [[1, 'Ada (you)', 2]]);
+  assert.equal(app.get('leaderboard-body').children[0].className, 'current-player');
+  assert.match(app.get('player-rank').textContent, /Best: 2 shots$/);
+  const next = app.scores.load(), board = app.board(1);
+  board.entries[0].moves = board.currentPlayer.moves = 1;
+  app.reply(app.requests[1], board); await next;
+  assert.match(app.get('player-rank').textContent, /Best: 1 shot$/);
+});
 
 test('round changes reject late leaderboard and score replies even when transport ignores abort', async context => {
   const app = setup(context);

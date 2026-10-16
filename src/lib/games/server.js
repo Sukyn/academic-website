@@ -4,6 +4,9 @@ import { getBoard as reductionBoard, validateSubmission as reductionSubmission, 
 import { DAILY_START as REDUCTION_START, dailyPuzzle as reductionDaily } from '../circuit-reduction/puzzles.js';
 import { DAILY_START as SIGNALS_START, dailyPuzzle as signalsDaily } from '../quantum-signals/puzzles.js';
 import { getBoard as signalsBoard, validateSubmission as signalsCompletion, MAX_SUBMISSION_BYTES as SIGNALS_BYTES } from '../quantum-signals/completions.js';
+import { DAILY_START as GRAPH_START, dailyPuzzle as graphDaily } from '../graph-states/puzzles.js';
+import { getBoard as graphBoard, validateSubmission as graphSubmission, MAX_SUBMISSION_BYTES as GRAPH_BYTES } from '../graph-states/leaderboard.js';
+import { optimalShots } from '../graph-states/engine.js';
 import { MAX_SUBMISSION_BYTES, SubmissionError } from './submission.js';
 
 // Games share transport; each validates its own score or completion record.
@@ -30,6 +33,14 @@ const games = {
     dailyPuzzle(date) {
       const { wires, columns, target } = signalsDaily(date);
       return { wires, columns, target };
+    },
+  },
+  'graph-states': {
+    getBoard: graphBoard, validateSubmission: graphSubmission,
+    startDate: GRAPH_START, maxBytes: GRAPH_BYTES,
+    dailyPuzzle(date) {
+      const graph = graphDaily(date), { vertices, edges } = graph;
+      return { vertices, edges, optimalMoves: optimalShots(graph) };
     },
   },
 };

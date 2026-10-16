@@ -20,7 +20,7 @@ export function decodeCustomPuzzle(source) {
 export function createCustomPuzzleJson({ get, game, exportPuzzle, importPuzzle }) {
   const dialog = get('puzzle-json-dialog'), text = get('puzzle-json-text'), status = get('puzzle-json-status');
   let kind = 'input', inputText = '', generation = 0;
-  function close() { dialog.close(); }
+  function close() { if (dialog.open) dialog.close(); }
   function open(next) {
     generation++; kind = next; status.textContent = '';
     const sharing = kind === 'share';
