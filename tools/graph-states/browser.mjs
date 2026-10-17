@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { applyMove, optimalShots, pathGraph, sequenceCost, solutionForGraph } from '../../src/lib/graph-states/engine.js';
-import { COMPLEMENT_DURATION, graphMoveStages } from '../../src/lib/graph-states/animation.js';
+import { COMPLEMENT_DURATION, REPLAY_COMPLEMENT_DURATION, graphMoveStages } from '../../src/lib/graph-states/animation.js';
 import { GRAPH_NODE_RADIUS, graphPositions } from '../../src/lib/graph-states/rendering.js';
 import { LEVELS } from '../../src/lib/graph-states/puzzles.js';
 import { TUTORIAL } from '../../src/lib/graph-states/tutorial.js';
@@ -332,6 +332,9 @@ async function animatedMoves(name, options) {
       .filter((vertex, index, all) => !index || vertex !== all[index - 1]);
     assert.deepEqual(replayVertices, ['0', '2', '0'], 'Replay includes all three animated pivot stages');
     assert.ok(motion.some(state => state.phase === 'pulse') && motion.some(state => state.phase === 'rewrite'));
+    duration = motion.at(-1).time - motion.find(state => state.busy).time;
+    assert.ok(duration >= 3 * REPLAY_COMPLEMENT_DURATION - 100 && duration <= 3 * REPLAY_COMPLEMENT_DURATION + 300,
+      `Replay keeps all three stages at its faster pace (${duration} ms)`);
     assert.deepEqual(await edges(page), applyMove(initial, { edge: [0, 2] }).edges);
     assert.equal(await page.locator('#sequence button').count(), 1, 'Animated replay preserves the played sequence');
     await tap(page.locator('#resume-round'));
@@ -402,6 +405,26 @@ async function animatedMoves(name, options) {
     await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating !== 'true');
     assert.deepEqual(await edges(page), pathGraph(3).edges, 'Reduced motion applies the graph operation immediately');
     assert.ok(performance.now() - started < 1000, 'Reduced motion skips the timed animation');
+    await closeWin(page, tap);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => {
+      const read = () => JSON.stringify(['show-results', 'share-replay', 'share-result', 'next-level', 'result-next', 'score-form', 'result-actions']
+        .map(id => { const node = document.getElementById(id); return [id, node.hidden, node.disabled]; }));
+      window.graphReplayUi = [read()];
+      window.graphReplayObserver = new MutationObserver(() => {
+        const state = read();
+        if (state !== window.graphReplayUi.at(-1)) window.graphReplayUi.push(state);
+      });
+      window.graphReplayObserver.observe(document.body, { attributes: true, subtree: true });
+    });
+    await tap(page.locator('#replay'));
+    await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating === 'true');
+    await page.waitForFunction(() => document.getElementById('review-note').textContent === 'Operation 1 / 1');
+    assert.equal(await page.evaluate(() => window.graphReplayUi.length), 1,
+      'Completed-round buttons and score fields never appear, disappear or change availability during replay');
+    assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Replay does not reopen results');
+    await page.evaluate(() => window.graphReplayObserver.disconnect());
+    await tap(page.locator('#resume-round'));
     await fits(page);
     await captureRewrite(context, name, options, initial);
     console.log(`${name}: pulses, neighbour glow, edge growth/cancellation, pivot stages, input lock, cancellation and reduced motion passed.`);

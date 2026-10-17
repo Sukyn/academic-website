@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { alignTarget, grayBasis, basisRow } from '../../src/lib/quantum-signals/state-visuals.js';
+import { canonicalTarget, grayBasis, basisRow } from '../../src/lib/quantum-signals/state-visuals.js';
 import { stateEqual } from '../../src/lib/quantum-signals/engine.js';
 
 test('Gray layout changes one bit between adjacent rows and maps back to the original basis', () => {
@@ -18,19 +18,18 @@ test('Gray layout changes one bit between adjacent rows and maps back to the ori
   }
 });
 
-test('Goal markers align equivalent states while preserving the output trace phase', () => {
+test('Goal markers choose one fixed global phase independently of the player output', () => {
   const target = [Math.SQRT1_2, 0, 0, -Math.SQRT1_2];
   const positive = [...target], negative = target.map(value => value === 0 ? 0 : -value);
-  assert.deepEqual(alignTarget(target, positive), positive);
-  assert.deepEqual(alignTarget(target, negative), negative);
-  assert.deepEqual(alignTarget(negative, positive), positive);
-  assert.ok(stateEqual(alignTarget(target, negative), target));
+  assert.deepEqual(canonicalTarget(target), positive);
+  assert.deepEqual(canonicalTarget(negative), positive);
+  assert.ok(stateEqual(canonicalTarget(negative), target));
 });
 
-test('Alignment preserves probabilities, normalization and every relative phase', () => {
+test('Canonical targets preserve probabilities, normalization and every relative phase', () => {
   const target = [.5, -.5, .5, -.5], output = [-Math.SQRT1_2, 0, 0, Math.SQRT1_2];
-  const aligned = alignTarget(target, output);
-  assert.deepEqual(aligned, [-.5, .5, -.5, .5]);
+  const aligned = canonicalTarget(target);
+  assert.deepEqual(aligned, [.5, -.5, .5, -.5]);
   assert.deepEqual(aligned.map(value => value ** 2), target.map(value => value ** 2));
   assert.equal(aligned.reduce((norm, value) => norm + value ** 2, 0), 1);
   for (let index = 1; index < target.length; index++) {
@@ -39,21 +38,20 @@ test('Alignment preserves probabilities, normalization and every relative phase'
   assert.equal(stateEqual(aligned, output), false, 'Different relative phase cannot be aligned into a win.');
 });
 
-test('Alignment uses the first shared populated outcome, even when the first target outcome is absent', () => {
-  const target = [-Math.SQRT1_2, Math.SQRT1_2, 0, 0], output = [0, -1, 0, 0];
-  assert.deepEqual(alignTarget(target, output), [Math.SQRT1_2, -Math.SQRT1_2, 0, 0]);
-  const tiny = [1e-12, -1], opposite = [-1, 1e-12];
-  assert.deepEqual(alignTarget(tiny, opposite), [-1e-12, 1], 'Numerical dust does not choose the reference.');
+test('The first populated target outcome fixes its reference, ignoring numerical dust', () => {
+  const target = [-Math.SQRT1_2, Math.SQRT1_2, 0, 0];
+  assert.deepEqual(canonicalTarget(target), [Math.SQRT1_2, -Math.SQRT1_2, 0, 0]);
+  assert.deepEqual(canonicalTarget([1e-12, -1]), [-1e-12, 1], 'Numerical dust does not choose the reference.');
 });
 
-test('Disjoint support uses a positive first target outcome and never changes either input', () => {
+test('Canonical targets are copied without mutating their puzzle data', () => {
   const target = Object.freeze([0, -Math.SQRT1_2, Math.SQRT1_2, 0]);
   const output = Object.freeze([1, 0, 0, 0]);
-  const aligned = alignTarget(target, output);
+  const aligned = canonicalTarget(target);
   assert.deepEqual(aligned, [0, Math.SQRT1_2, -Math.SQRT1_2, 0]);
   assert.notEqual(aligned, target);
   aligned[0] = 42;
   assert.deepEqual(target, [0, -Math.SQRT1_2, Math.SQRT1_2, 0]);
   assert.deepEqual(output, [1, 0, 0, 0]);
-  assert.notEqual(alignTarget(output, output), output, 'Already aligned states are still copied.');
+  assert.notEqual(canonicalTarget(output), output, 'Already canonical states are still copied.');
 });

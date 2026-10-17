@@ -31,7 +31,7 @@ async function drainBoardResponses() {
 }
 
 async function pageFor(options, { blockedStorage = false, api = fixture, now = process.env.GAME_TEST_TIME ?? '2026-10-15T10:00:00Z' } = {}) {
-  const context = await browser.newContext({ ...options, reducedMotion: 'reduce' });
+  const context = await browser.newContext({ reducedMotion: 'reduce', ...options });
   if (blockedStorage) await context.addInitScript(() => {
     for (const method of ['getItem', 'setItem', 'removeItem']) Storage.prototype[method] = () => { throw new DOMException('Storage is blocked.', 'SecurityError'); };
   });
@@ -85,6 +85,7 @@ async function pageFor(options, { blockedStorage = false, api = fixture, now = p
   await page.locator('[data-hole]').first().waitFor();
   assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true', 'Tutorial is the default mode');
   assert.equal(await page.locator('#tutorial-panel').isVisible(), true);
+  assert.equal(await page.locator('#autofocus').getAttribute('aria-pressed'), 'false', 'Automatic gate navigation is off on a new page');
   assert.equal(await page.locator('#circuit-editor-controls').evaluate(node => node.hidden), true, 'The tutorial hides custom editing controls');
   assert.equal(await page.locator('#leaderboard-section').isVisible(), false, 'The tutorial has no completion list');
   assert.equal(pageCompletions, 0, 'Opening the tutorial never requests a completion list');
@@ -480,6 +481,7 @@ async function keyboardAndMouse(page) {
   assert.equal(await page.locator('#undo').isDisabled(), true, 'Right-clicking an empty slot does not create an undo step');
 
   await page.locator('#level').selectOption('11');
+  await autofocus(page, true);
   await page.locator('[data-choice="I"]').focus();
   const keypadPuzzle = LEVELS[10], solution = solutionFor(keypadPuzzle);
   for (const hole of getHoles(keypadPuzzle)) {
@@ -492,10 +494,12 @@ async function keyboardAndMouse(page) {
   await page.locator('#win-dialog[open]').waitFor();
   await completionBoard(page);
   await closeWin(page);
+  await autofocus(page, false);
   console.log('QoL: focus selection, spatial arrows, single/two-wire numbered shortcuts, unsupported keys, right-click erase and undo verified.');
 }
 
 async function horizontalNavigation(page) {
+  await autofocus(page, true);
   await page.locator('#level').selectOption('12');
   await page.locator('[data-hole="a"]').focus();
   await page.locator('#signal-scroll').evaluate(element => { element.scrollLeft = 0; });
@@ -522,6 +526,105 @@ async function horizontalNavigation(page) {
   await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
   await pinnedBasisLabels(page);
   await targetScrollPositions(page);
+  await autofocus(page, false);
+}
+
+async function autofocus(page, enabled) {
+  const button = page.locator('#autofocus');
+  if (await button.getAttribute('aria-pressed') !== String(enabled)) await activate(page, button);
+  assert.equal(await button.getAttribute('aria-pressed'), String(enabled));
+}
+
+const targetMarkers = page => page.locator('#signal-target .signal-flow-target').evaluateAll(nodes => nodes.map(node => node.outerHTML));
+const scrollPositions = page => page.evaluate(() => ['signal-scroll', 'flow-scroll'].map(id => document.getElementById(id).scrollLeft));
+
+function phaseExperiment() {
+  const columns = Array.from({ length: 10 }, () => []);
+  columns[0] = [{ gate: 'X', wires: [0] }, { gate: 'H', wires: [1] }];
+  columns[2] = [{ id: 'h1', wires: [0], choices: ['I', 'H', 'Z'] }];
+  columns[5] = [{ id: 'h2', wires: [0], choices: ['I', 'X'] }];
+  columns[8] = [{ id: 'h3', wires: [1], choices: ['I', 'Z'] }];
+  return { wires: 2, columns, target: [Math.SQRT1_2, -Math.SQRT1_2, 0, 0] };
+}
+
+async function stableTargetAndAutofocus(page) {
+  await autofocus(page, false);
+  await activate(page, page.locator('#mode-daily'));
+  await page.locator('#daily-heading:not([hidden])').waitFor();
+  const daily = dailyPuzzle(fixture.getDaily('quantum-signals').date), initialDailyTarget = await targetMarkers(page);
+  const first = getHoles(daily)[0];
+  for (const gate of first.choices) {
+    await place(page, first.id, gate);
+    assert.deepEqual(await targetMarkers(page), initialDailyTarget, 'Trying daily gates never changes the target phases');
+    if (await page.locator('#win-dialog').evaluate(dialog => dialog.open)) await closeWin(page);
+  }
+  await activate(page, page.locator('#mode-random'));
+  await openDetails(page, '#advanced-features');
+  const puzzle = phaseExperiment();
+  await importPuzzle(page, puzzleData(puzzle));
+  const target = await targetMarkers(page), scroll = await scrollPositions(page);
+  assert.equal(target.length, 2, 'The target has both a positive and a negative phase');
+  for (const gate of ['Z', 'H', 'Z']) {
+    await activate(page, page.locator(`[data-choice="${gate}"]`));
+    assert.equal(await page.locator('[data-hole="h1"]').getAttribute('aria-pressed'), 'true', 'Trying a gate keeps the same selected hole by default');
+    assert.deepEqual(await scrollPositions(page), scroll, 'Trying gates preserves horizontal exploration by default');
+    assert.deepEqual(await targetMarkers(page), target, 'A global phase flip in the output never recolours the fixed target');
+  }
+  await autofocus(page, true);
+  await activate(page, page.locator('[data-choice="I"]'));
+  assert.equal(await page.locator('[data-hole="h2"]').getAttribute('aria-pressed'), 'true', 'Autofocus explicitly enables advancing to the next empty hole');
+  await centeredProgress(page, 'h2', 5);
+  await autofocus(page, false);
+  await activate(page, page.locator('[data-choice="X"]'));
+  assert.equal(await page.locator('[data-hole="h2"]').getAttribute('aria-pressed'), 'true', 'Disabling Autofocus restores gate experimentation');
+  assert.deepEqual(await targetMarkers(page), target);
+  await activate(page, page.locator('#undo'));
+  assert.deepEqual(await targetMarkers(page), target, 'Undo preserves the target');
+  await activate(page, page.locator('#restart'));
+  assert.deepEqual(await targetMarkers(page), target, 'Reset preserves the target');
+  await noOverflow(page); await accessibility(page);
+}
+
+async function flowAnimations(page) {
+  await activate(page, page.locator('#mode-random'));
+  await openDetails(page, '#advanced-features');
+  const puzzle = phaseExperiment();
+  await importPuzzle(page, puzzleData(puzzle));
+  const target = await targetMarkers(page);
+  const active = page.locator('#signal-flow[data-flow-animating="true"][aria-busy="true"]');
+  const settled = () => page.waitForFunction(() => !document.getElementById('signal-flow').hasAttribute('data-flow-animating'));
+  await place(page, 'h1', 'Z');
+  assert.equal(await active.count(), 1, 'Placing a gate animates changed paths towards the output');
+  const properties = await page.locator('#signal-flow').evaluate(svg => svg.getAnimations({ subtree: true })
+    .flatMap(animation => animation.effect.getKeyframes().flatMap(frame => Object.keys(frame)))
+    .filter(name => !['offset', 'computedOffset', 'easing', 'composite'].includes(name)));
+  assert.ok(properties.length > 0 && properties.every(name => name === 'opacity'), 'Animation keeps SVG geometry and bounds fixed');
+  const animationBudget = await page.evaluate(() => 2 * (Math.ceil(document.querySelector('#flow-scroll').clientWidth / 88) + 2));
+  assert.ok((await page.locator('#signal-flow').evaluate(svg => svg.getAnimations({ subtree: true }).length)) <= animationBudget,
+    'Only visible columns keep active transitions, including the boundary dots');
+  assert.deepEqual(await targetMarkers(page), target, 'The target remains fixed during path animation');
+  await page.locator('#flow-panel').screenshot({ path: resolve(output, `animated-paths-${page.viewportSize().width}.png`) });
+  await activate(page, page.locator('[data-choice="H"]'));
+  await activate(page, page.locator('[data-choice="Z"]'));
+  await settled();
+  await basisFlow(page, puzzle, { h1: 'Z' });
+  assert.equal(await page.locator('#signal-flow .signal-flow-ghost, #signal-flow clipPath').count(), 0, 'Rapid placements clean up obsolete animations');
+  await activate(page, page.locator('#undo'));
+  await activate(page, page.locator('#restart'));
+  await settled();
+  assert.equal(await page.locator('#signal-flow .signal-flow-ghost, #signal-flow clipPath').count(), 0, 'Undo followed by reset removes every animation overlay');
+  await basisFlow(page, puzzle);
+  for (const [hole, gate] of [['h1', 'Z'], ['h2', 'X']]) {
+    await place(page, hole, gate); await settled();
+  }
+  await place(page, 'h3', 'Z');
+  assert.equal(await active.count(), 1);
+  assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Completion waits until the final paths have arrived');
+  await page.locator('#win-dialog[open]').waitFor();
+  assert.equal(await active.count(), 0);
+  assert.deepEqual(await targetMarkers(page), target, 'A globally reversed winning state still leaves the target unchanged');
+  await closeWin(page); await basisFlow(page, puzzle, { h1: 'Z', h2: 'X', h3: 'Z' });
+  await noOverflow(page); await accessibility(page);
 }
 
 async function centeredProgress(page, hole, column) {
@@ -573,6 +676,7 @@ async function completionInView(page, columns) {
 }
 
 async function progressNavigation(page) {
+  await autofocus(page, true);
   let release;
   const held = new Promise(resolve => { release = resolve; });
   const holdBoard = async route => {
@@ -653,6 +757,7 @@ async function progressNavigation(page) {
   await load();
   assert.equal(await page.locator('#flow-panel').evaluate(node => node.scrollTop), 0, 'Loading another puzzle returns the mirror to the first basis lane');
   await noOverflow(page); await accessibility(page);
+  await autofocus(page, false);
   await page.screenshot({ path: resolve(output, `navigation-${size.width}.png`), fullPage: true });
   await page.locator('#flow-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
   await activate(page, page.locator('#new-puzzle'));
@@ -1260,6 +1365,7 @@ async function controlledGeometry(page, screenshot) {
   await gateGeometry(page, puzzle, { h1: 'CX' });
   await place(page, 'h1', 'XC');
   await gateGeometry(page, puzzle, { h1: 'XC' });
+  await activate(page, page.locator('[data-hole="h2"]'));
   await visibleChoices(page, getHoles(puzzle)[1]);
   await place(page, 'h2', 'CX');
   await gateGeometry(page, puzzle, { h1: 'XC', h2: 'CX' });
@@ -1591,6 +1697,22 @@ async function focusedNavigation() {
   console.log('Progress navigation: desktop and 320/390/768 px touch layouts center auto-advance, undo and replay; reveal completed targets; preserve manual exploration and page position; reset the dense mirror to its first lane.');
 }
 
+async function focusedAlpha() {
+  for (const options of [{ viewport: { width: 1440, height: 1050 } },
+    { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {
+    const page = await pageFor({ ...options, reducedMotion: 'no-preference' });
+    await stableTargetAndAutofocus(page);
+    await flowAnimations(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await activate(page, page.locator('#restart'));
+    await place(page, 'h1', 'Z');
+    assert.equal(await page.locator('#signal-flow[data-flow-animating]').count(), 0, 'Reduced motion displays the new paths immediately');
+    await page.context().close();
+  }
+  assert.deepEqual(errors, [], 'No uncaught animation or Autofocus errors');
+  console.log('Signals alpha: fixed daily/custom targets, default experimentation, optional Autofocus, animated paths, rapid edits, cancellation and reduced motion passed on desktop/mobile.');
+}
+
 async function focusedEditor() {
   const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
   await visualEditor(desktop);
@@ -1623,6 +1745,7 @@ try {
   else if (process.env.GAME_BROWSER_FOCUS === 'navigation') await focusedNavigation();
   else if (process.env.GAME_BROWSER_FOCUS === 'editor') await focusedEditor();
   else if (process.env.GAME_BROWSER_FOCUS === 'registration') await focusedRegistration();
+  else if (process.env.GAME_BROWSER_FOCUS === 'alpha') await focusedAlpha();
   else {
   const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
   await noOverflow(desktop);
@@ -1639,6 +1762,7 @@ try {
   await closeWin(desktop); await desktop.locator('#undo').click();
   assert.equal(await desktop.locator('[data-hole][data-filled="true"]').count(), 0, 'Undo clears the keyboard placement');
   await desktop.locator('#restart').click();
+  await autofocus(desktop, true);
   await desktop.locator('#level').selectOption('11');
   await desktop.locator('[data-choice="H"]').focus();
   await desktop.keyboard.press('Enter');
@@ -1650,6 +1774,7 @@ try {
   await desktop.keyboard.press('Enter');
   assert.equal(await desktop.locator('#erase-gate').isVisible(), false, 'Erase is only shown for a filled hole');
   assert.equal(await desktop.evaluate(() => document.activeElement?.dataset.hole), 'a', 'Erasing from the keyboard restores focus to the cleared hole');
+  await autofocus(desktop, false);
   await keyboardAndMouse(desktop);
   for (const level of LEVELS) {
     await desktop.locator('#level').selectOption(String(LEVELS.indexOf(level) + 1));

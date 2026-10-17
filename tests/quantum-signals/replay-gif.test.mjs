@@ -155,6 +155,20 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
   }
 });
 
+test('GIF target markers stay fixed when a placement flips the output global phase', context => {
+  const rendered = surfaces(context), half = Math.SQRT1_2;
+  const puzzle = { wires: 2, columns: [[{ gate: 'X', wires: [0] }, { gate: 'H', wires: [1] }],
+    [{ id: 'a', wires: [0], choices: ['I', 'Z'] }], [{ id: 'b', wires: [1], choices: ['I', 'Z'] }]],
+    target: [0, 0, half, -half] };
+  encodeReplay({ label: 'Fixed target', puzzle, sequence: [{ hole: 'a', gate: 'Z' }, { hole: 'b', gate: 'Z' }] });
+  const targetX = (960 + puzzle.columns.length * 88) / 2 + 54;
+  const markers = rendered[0].frames.map(frame => frame.filter(command =>
+    command.name === 'arc' && command.args[0] === targetX && command.strokeStyle === '#ffffff')
+    .map(command => [command.args, command.fillStyle]));
+  assert.equal(markers[0].length, 2);
+  for (const frame of markers) assert.deepEqual(frame, markers[0]);
+});
+
 test('replay circuit wires stay white, straight and centered for every state', context => {
   const rendered = surfaces(context);
   for (const index of [0, 1, 2, 6, 9]) {

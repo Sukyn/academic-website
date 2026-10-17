@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMove, pathGraph } from '../../src/lib/graph-states/engine.js';
-import { animateGraphMove, graphMoveStages, COMPLEMENT_DURATION } from '../../src/lib/graph-states/animation.js';
+import { animateGraphMove, graphMoveStages, COMPLEMENT_DURATION, REPLAY_COMPLEMENT_DURATION } from '../../src/lib/graph-states/animation.js';
 import { GRAPH_NODE_RADIUS, graphPositions } from '../../src/lib/graph-states/rendering.js';
 
 function animationDom(context, reducedMotion = false) {
@@ -198,6 +198,20 @@ test('pivot gives each of its three complementations the same uncompressed timin
   advance(3 * COMPLEMENT_DURATION);
   assert.equal(await animation.finished, true);
   assert.equal(pending(), 0);
+});
+
+test('replay uses faster motion while preserving every pivot stage', async context => {
+  const { board, advance, pending } = animationDom(context);
+  const move = { edge: [0, 1] }, stages = graphMoveStages(graph, move);
+  const replay = animateGraphMove(board, graph, move, { duration: REPLAY_COMPLEMENT_DURATION });
+  assert.ok(REPLAY_COMPLEMENT_DURATION < COMPLEMENT_DURATION);
+  for (let index = 0; index < stages.length; index++) {
+    advance((index + .5) * REPLAY_COMPLEMENT_DURATION);
+    assert.equal(board.dataset.animationVertex, String(stages[index].vertex));
+    assert.equal(board.dataset.animationPhase, 'rewrite');
+  }
+  advance(stages.length * REPLAY_COMPLEMENT_DURATION);
+  assert.equal(await replay.finished, true); assert.equal(pending(), 0);
 });
 
 test('cancellation clears a partial stage and cannot schedule any later updates', async context => {

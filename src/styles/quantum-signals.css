@@ -36,6 +36,9 @@
 .signal-flow-gutter rect { fill: var(--color-surface-2); }
 .signal-flow-heading { fill: var(--color-muted); font: 11px var(--font-ui); }
 .signal-flow-selection { fill: #9ad9d1; fill-opacity: .06; stroke: #9ad9d1; stroke-opacity: .25; }
+.signal-flow-ghost { pointer-events: none; }
+.signal-flow-ghost path { fill: none; stroke-linecap: round; stroke-opacity: .85; }
+.signal-flow-ghost circle { stroke-width: 1.4; }
 #custom-details { margin-top: .5rem; }
 .puzzle-editor { display: grid; gap: .8rem; margin-top: .7rem; text-align: left; }
 .puzzle-editor label { display: grid; gap: .35rem; min-width: 0; }

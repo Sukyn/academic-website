@@ -148,6 +148,65 @@ test('manual rotation takes control from an active animation', () => {
   assert.deepEqual(instance.view, manualView);
 });
 
+test('mouse and touch drags move the visible sphere with the pointer on both axes', () => {
+  for (const pointerType of ['mouse', 'touch']) for (const yaw of [0, 0.72, Math.PI - 0.05]) {
+    for (const pitch of [-0.8, 0, 0.8]) for (const [dx, dy] of [[20, 0], [-20, 0], [0, 20], [0, -20]]) {
+      const instance = sphere(), captured = new Set();
+      Object.assign(instance.canvas, {
+        getBoundingClientRect: () => ({ left: 25, top: 40 }),
+        setPointerCapture: id => captured.add(id), hasPointerCapture: id => captured.has(id),
+        releasePointerCapture: id => captured.delete(id),
+      });
+      instance.pointers = new Map();
+      instance.view = { yaw, pitch, zoom: 1 };
+      instance.render();
+      const point = [...instance.front], model = { ...instance.model };
+      const event = { pointerId: 1, pointerType, button: 0, clientX: 325, clientY: 290 };
+      const start = instance.project(point);
+      instance.pointerDown(event);
+      instance.pointerMove({ ...event, clientX: event.clientX + dx, clientY: event.clientY + dy });
+      const dragged = instance.project(point);
+      if (dx) assert.ok((dragged.x - start.x) * dx > 0, `${pointerType}: horizontal drag follows the pointer`);
+      if (dy) assert.ok((dragged.y - start.y) * dy > 0, `${pointerType}: vertical drag follows the pointer`);
+      instance.pointerUp(event, true);
+      assert.equal(instance.pointers.size, 0);
+      assert.equal(captured.size, 0);
+      assert.deepEqual(instance.model, model, 'Rotating the camera preserves the circuit and target');
+      const view = { ...instance.view };
+      instance.pointerMove({ ...event, clientX: event.clientX + 100 });
+      assert.deepEqual(instance.view, view, 'Cancelled pointers no longer rotate the sphere');
+    }
+  }
+});
+
+test('two-finger dragging keeps pinch zoom and cancels automatic camera following', () => {
+  const instance = sphere(), captured = new Set();
+  Object.assign(instance.canvas, {
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    setPointerCapture: id => captured.add(id), hasPointerCapture: id => captured.has(id),
+    releasePointerCapture: id => captured.delete(id),
+  });
+  instance.pointers = new Map();
+  const point = [...instance.front], start = instance.project(point);
+  const follow = instance.cameraTo([0, 0, 1]);
+  const touch = (pointerId, clientX, clientY = 250) => ({ pointerId, clientX, clientY, pointerType: 'touch', button: 0 });
+  instance.pointerDown(touch(1, 280));
+  instance.pointerDown(touch(2, 320));
+  instance.pointerMove(touch(1, 300, 270));
+  instance.pointerMove(touch(2, 340, 270));
+  const dragged = instance.project(point), view = { ...instance.view };
+  assert.ok(dragged.x > start.x && dragged.y > start.y, 'A two-finger pan follows both axes');
+  close(instance.view.zoom, 1);
+  follow(1);
+  assert.deepEqual(instance.view, view, 'Manual gestures retain control over an unfinished gate animation');
+  instance.pointerMove(touch(2, 360, 270));
+  close(instance.view.zoom, 1.5);
+  instance.pointerUp(touch(2, 360, 270), true);
+  instance.pointerUp(touch(1, 300, 270), true);
+  assert.equal(instance.pointers.size, 0);
+  assert.equal(captured.size, 0);
+});
+
 test('focus centers back-facing targets and poles once without changing the round or zoom', () => {
   const instance = sphere(), sequence = 'THT';
   instance.setState({ sequence, state: [...sequence].reduce(applyGate, START_STATE), showTrace: true });

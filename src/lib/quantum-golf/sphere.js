@@ -114,7 +114,7 @@ export class BlochSphere {
   }
 
   rotateBy(dx, dy) {
-    this.view = { ...this.view, yaw: this.view.yaw + dx * 0.007,
+    this.view = { ...this.view, yaw: this.view.yaw - dx * 0.007,
       pitch: clamp(this.view.pitch + dy * 0.007, -Math.PI / 2, Math.PI / 2) };
     this.render();
   }

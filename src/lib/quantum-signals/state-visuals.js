@@ -13,12 +13,8 @@ export function basisRow(basis) {
   return row;
 }
 
-// Compare relative phase in the output's reference frame. One global sign may
-// change; flipping individual outcomes would hide a physically different state.
-export function alignTarget(target, output) {
-  const populated = amplitude => Math.abs(amplitude) > 1e-9;
-  const common = target.findIndex((amplitude, index) => populated(amplitude) && populated(output[index]));
-  const reference = common < 0 ? target.find(populated) : target[common] * output[common];
-  const sign = reference < 0 ? -1 : 1;
+// Pick the goal's global phase once, independently of the player's circuit.
+export function canonicalTarget(target) {
+  const sign = target.find(amplitude => Math.abs(amplitude) > 1e-9) < 0 ? -1 : 1;
   return target.map(amplitude => amplitude === 0 ? 0 : amplitude * sign);
 }

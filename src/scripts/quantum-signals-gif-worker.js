@@ -1,7 +1,7 @@
 import * as gifenc from 'gifenc';
 import { applyPlacement, controlWire, simulate, validatePuzzle } from '../lib/quantum-signals/engine.js';
 import { CIRCUIT_COLORS as colors, drawGate } from '../lib/games/circuit-graphics.js';
-import { PHASE_COLORS, PHASE_PATH_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, alignTarget, targetRadius, grayBasis, basisRow } from '../lib/quantum-signals/state-visuals.js';
+import { PHASE_COLORS, PHASE_PATH_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, canonicalTarget, targetRadius, grayBasis, basisRow } from '../lib/quantum-signals/state-visuals.js';
 import { flowTrace } from '../lib/quantum-signals/flow.js';
 import { installReplayEncoder } from '../lib/games/replay-gif.js';
 
@@ -89,7 +89,7 @@ function drawFlow(ctx, puzzle, placements, top, { imageOnly = false } = {}) {
     ctx.beginPath(); ctx.arc(x, y(basis), target ? targetRadius(amplitude) : 8 * Math.abs(amplitude), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   };
   snapshots.forEach((state, column) => state.forEach((amplitude, basis) => dot(left + column * step, basis, amplitude)));
-  if (!imageOnly) alignTarget(puzzle.target, snapshots.at(-1)).forEach((amplitude, basis) => {
+  if (!imageOnly) canonicalTarget(puzzle.target).forEach((amplitude, basis) => {
     if (Math.abs(amplitude) < 1e-9) {
       ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(targetX, y(basis), 6, 0, Math.PI * 2); ctx.stroke();

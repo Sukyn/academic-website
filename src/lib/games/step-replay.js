@@ -1,5 +1,5 @@
 /** Review snapshots, optionally waiting for a cancellable move animation. */
-export function createStepReplay({ length, canReview, onEnter, onChange, transition = null }) {
+export function createStepReplay({ length, canReview, onEnter, onChange, transition = null, interval = 650 }) {
   let step = null, timer = null, animation = null, revision = 0;
   function clear() {
     revision++;
@@ -19,7 +19,7 @@ export function createStepReplay({ length, canReview, onEnter, onChange, transit
       timer = null;
       const complete = () => {
         step++;
-        timer = step < length() ? setTimeout(advance, 650) : null;
+        timer = step < length() ? setTimeout(advance, interval) : null;
         onChange();
       };
       if (!transition) { complete(); return; }
@@ -31,7 +31,7 @@ export function createStepReplay({ length, canReview, onEnter, onChange, transit
         if (completed) complete(); else onChange();
       });
     };
-    timer = setTimeout(advance, 650);
+    timer = setTimeout(advance, interval);
     onEnter(); onChange(); return true;
   }
   return { get step() { return step; }, get playing() { return timer !== null || animation !== null; }, inspect, play, clear };

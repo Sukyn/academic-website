@@ -1,11 +1,12 @@
 import { gateGlyph, svgNode } from '../games/circuit-graphics.js';
 import { controlWire, stateEqual } from './engine.js';
 import { flowTrace } from './flow.js';
-import { PHASE_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, alignTarget, targetRadius, grayBasis, basisRow } from './state-visuals.js';
+import { PHASE_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, canonicalTarget, targetRadius, grayBasis, basisRow } from './state-visuals.js';
 
 const SLOT = 88, ROW = 88, LEFT = 92, TOP = 46;
+const renderedTargets = new WeakMap();
 const boardWidth = puzzle => LEFT + puzzle.columns.length * SLOT + 64;
-const boundaryX = boundary => LEFT + (boundary - .5) * SLOT;
+export const flowColumnX = boundary => LEFT + (boundary - .5) * SLOT;
 const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
 
 export function gateLabel(gate, wires = [0, 1]) {
@@ -68,7 +69,7 @@ export function highlightFlow(svg, puzzle, selected) {
   const column = selected ? puzzle.columns.findIndex(entries => entries.some(entry => entry.id === selected)) : -1;
   const marker = svg.querySelector('.signal-flow-selection');
   if (!marker || column < 0) return;
-  marker.setAttribute('x', String(boundaryX(column))); marker.dataset.column = String(column);
+  marker.setAttribute('x', String(flowColumnX(column))); marker.dataset.column = String(column);
 }
 
 export function pinFlowLabels(svg, scrollLeft) {
@@ -83,13 +84,16 @@ export function highlightFlowBits(svg, wires = []) {
 
 export function renderFlow(svg, targetSvg, puzzle, placements, selected) {
   const { snapshots, columns, cancellations } = flowTrace(puzzle, placements), output = snapshots.at(-1);
-  const target = alignTarget(puzzle.target, output), count = output.length;
+  const target = canonicalTarget(puzzle.target), count = output.length;
   const width = boardWidth(puzzle) - 52, height = count * 34 + 62;
-  const x = boundaryX, y = basis => 44 + basisRow(basis) * 34;
+  const x = flowColumnX, y = basis => 44 + basisRow(basis) * 34;
   svg.setAttribute('width', String(width)); svg.setAttribute('height', String(height));
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
-  targetSvg.setAttribute('width', '52'); targetSvg.setAttribute('height', String(height));
-  targetSvg.setAttribute('viewBox', '0 0 52 ' + height);
+  const targetChanged = renderedTargets.get(targetSvg) !== puzzle.target;
+  if (targetChanged) {
+    targetSvg.setAttribute('width', '52'); targetSvg.setAttribute('height', String(height));
+    targetSvg.setAttribute('viewBox', '0 0 52 ' + height);
+  }
   targetSvg.dataset.match = String(stateEqual(output, puzzle.target));
   const fragment = document.createDocumentFragment(), description = svgNode('desc', {});
   const describe = state => state.flatMap((amplitude, basis) => Math.abs(amplitude) < 1e-9 ? [] :
@@ -140,18 +144,21 @@ export function renderFlow(svg, targetSvg, puzzle, placements, selected) {
       'aria-label': basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase' });
     fragment.appendChild(node);
   }));
-  const targetFragment = document.createDocumentFragment(), heading = svgNode('text', {
-    x: 26, y: 16, class: 'signal-flow-heading', 'text-anchor': 'middle' });
-  heading.textContent = 'Target'; targetFragment.appendChild(heading);
-  target.forEach((amplitude, basis) => {
-    if (Math.abs(amplitude) < 1e-9) return;
-    const node = svgNode('circle', { class: 'signal-flow-target', 'data-basis': basis, 'data-amplitude': amplitude,
-      'data-phase': amplitude < 0 ? '-' : '+', cx: 26, cy: y(basis), r: targetRadius(amplitude),
-      fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative, role: 'img',
-      'aria-label': 'Target ' + basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase' });
-    targetFragment.appendChild(node);
-  });
-  targetSvg.replaceChildren(targetFragment);
+  if (targetChanged) {
+    const targetFragment = document.createDocumentFragment(), heading = svgNode('text', {
+      x: 26, y: 16, class: 'signal-flow-heading', 'text-anchor': 'middle' });
+    heading.textContent = 'Target'; targetFragment.appendChild(heading);
+    target.forEach((amplitude, basis) => {
+      if (Math.abs(amplitude) < 1e-9) return;
+      const node = svgNode('circle', { class: 'signal-flow-target', 'data-basis': basis, 'data-amplitude': amplitude,
+        'data-phase': amplitude < 0 ? '-' : '+', cx: 26, cy: y(basis), r: targetRadius(amplitude),
+        fill: phaseColor(amplitude), stroke: PHASE_COLORS.negative, role: 'img',
+        'aria-label': 'Target ' + basis.toString(2).padStart(puzzle.wires, '0') + ': ' + Number((amplitude ** 2 * 100).toFixed(2)) + '%, ' + (amplitude < 0 ? '−' : '+') + ' phase' });
+      targetFragment.appendChild(node);
+    });
+    targetSvg.replaceChildren(targetFragment);
+    renderedTargets.set(targetSvg, puzzle.target);
+  }
   fragment.appendChild(gutter); svg.replaceChildren(fragment);
   pinFlowLabels(svg, svg.parentElement?.scrollLeft ?? 0);
 }

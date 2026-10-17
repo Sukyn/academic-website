@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStepReplay } from '../../src/lib/games/step-replay.js';
 
-function fixture(context, count = 3, transition) {
+function fixture(context, count = 3, transition, interval = 650) {
   const timers = new Map(), renders = [];
   let entries = 0, allowed = true, length = count;
   context.mock.method(globalThis, 'setTimeout', (callback, delay) => {
@@ -10,13 +10,13 @@ function fixture(context, count = 3, transition) {
   });
   context.mock.method(globalThis, 'clearTimeout', timer => timers.delete(timer));
   const replay = createStepReplay({ length: () => length, canReview: () => allowed,
-    transition,
+    transition, interval,
     onEnter: () => { entries++; }, onChange: () => renders.push({ step: replay.step, playing: replay.playing }),
   });
   function tick() {
     assert.equal(timers.size, 1);
     const timer = timers.values().next().value;
-    assert.equal(timer.delay, 650); timers.delete(timer); timer.callback();
+    assert.equal(timer.delay, interval); timers.delete(timer); timer.callback();
   }
   return { replay, timers, renders, tick, get entries() { return entries; },
     /** @param {boolean} value */
@@ -35,6 +35,15 @@ test('play renders the initial snapshot once, advances every step and stops on t
   }
   assert.equal(timers.size, 0);
   assert.deepEqual(renders, [0, 1, 2, 3].map(step => ({ step, playing: step < 3 })));
+});
+
+test('games can shorten replay pauses without changing the default pace', context => {
+  const { replay, tick, timers } = fixture(context, 2, null, 200);
+  replay.play();
+  assert.equal(timers.values().next().value.delay, 200);
+  tick(); assert.equal(replay.step, 1);
+  assert.equal(timers.values().next().value.delay, 200);
+  tick(); assert.equal(replay.step, 2); assert.equal(replay.playing, false);
 });
 
 test('animated replay waits for each transition and clearing cancels pending motion', async context => {

@@ -4,6 +4,7 @@ import { GRAPH_NODE_RADIUS, graphPositions, renderGraph } from './rendering.js';
 
 // A pivot plays three complementations at this same pace, without compression.
 export const COMPLEMENT_DURATION = 2400;
+export const REPLAY_COMPLEMENT_DURATION = 800;
 
 const edgeKey = ([u, v]) => `${Math.min(u, v)}:${Math.max(u, v)}`;
 const clamp = value => Math.max(0, Math.min(1, value));
@@ -125,7 +126,7 @@ function drawStage(container, stage, positions) {
 }
 
 /** Animate geometry only; the caller owns the move, final render and input lock. */
-export function animateGraphMove(container, graph, move) {
+export function animateGraphMove(container, graph, move, { duration = COMPLEMENT_DURATION } = {}) {
   const view = container.ownerDocument.defaultView;
   if (view.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     return { finished: Promise.resolve(true), cancel() {} };
@@ -145,14 +146,14 @@ export function animateGraphMove(container, graph, move) {
   };
   const tick = now => {
     if (settled) return;
-    const elapsed = Math.max(0, now - start), next = Math.floor(elapsed / COMPLEMENT_DURATION);
+    const elapsed = Math.max(0, now - start), next = Math.floor(elapsed / duration);
     if (next >= stages.length) { finish(true); return; }
     if (next !== current) {
       drawing.clear();
       current = next;
       drawing = drawStage(container, stages[current], positions);
     }
-    drawing.update((elapsed - current * COMPLEMENT_DURATION) / COMPLEMENT_DURATION);
+    drawing.update((elapsed - current * duration) / duration);
     frame = view.requestAnimationFrame(tick);
   };
   drawing.update(0);

@@ -3,7 +3,7 @@ import { LEVELS, generatePuzzle, DAILY_START } from '../lib/graph-states/puzzles
 import { TUTORIAL } from '../lib/graph-states/tutorial.js';
 import { edgeAtPoint, renderGraph, renderCircuit } from '../lib/graph-states/rendering.js';
 import { correctionGlyph } from '../lib/graph-states/correction-graphics.js';
-import { animateGraphMove } from '../lib/graph-states/animation.js';
+import { animateGraphMove, REPLAY_COMPLEMENT_DURATION } from '../lib/graph-states/animation.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { startDailyFromLink } from '../lib/games/daily-links.js';
@@ -36,7 +36,7 @@ const sharing = createReplayShare({ get,
 });
 const scores = createScoreboard({
   get, selector, benchmark: () => ({ optimalMoves: minimum, unit: 'shot' }), sequence: () => sequence, update: () => update({ board: false }),
-  canSubmit: () => !animation && !daily.loading && canRecord() && isSolved(graph),
+  canSubmit: () => !animation && review.step === null && !daily.loading && canRecord() && isSolved(graph),
   onDailyClosed: () => { daily.info.acceptingScores = false; daily.refresh(); },
 });
 const daily = createDailySession({
@@ -51,10 +51,11 @@ const daily = createDailySession({
   },
 });
 const review = createStepReplay({
+  interval: 200,
   length: () => sequence.length, canReview: () => !animation && !tutorial.active && !daily.loading && !editing,
   onEnter: () => get('win-dialog').close(), onChange: () => update({ follow: true }),
   transition(step) {
-    const job = startAnimation(states[step], sequence[step]);
+    const job = startAnimation(states[step], sequence[step], REPLAY_COMPLEMENT_DURATION);
     return { cancel: cancelAnimation, finished: job.finished.then(completed => {
       if (animation === job) cancelAnimation();
       return completed;
@@ -62,8 +63,8 @@ const review = createStepReplay({
   },
 });
 
-function startAnimation(before, move) {
-  const job = animation = animateGraphMove(get('graph-board'), before, move);
+function startAnimation(before, move, duration) {
+  const job = animation = animateGraphMove(get('graph-board'), before, move, { duration });
   get('graph-board').dataset.graphAnimating = 'true';
   get('graph-board').setAttribute('aria-busy', 'true');
   return job;
@@ -85,8 +86,10 @@ const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => {
 function update({ board = true, follow = false } = {}) {
   // A failed Daily request must leave the last committed graph on screen.
   if (daily.loading && animation) { cancelAnimation(); board = true; }
-  const locked = Boolean(animation) || daily.loading || review.step !== null;
-  const solved = isSolved(graph), won = !animation && !editing && solved;
+  const reviewing = review.step !== null;
+  const locked = Boolean(animation) || daily.loading || reviewing;
+  // Replay previews history; completed-round actions belong to the final graph.
+  const solved = isSolved(graph), won = (!animation || reviewing) && !editing && solved;
   if (board && !animation) {
     const focus = document.activeElement?.closest('#graph-board button');
     const focusedMove = focus?.dataset.vertex !== undefined ? { vertex: Number(focus.dataset.vertex) } :
@@ -119,11 +122,11 @@ function update({ board = true, follow = false } = {}) {
   for (const id of ['replay', 'replay-result']) get(id).disabled = Boolean(animation) || daily.loading || editing || !sequence.length || review.playing;
   get('replay').hidden = mode === 'tutorial' || editing || !sequence.length;
   for (const id of ['share-replay', 'share-result']) {
-    get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = Boolean(animation) || daily.loading;
+    get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = daily.loading;
   }
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : `Operation ${review.step} / ${sequence.length}`;
-  renderTimeline(sequence, { step: review.step, disabled: Boolean(animation) || daily.loading || editing });
+  renderTimeline(sequence, { step: review.step, disabled: review.playing || Boolean(animation) || daily.loading || editing });
   const registered = Boolean(scores.player), recordable = canRecord();
   const showForm = won && recordable && !registered && !scores.automatic;
   get('score-form').hidden = !showForm;
@@ -164,7 +167,7 @@ function randomPuzzle() {
   if (!tutorialBlocked()) setPuzzle('random', generatePuzzle(Date.now() + ':' + Math.random(), Number(get('difficulty').value)));
 }
 function openWin() {
-  if (animation || mode === 'tutorial' || editing || daily.loading || !isSolved(graph) || get('win-dialog').open) return;
+  if ((animation && review.step === null) || mode === 'tutorial' || editing || daily.loading || !isSolved(graph) || get('win-dialog').open) return;
   const reviewing = review.step !== null;
   review.clear(); update({ board: reviewing, follow: reviewing }); scores.autoSubmit(); get('win-dialog').showModal();
   get(scores.automatic ? 'close-win' : get('score-form').hidden ? 'try-again' : 'player-name').focus();
@@ -198,7 +201,8 @@ async function playMove(move) {
   }
 }
 function share(source) {
-  if (animation || tutorial.active || daily.loading || editing || !isSolved(graph) || !sequence.length) return;
+  if ((animation && review.step === null) || tutorial.active || daily.loading || editing || !isSolved(graph) || !sequence.length) return;
+  if (review.step !== null) { review.clear(); update({ follow: true }); }
   sharing.open(source, {
     label: mode === 'daily' ? 'Daily puzzle · ' + formatPuzzleDate(puzzle.date) : mode === 'campaign' ? 'Level · ' + (campaignIndex + 1) : 'Custom graph',
     puzzle: puzzleData(puzzle), sequence: structuredClone(sequence),

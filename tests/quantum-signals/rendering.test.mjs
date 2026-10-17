@@ -87,3 +87,18 @@ test('Tutorial highlights the declared wire bits while keeping complete basis la
   highlightFlowBits(svg);
   assert.ok(labels.every(label => label.children.every(bit => !bit.attrs.class.includes('signal-flow-bit-highlight'))));
 });
+
+test('Applying a global phase or changing relative phases never moves or recolours the goal', context => {
+  const { svg, target } = surface(context), half = Math.SQRT1_2;
+  const puzzle = { wires: 2, columns: [[{ gate: 'X', wires: [0] }, { gate: 'H', wires: [1] }],
+    [{ id: 'a', wires: [0], choices: ['I', 'Z'] }], [{ id: 'b', wires: [1], choices: ['I', 'Z'] }]],
+    target: [0, 0, half, -half] };
+  const markers = () => target.querySelectorAll('.signal-flow-target').map(node => ({ ...node.attrs }));
+  renderFlow(svg, target, puzzle, {});
+  const fixed = markers(), nodes = target.querySelectorAll('.signal-flow-target');
+  for (const placements of [{ a: 'Z' }, { b: 'Z' }, { a: 'Z', b: 'Z' }, {}]) {
+    renderFlow(svg, target, puzzle, placements);
+    assert.deepEqual(markers(), fixed);
+    assert.ok(target.querySelectorAll('.signal-flow-target').every((node, index) => node === nodes[index]), 'The fixed vector is not rebuilt on edits');
+  }
+});

@@ -2,6 +2,7 @@ import { getHoles, applyPlacement, simulate, validatePuzzle, validateCustomPuzzl
 import { createPuzzleEditor } from '../lib/quantum-signals/puzzle-editor.js';
 import { LEVELS, generatePuzzle, DAILY_START } from '../lib/quantum-signals/puzzles.js';
 import { gateIcon, gateLabel, renderBoard, renderFlow, highlightFlow, highlightFlowBits, pinFlowLabels } from '../lib/quantum-signals/rendering.js';
+import { animateFlow, flowElements } from '../lib/quantum-signals/animation.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { startDailyFromLink } from '../lib/games/daily-links.js';
@@ -19,7 +20,7 @@ const GAME = 'quantum-signals', get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 let mode = 'tutorial', campaignIndex = 0, puzzle = TUTORIAL_PUZZLE, placements = {}, sequence = [], states = [placements];
 let selected = getHoles(puzzle)[0].id;
-let tutorialBits = [];
+let tutorialBits = [], autofocus = false, flowAnimation = null;
 // Puzzles and placements are replaced rather than mutated. Selection, replay
 // and leaderboard updates can reuse this single current-round result.
 let evaluatedPuzzle, evaluatedPlacements, cachedWin = false;
@@ -106,15 +107,18 @@ const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => {
     label: label + ' · ' + (move.gate ?? 'erase') };
 });
 // Only play/navigation actions follow progress; network updates preserve exploration.
-function update({ board = true, follow = false } = {}) {
+function update({ board = true, follow = false, animateFrom = null } = {}) {
   const visible = review.step === null ? placements : states[review.step];
   const holes = getHoles(puzzle), locked = daily.loading || review.step !== null, won = isWon();
   const activeHole = review.step === null ? selected : sequence[review.step - 1]?.hole;
+  let previousFlow = null;
   if (board) {
+    flowAnimation?.cancel(); flowAnimation = null;
+    previousFlow = animateFrom === null ? null : flowElements(get('signal-flow'));
     const focused = document.activeElement?.closest('[data-hole]');
     renderBoard(get('signal-board'), puzzle, visible, { selected: activeHole, locked });
-    if (focused) focusSelected();
     renderFlow(get('signal-flow'), get('signal-target'), puzzle, visible, activeHole);
+    if (focused) focusSelected();
   } else {
     for (const button of get('signal-board').querySelectorAll('[data-hole]')) button.disabled = locked;
     highlightFlow(get('signal-flow'), puzzle, activeHole);
@@ -140,6 +144,7 @@ function update({ board = true, follow = false } = {}) {
   }
   get('erase-gate').hidden = !Object.hasOwn(visible, selected);
   get('erase-gate').disabled = locked || !Object.hasOwn(placements, selected);
+  get('autofocus').setAttribute('aria-pressed', String(autofocus)); get('autofocus').disabled = locked;
   if (focusedControl?.hidden) focusSelected();
   updateModeMenu(get, mode, false, completions.submitting);
   get('campaign-controls').hidden = mode !== 'campaign'; get('custom-controls').hidden = mode !== 'random';
@@ -170,6 +175,10 @@ function update({ board = true, follow = false } = {}) {
   }
   tutorial.render();
   if (follow) followProgress(activeHole, won && (review.step === null || review.step === sequence.length));
+  if (previousFlow) {
+    const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom);
+    job.finished.then(() => { if (flowAnimation === job) flowAnimation = null; });
+  }
 }
 function reset() {
   if (tutorialBlocked() || daily.loading) return;
@@ -202,9 +211,14 @@ function place(gate) {
     const move = { hole: selected, gate };
     const next = applyPlacement(puzzle, placements, move);
     closeResult(); placements = next; sequence.push(move); states.push(next);
-    if (gate !== null) selected = getHoles(puzzle).find(hole => !Object.hasOwn(next, hole.id))?.id ?? selected;
-    get('status').textContent = ''; update({ follow: true });
-    if (isWon()) openWin();
+    if (autofocus && gate !== null) selected = getHoles(puzzle).find(hole => !Object.hasOwn(next, hole.id))?.id ?? selected;
+    const column = puzzle.columns.findIndex(entries => entries.some(entry => entry.id === move.hole));
+    get('status').textContent = ''; update({ follow: autofocus, animateFrom: column });
+    if (isWon()) {
+      const job = flowAnimation;
+      if (job) job.finished.then(completed => { if (completed && placements === next && review.step === null) openWin(); });
+      else openWin();
+    }
   } catch (error) { get('status').textContent = error.message; }
 }
 function share(source) {
@@ -232,9 +246,14 @@ get('signal-board').addEventListener('contextmenu', event => {
   if (Object.hasOwn(placements, selected)) place(null);
 });
 onClick('erase-gate', () => place(null));
+onClick('autofocus', () => {
+  if (tutorialBlocked() || daily.loading || review.step !== null) return;
+  autofocus = !autofocus; update({ board: false });
+});
 onClick('undo', () => {
   if (tutorialBlocked() || daily.loading || !sequence.length) return;
-  review.clear(); closeResult(); const move = sequence.pop(); states.pop(); placements = states.at(-1); selected = move.hole; update({ follow: true });
+  review.clear(); closeResult(); const move = sequence.pop(); states.pop(); placements = states.at(-1); selected = move.hole;
+  update({ follow: autofocus, animateFrom: puzzle.columns.findIndex(entries => entries.some(entry => entry.id === move.hole)) });
 });
 onClick('restart', reset); onClick('try-again', reset); onClick('show-results', openWin);
 onClick('mode-tutorial', () => tutorial.enter());
@@ -281,7 +300,7 @@ window.addEventListener('pageshow', event => {
   review.clear(); update({ follow: true });
   daily.refresh(); completions.load();
 });
-window.addEventListener('pagehide', () => { review.clear(); daily.cancel(); completions.dispose(); sharing.close(); customJson.close(); });
+window.addEventListener('pagehide', () => { flowAnimation?.cancel(); review.clear(); daily.cancel(); completions.dispose(); sharing.close(); customJson.close(); });
 const editor = createPuzzleEditor({ get, onPlay: custom => setPuzzle('random', custom) });
 const customJson = createCustomPuzzleJson({ get, game: GAME, exportPuzzle: () => puzzleData(puzzle), importPuzzle(value) {
   const custom = validateCustomPuzzle(value); editor.load(custom); setPuzzle('random', custom);

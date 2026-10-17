@@ -1,16 +1,14 @@
 import * as gifenc from 'gifenc';
-import { applyMove, correctionColumns, isSolved, MAX_MOVES, optimalShots, pathGraph, sequenceCost, validateGraph } from '../lib/graph-states/engine.js';
+import { applyMove, isSolved, MAX_MOVES, optimalShots, pathGraph, sequenceCost, validateGraph } from '../lib/graph-states/engine.js';
 import { graphPositions } from '../lib/graph-states/rendering.js';
-import { COMPLEMENT_DURATION, graphAnimationProgress, graphBoundary, graphMoveStages } from '../lib/graph-states/animation.js';
+import { REPLAY_COMPLEMENT_DURATION, graphAnimationProgress, graphBoundary, graphMoveStages } from '../lib/graph-states/animation.js';
 import { CIRCUIT_COLORS as colors } from '../lib/games/circuit-graphics.js';
-import { drawCorrection } from '../lib/graph-states/correction-graphics.js';
-import { simplifyCorrectionColumns } from '../lib/graph-states/clifford.js';
 import { installReplayEncoder } from '../lib/games/replay-gif.js';
 
 const { GIFEncoder, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
 const WIDTH = 960, WHITE = '#f5f5f2', EDGE = '#b6c4bb';
 const AFFECTED = '#3d3825', ANIMATION_FRAMES = 16, MAX_STAGES = 64;
-const palette = [colors.background, colors.text, colors.h, colors.x, colors.z, colors.wire, WHITE, EDGE, AFFECTED]
+const palette = [colors.background, colors.text, colors.h, colors.z, WHITE, EDGE, AFFECTED]
   .map(hex => [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16)));
 
 function drawGraph(ctx, graph, left, top, scale, animation) {
@@ -50,74 +48,61 @@ function drawGraph(ctx, graph, left, top, scale, animation) {
   }
 }
 
-function drawCircuit(ctx, vertices, columns, top) {
-  const slot = 58, left = WIDTH / 2 - (Math.max(1, columns.length) - 1) * slot / 2;
-  ctx.font = '14px system-ui, sans-serif';
-  for (let wire = 0; wire < vertices; wire++) {
-    const y = top + wire * 48;
-    ctx.fillStyle = colors.wire; ctx.fillText(String(wire + 1), 286, y);
-    ctx.strokeStyle = WHITE; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.moveTo(310, y); ctx.lineTo(674, y); ctx.stroke();
-  }
-  columns.forEach((column, index) => column.forEach(({ gate, wires }) => {
-    drawCorrection(ctx, gate, left + index * slot, top + wires[0] * 48);
-  }));
-}
-
 export function encodeReplay(round, onProgress, imageOnly = false) {
   if (typeof OffscreenCanvas !== 'function') throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
   const initial = validateGraph(round.puzzle);
   if (typeof round.label !== 'string' || round.label.length > 240 || !Array.isArray(round.sequence) ||
       !round.sequence.length || round.sequence.length > MAX_MOVES) throw new Error('Finish a graph before sharing its replay.');
-  const frames = [], columns = [];
+  const frames = [];
   let graph = initial;
-  for (let step = 1; step <= round.sequence.length; step++) {
-    const move = round.sequence[step - 1];
+  for (const move of round.sequence) {
     if (imageOnly) graph = applyMove(graph, move);
     else {
       const stages = graphMoveStages(graph, move);
-      columns.push(...correctionColumns(graph, move));
       graph = stages.at(-1).after;
-      frames.push({ step, graph, stages, columns: simplifyCorrectionColumns(initial.vertices, columns) });
+      frames.push({ graph, stages });
     }
   }
   if (!isSolved(graph)) throw new Error('This graph has not reached the target chain.');
   const shots = sequenceCost(round.sequence), minimum = optimalShots(initial);
-  const height = imageOnly ? 520 : 656 + (initial.vertices - 1) * 48;
-  const canvas = new OffscreenCanvas(WIDTH, height), ctx = canvas.getContext('2d');
+  const scale = imageOnly ? 1 : .75, width = WIDTH * scale, height = 520 * scale;
+  const canvas = new OffscreenCanvas(width, height), ctx = canvas.getContext('2d');
   if (!ctx) throw new DOMException('Your browser cannot create GIFs. Try an up-to-date browser.', 'NotSupportedError');
+  ctx.scale(scale, scale);
   const gif = imageOnly ? null : GIFEncoder(), target = pathGraph(initial.vertices);
+  let first = true;
   const drawFrame = (frame, delay) => {
-    ctx.fillStyle = colors.background; ctx.fillRect(0, 0, WIDTH, height);
+    ctx.fillStyle = colors.background; ctx.fillRect(0, first ? 0 : 150, first ? WIDTH : WIDTH / 2, first ? 520 : 370);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = colors.h; ctx.font = '600 20px system-ui, sans-serif'; ctx.fillText(round.label, WIDTH / 2, 34, WIDTH - 40);
-    ctx.fillStyle = colors.text; ctx.font = '20px system-ui, sans-serif';
-    ctx.fillText(`Optimal : ${minimum}`, WIDTH / 2, 66);
-    ctx.fillText(`My score : ${shots}`, WIDTH / 2, 98);
-    ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText(imageOnly ? 'Original' : 'Current', 240, 142); ctx.fillText('Target', 720, 142);
-    drawGraph(ctx, frame.graph, 80, 150, 1, frame.animation); drawGraph(ctx, target, 560, 150, 1);
-    if (!imageOnly) {
-      ctx.fillStyle = colors.text; ctx.font = '18px system-ui, sans-serif';
-      ctx.fillText('Clifford corrections · simplified', WIDTH / 2, 474);
-      drawCircuit(ctx, initial.vertices, frame.columns, 524);
-      ctx.fillStyle = colors.text; ctx.font = '16px system-ui, sans-serif';
-      ctx.fillText('|G₀⟩', 308, 494); ctx.fillText('|G⟩', 672, 494);
-      ctx.fillText(`Step ${frame.step} / ${round.sequence.length}`, WIDTH / 2, height - 40);
+    if (first) {
+      ctx.fillStyle = colors.h; ctx.font = '600 20px system-ui, sans-serif'; ctx.fillText(round.label, WIDTH / 2, 34, WIDTH - 40);
+      ctx.fillStyle = colors.text; ctx.font = '20px system-ui, sans-serif';
+      ctx.fillText(`Optimal : ${minimum}`, WIDTH / 2, 66);
+      ctx.fillText(`My score : ${shots}`, WIDTH / 2, 98);
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillText(imageOnly ? 'Original' : 'Current', 240, 142); ctx.fillText('Target', 720, 142);
+      drawGraph(ctx, target, 560, 150, 1);
     }
-    if (gif) gif.writeFrame(applyPalette(ctx.getImageData(0, 0, WIDTH, height).data, palette, 'rgb444'), WIDTH, height,
-      { palette, delay });
+    drawGraph(ctx, frame.graph, 80, 150, 1, frame.animation);
+    // The first frame supplies the static target and global palette. Later frames
+    // replace only the left half; GIF disposal preserves the untouched right side.
+    if (gif) {
+      const frameWidth = first ? width : width / 2;
+      gif.writeFrame(applyPalette(ctx.getImageData(0, 0, frameWidth, height).data, palette, 'rgb444'), frameWidth, height,
+        first ? { palette, delay } : { delay });
+    }
+    first = false;
   };
   if (imageOnly) {
-    drawFrame({ step: 0, graph: initial });
+    drawFrame({ graph: initial });
     return canvas;
   }
   onProgress?.(0);
-  drawFrame({ step: 0, graph: initial, columns: [] }, 1000);
+  drawFrame({ graph: initial }, 700);
   // Keep long exports bounded while each sampled complementation retains its real pace.
   const count = Math.min(MAX_STAGES, shots);
   const samples = new Set(Array.from({ length: count }, (_, index) => Math.round((index + 1) * shots / count) - 1));
-  let stageIndex = 0, previousColumns = [];
+  let stageIndex = 0;
   for (const frame of frames) {
     let sampled = false;
     for (const stage of frame.stages) {
@@ -125,15 +110,14 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
         sampled = true;
         for (let index = 0; index < ANIMATION_FRAMES; index++) {
           const progress = index / (ANIMATION_FRAMES - 1);
-          drawFrame({ step: frame.step - 1, graph: stage.before, columns: previousColumns,
-            animation: { stage, progress } }, COMPLEMENT_DURATION / ANIMATION_FRAMES);
+          drawFrame({ graph: stage.before, animation: { stage, progress } }, REPLAY_COMPLEMENT_DURATION / ANIMATION_FRAMES);
           onProgress?.((stageIndex + (index + 1) / ANIMATION_FRAMES) / shots);
         }
       }
       stageIndex++;
     }
-    if (sampled || frame.step === round.sequence.length) drawFrame(frame, frame.step === round.sequence.length ? 1800 : 650);
-    previousColumns = frame.columns;
+    const last = frame === frames.at(-1);
+    if (sampled || last) drawFrame(frame, last ? 1500 : 200);
   }
   onProgress?.(1);
   gif.finish(); return gif.bytesView();
