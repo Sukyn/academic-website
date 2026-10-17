@@ -23,6 +23,8 @@ const errors = [];
 const touchPages = new WeakSet();
 const touchSessions = new WeakMap();
 const activate = (page, locator) => touchPages.has(page) ? locator.tap() : locator.click();
+// Full-page captures can reset Chromium's coarse pointer emulation.
+const screenshot = (page, name) => page.screenshot({ path: resolve(output, name), fullPage: !touchPages.has(page) });
 
 async function pageFor(options) {
   const context = await browser.newContext(options);
@@ -193,7 +195,7 @@ async function exportJson(page, game) {
   await openJson(page, 'share-json');
   const data = JSON.parse(await page.locator('#puzzle-json-text').inputValue());
   assert.deepEqual(Object.keys(data).sort(), game === 'quantum-golf' ? ['epsilon', 'target'] : ['circuit'], 'Custom JSON contains only the puzzle data');
-  await page.screenshot({ path: resolve(output, `custom-json-${game}-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  await screenshot(page, `custom-json-${game}-${await page.evaluate(() => innerWidth)}.png`);
   const pending = page.waitForEvent('download');
   await activate(page, page.locator('#puzzle-json-download'));
   const download = await pending;
@@ -213,7 +215,7 @@ async function customBuilder(page) {
   assert.equal(await page.locator('#share-json').isDisabled(), true, 'Empty identity cannot be shared as a puzzle');
   assert.equal(await page.locator('#input-json').isEnabled(), true);
   assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Identity construction does not open a victory dialog');
-  await page.screenshot({ path: resolve(output, `custom-identity-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  await screenshot(page, `custom-identity-${await page.evaluate(() => innerWidth)}.png`);
   await page.locator('#editor-wires').selectOption('3');
   assert.equal((await boardCircuit(page)).length, 3);
   await page.locator('#editor-wires').selectOption('2');
@@ -230,13 +232,13 @@ async function customBuilder(page) {
   for (const move of construction) await apply(page, move);
   const built = await boardCircuit(page);
   await noOverflow(page);
-  await page.screenshot({ path: resolve(output, `custom-builder-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  await screenshot(page, `custom-builder-${await page.evaluate(() => innerWidth)}.png`);
   await activate(page, page.locator('#save-circuit'));
   await page.locator('#custom-status').filter({ hasText: 'Shortest solution: 2 moves.' }).waitFor();
   assert.equal(await page.locator('#circuit-editor-controls').isVisible(), false);
   assert.equal(await page.locator('#move-count').innerText(), '0 moves');
   assert.equal(await page.locator('#replay').isDisabled(), true, 'Construction history is not a gameplay replay');
-  await page.screenshot({ path: resolve(output, `custom-saved-${await page.evaluate(() => innerWidth)}.png`), fullPage: true });
+  await screenshot(page, `custom-saved-${await page.evaluate(() => innerWidth)}.png`);
   const exported = await exportJson(page, 'circuit-simplification');
   assert.deepEqual(exported.circuit, built, 'Play and JSON export preserve the constructed circuit');
   await openJson(page);
@@ -318,8 +320,9 @@ async function focusedTutorial() {
       const order = await ruleOrder();
       assert.deepEqual(order.dom, RULES.map(rule => rule.id), 'The tutorial presents the normal rule order');
       assert.deepEqual(order.visual, order.dom, 'CSS does not move the active rule ahead of the others');
-      await page.screenshot({ path: resolve(output, `${profile}-tutorial-intro.png`), fullPage: true });
+      await screenshot(page, `${profile}-tutorial-intro.png`);
       await activate(page, page.locator('#tutorial-start'));
+      await boardSizing(page, Boolean(options.hasTouch));
       let expected = structuredClone(TUTORIAL_CIRCUIT), moves = 0;
       for (const [index, step] of TUTORIAL_STEPS.entries()) {
         if (step.layout) expected = applyMove(expected, { rule: 'arrange', row: 0, column: 0, circuit: step.layout });
@@ -347,7 +350,7 @@ async function focusedTutorial() {
           'Tutorial gate names render as gameplay icons');
         assert.equal(await page.locator('#tutorial-text .tutorial-gate:not(:has(svg))').count(), 0);
         assert.equal(await page.locator('#tutorial-text .tutorial-pair').count(), 0, 'Rule instructions show only their single-wire endpoints');
-        if (index === 4) await page.screenshot({ path: resolve(output, `${profile}-tutorial-controlled-rule.png`), fullPage: true });
+        if (index === 4) await screenshot(page, `${profile}-tutorial-controlled-rule.png`);
         assert.deepEqual(await ruleOrder(), order, 'A matching rule keeps its normal place in the palette');
         if (index < 2) assert.equal(step.move.rule, index ? 'cancel-h' : 'cancel-x', 'The first two steps teach simple cancellations');
         await activate(page, step.target || index % 2 === 0 ? target : page.locator('#tutorial-next'));
@@ -473,18 +476,92 @@ async function columnSpacing(page) {
   }
   await page.locator('#level').selectOption('1');
 }
+
+async function boardSizing(page, touch = false) {
+  const dimensions = await page.evaluate(() => {
+    const rect = selector => document.querySelector(selector).getBoundingClientRect();
+    const cell = rect('[data-cell]'), gate = document.querySelector('[data-cell] .gate-glyph')?.getBoundingClientRect();
+    const handle = rect('[data-space]'), plus = rect('[data-space] .space-glyph');
+    return { cell: [cell.width, cell.height], gate: gate?.width, handle: handle.width, plus: plus.width };
+  });
+  assert.deepEqual(dimensions.cell, touch ? [80, 80] : [64, 64], 'Touch cells are enlarged while desktop sizing stays unchanged');
+  if (dimensions.gate !== undefined) assert.equal(dimensions.gate, touch ? 55 : 44, 'Gate symbols grow with the touch board');
+  assert.equal(dimensions.plus, 20, 'Space symbols retain their original visible size');
+  assert.equal(dimensions.cell[0] - dimensions.handle, touch ? 55 : 40,
+    'The cell area outside the overlapping space handles is wider on touch screens');
+}
+
+async function mobileBoardLayout(page) {
+  const lesson = LEVELS.find(level => level.circuit.length > 1);
+  await page.locator('#level').selectOption(String(lesson.id));
+  const original = await boardCircuit(page);
+  for (const width of [320, 390, 844]) {
+    await page.setViewportSize({ width, height: width === 844 ? 390 : 844 });
+    await boardSizing(page, true);
+    await noOverflow(page);
+    const rowSpacing = await page.evaluate(() => {
+      const cell = key => document.querySelector(`[data-cell="${key}"]`).getBoundingClientRect();
+      return cell('1:0').top - cell('0:0').top;
+    });
+    assert.equal(rowSpacing, 90, 'Wire rows stay aligned after changing orientation');
+    const gate = page.locator('[data-cell]:not([data-gate="."])').first();
+    await gate.scrollIntoViewIfNeeded();
+    const size = await gate.boundingBox();
+    for (const x of [15, size.width - 15]) {
+      await gate.tap({ position: { x, y: size.height / 2 } });
+      assert.equal(await gate.getAttribute('aria-pressed'), 'true', 'Taps near either gate edge select the gate');
+      assert.deepEqual(await boardCircuit(page), original, 'Near-edge gate taps do not insert space');
+      await page.keyboard.press('Escape');
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await addSpace(page, 0, 1);
+  assert.deepEqual(await boardCircuit(page), applyMove(original, { rule: 'insert-column', row: 0, column: 1 }),
+    'Deliberately tapping + still inserts a column');
+  await activate(page, page.locator('#restart'));
+
+  // A touch-capable laptop or tablet can also be used with a mouse or pen.
+  await page.setViewportSize({ width: 844, height: 844 });
+  const first = page.locator('[data-cell="0:0"]'), last = page.locator('[data-cell="1:1"]');
+  await first.scrollIntoViewIfNeeded(); await last.scrollIntoViewIfNeeded();
+  const start = await first.boundingBox(), end = await last.boundingBox();
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 12 });
+  await page.mouse.up();
+  assert.deepEqual(await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(cells => cells.map(cell => cell.dataset.cell)),
+    ['0:0', '0:1', '1:0', '1:1'], 'Mouse dragging uses the enlarged touch-board coordinates');
+  assert.deepEqual(await boardCircuit(page), original, 'Dragging across the enlarged space handles preserves the circuit');
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, 'mobile-enlarged.png');
+  await boardSizing(page, true);
+  await page.locator('#level').selectOption('1');
+  console.log('Mobile circuit: larger safe selection area, near-edge touch taps, deliberate spacing, orientation changes and mouse dragging verified.');
+}
+
+async function focusedMobileLayout() {
+  const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
+  await boardSizing(desktop);
+  await desktopSelection(desktop);
+  const mobile = await pageFor({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await mobileBoardLayout(mobile);
+  assert.deepEqual(errors, [], 'No uncaught desktop or touch-board errors');
+}
 try {
   if (process.env.GAME_TEST_SCOPE === 'tutorial') await focusedTutorial();
   else if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
   else if (process.env.GAME_TEST_SCOPE === 'registration') await focusedRegistration();
+  else if (process.env.GAME_TEST_SCOPE === 'mobile-layout') await focusedMobileLayout();
   else {
   let desktop, beforeRemoval;
   if (process.env.GAME_TEST_SCOPE !== 'mobile') {
     desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
+    await boardSizing(desktop);
     await noOverflow(desktop);
     await desktopSelection(desktop);
     await columnSpacing(desktop);
-    await desktop.screenshot({ path: resolve(output, 'desktop.png'), fullPage: true });
+    await screenshot(desktop, 'desktop.png');
     assert.equal(await desktop.locator('#space-wire, #space-position, #space-count, #add-space, #insert-column, #remove-column').count(), 0, 'Spacing is edited directly on the circuit');
     await addSpace(desktop, 0, 1, 1);
     beforeRemoval = await boardCircuit(desktop);
@@ -506,7 +583,7 @@ try {
         assert.equal(available.length, level.id, 'The first lessons each introduce one cancellation');
         assert.equal(await desktop.locator('#paper-rules').count(), 0);
       }
-      if (level.id === LEVELS.at(-1).id) await desktop.screenshot({ path: resolve(output, 'desktop-advanced.png'), fullPage: true });
+      if (level.id === LEVELS.at(-1).id) await screenshot(desktop, 'desktop-advanced.png');
       await finish(desktop, level.solution, level);
       if (level.id === 1) {
         await registerScore(desktop, 'Desktop test');
@@ -545,7 +622,7 @@ try {
     assert.equal(await desktop.locator('#custom-json-actions').isVisible(), false, 'Daily mode hides JSON exchange');
     await fullRulePalette(desktop);
     assert.ok(await desktop.locator('.circuit-cell').count() >= 30);
-    await desktop.screenshot({ path: resolve(output, 'desktop-daily.png'), fullPage: true });
+    await screenshot(desktop, 'desktop-daily.png');
     {
       const data = api ? await (await desktop.request.get(`${api}/api/daily?game=circuit-reduction`)).json() : fixture.getDaily('circuit-reduction');
       const puzzle = dailyPuzzle(data.date);
@@ -558,15 +635,16 @@ try {
       await desktop.locator('#resume-round').click();
       console.log(`Daily: certified ${puzzle.optimalMoves}-move puzzle solved and score accepted through ${scoreTransport}`);
     }
-    await desktop.screenshot({ path: resolve(output, 'desktop-daily-completed.png'), fullPage: true });
+    await screenshot(desktop, 'desktop-daily-completed.png');
   }
 
   const mobile = await pageFor({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await noOverflow(mobile);
+  await mobileBoardLayout(mobile);
   await columnSpacing(mobile);
   const cellSize = await mobile.locator('.circuit-cell').first().boundingBox();
   assert.ok(cellSize.width >= 44 && cellSize.height >= 44, 'Touchable cells are at least44px');
-  await mobile.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true });
+  await screenshot(mobile, 'mobile.png');
   await addSpace(mobile, 0, 1, 1);
   beforeRemoval = await boardCircuit(mobile);
   await removeSpace(mobile, 0, 1);
@@ -580,7 +658,7 @@ try {
     console.log(`Mobile: playing campaign level ${lesson.id}`);
     await mobile.locator('#level').selectOption(String(lesson.id));
     await noOverflow(mobile);
-    if (lesson.id === 22) await mobile.screenshot({ path: resolve(output, 'mobile-advanced.png'), fullPage: true });
+    if (lesson.id === 22) await screenshot(mobile, 'mobile-advanced.png');
     await finish(mobile, lesson.solution, lesson);
     await activate(mobile, mobile.locator('#close-win'));
   }
@@ -588,7 +666,7 @@ try {
   await mobile.locator('#mode-daily').click(); await mobile.locator('#daily-heading:not([hidden])').waitFor(); await noOverflow(mobile);
   assert.equal(await mobile.locator('#custom-json-actions').isVisible(), false, 'Daily mode hides JSON exchange');
   await fullRulePalette(mobile);
-  await mobile.screenshot({ path: resolve(output, 'mobile-daily.png'), fullPage: true });
+  await screenshot(mobile, 'mobile-daily.png');
   {
     const info = api ? await (await mobile.request.get(`${api}/api/daily?game=circuit-reduction`)).json() : fixture.getDaily('circuit-reduction');
     const puzzle = dailyPuzzle(info.date);
@@ -597,7 +675,8 @@ try {
     await registerScore(mobile, 'Mobile test'); await mobile.locator('#close-win').click();
     console.log(`Mobile daily: solved through touch input and score accepted through ${scoreTransport}`);
   }
-  await mobile.screenshot({ path: resolve(output, 'mobile-daily-completed.png'), fullPage: true });
+  await screenshot(mobile, 'mobile-daily-completed.png');
+  await boardSizing(mobile, true);
   for (const width of [320, 768]) { await mobile.setViewportSize({ width, height: 900 }); await noOverflow(mobile); await fullRulePalette(mobile); }
   await mobile.setViewportSize({ width: 390, height: 844 });
   console.log('Mobile: three complex PDF missions completed using touch, advanced commutation, Hadamard changes of basis, identity spacing, daily horizontal scrolling and responsive page layout verified');

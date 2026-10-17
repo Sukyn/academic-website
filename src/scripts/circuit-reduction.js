@@ -368,9 +368,11 @@ get('circuit-board').addEventListener('pointermove', event => {
     drag.target.setPointerCapture(event.pointerId);
   }
   // Capture keeps the gesture alive over gaps and outside the original cell.
-  const bounds = get('circuit-board').getBoundingClientRect();
-  const row = Math.max(0, Math.min(circuit.length - 1, Math.floor((event.clientY - bounds.top) / 72)));
-  const column = Math.max(0, Math.min(circuit[0].length - 1, Math.floor((event.clientX - bounds.left - 22) / 64)));
+  const board = get('circuit-board'), bounds = board.getBoundingClientRect();
+  // Convert to layout coordinates on the enlarged touch board too.
+  const scale = bounds.width / board.offsetWidth;
+  const row = Math.max(0, Math.min(circuit.length - 1, Math.floor((event.clientY - bounds.top) / scale / 72)));
+  const column = Math.max(0, Math.min(circuit[0].length - 1, Math.floor(((event.clientX - bounds.left) / scale - 22) / 64)));
   const key = `${row}:${column}`;
   if (key === drag.last) return;
   event.preventDefault(); suppressBoardClick = true; drag.last = key;
