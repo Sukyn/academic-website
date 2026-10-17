@@ -2,7 +2,7 @@
 // GAME_API_URL opts into the local PostgreSQL API harness instead.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
 import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove } from '../../src/lib/circuit-reduction/engine.js';
@@ -69,6 +69,7 @@ async function downloadReplay(page) {
     const download = await pending;
     assert.match(download.suggestedFilename(), /\.gif$/);
     const bytes = await readFile(await download.path());
+    if (process.env.GAME_TEST_SCOPE === 'animation') await writeFile(resolve(output, `${touchPages.has(page) ? 'mobile' : 'desktop'}-animated-replay.gif`), bytes);
     assert.match(bytes.toString('ascii', 0, 6), /^GIF8[79]a$/);
     assert.ok(bytes.length > 1000);
     assert.equal(workers.length, 2, 'Download starts exactly one GIF encoder after the still renderer');
@@ -118,6 +119,7 @@ async function arrange(page, target) {
   return steps;
 }
 async function apply(page, move) {
+  await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
   if (move.rule === 'arrange') {
     return arrange(page, move.circuit);
   } else if (move.rule === 'compact-identities') {
@@ -138,6 +140,7 @@ async function apply(page, move) {
     for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) await activate(page, page.locator(`[data-cell="${move.row + y}:${move.column + x}"]`));
     await activate(page, page.locator(`[data-rule="${move.rule}"]`));
   }
+  await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
   return 1;
 }
 async function finish(page, sequence, { optimalMoves = sequenceCost(sequence), parMoves = null } = {}) {
@@ -354,6 +357,8 @@ async function focusedTutorial() {
         assert.deepEqual(await ruleOrder(), order, 'A matching rule keeps its normal place in the palette');
         if (index < 2) assert.equal(step.move.rule, index ? 'cancel-h' : 'cancel-x', 'The first two steps teach simple cancellations');
         await activate(page, step.target || index % 2 === 0 ? target : page.locator('#tutorial-next'));
+        await page.waitForFunction(heading => document.getElementById('tutorial-heading').textContent === heading,
+          index + 1 === TUTORIAL_STEPS.length ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL_STEPS.length}`);
         expected = applyMove(expected, step.move); moves += moveCost(step.move);
         const next = TUTORIAL_STEPS[index + 1];
         const prepared = next?.layout ? applyMove(expected, { rule: 'arrange', row: 0, column: 0, circuit: next.layout }) : expected;
@@ -548,8 +553,112 @@ async function focusedMobileLayout() {
   await mobileBoardLayout(mobile);
   assert.deepEqual(errors, [], 'No uncaught desktop or touch-board errors');
 }
+
+async function focusedAnimation() {
+  const cancelH = { rule: 'cancel-h', row: 0, column: 0 };
+  for (const mobile of [false, true]) {
+    const page = await pageFor({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1050 }, hasTouch: mobile, isMobile: mobile });
+    try {
+      await activate(page, page.locator('#mode-random'));
+      await importJson(page, { circuit: [['H', 'H']] });
+      const select = async move => {
+        const rule = RULES.find(rule => rule.id === move.rule);
+        for (let row = 0; row < rule.left.length; row++) for (let column = 0; column < rule.left[0].length; column++) {
+          await activate(page, page.locator(`[data-cell="${move.row + row}:${move.column + column}"]`));
+        }
+      };
+      await select(cancelH);
+      const tween = await page.evaluate(() => {
+        document.querySelector('[data-rule="cancel-h"]').click();
+        const board = document.getElementById('circuit-board');
+        const jobs = window.testRewriteJobs = board.getAnimations({ subtree: true });
+        for (const job of jobs) { job.pause(); job.currentTime = 0; }
+        const distance = () => {
+          const [a, b] = [...board.querySelectorAll('.rewrite-gate')].map(node => node.getBoundingClientRect());
+          return Math.abs((b.left + b.width / 2) - (a.left + a.width / 2));
+        };
+        const start = distance();
+        for (const job of jobs) job.currentTime = 200;
+        return { start, middle: distance(), jobs: jobs.length, busy: board.getAttribute('aria-busy'), win: document.getElementById('win-dialog').open };
+      });
+      assert.equal(tween.jobs, 2, 'Only the two changed gates have native animations');
+      assert.equal(tween.busy, 'true'); assert.equal(tween.win, false);
+      assert.ok(Math.abs(tween.middle / tween.start - .5) < .02, 'Hadamards visibly converge at the midpoint on desktop and enlarged touch layouts');
+      await screenshot(page, mobile ? 'mobile-rewrite-midpoint.png' : 'desktop-rewrite-midpoint.png');
+      await page.evaluate(() => { for (const job of window.testRewriteJobs) job.finish(); });
+      await page.locator('#win-dialog[open]').waitFor();
+      assert.ok(isSolved(await boardCircuit(page)));
+      assert.equal(await page.locator('.rewrite-overlay').count(), 0);
+      await activate(page, page.locator('#close-win'));
+      await downloadReplay(page);
+
+      for (const action of ['undo', 'restart', 'mode-campaign']) {
+        await activate(page, page.locator('#mode-random'));
+        await importJson(page, { circuit: [['H', 'H']] }); await select(cancelH);
+        await page.locator('[data-rule="cancel-h"]').evaluate(button => button.click());
+        await activate(page, page.locator(`#${action}`));
+        await page.waitForTimeout(450);
+        assert.equal(await page.locator('.rewrite-overlay').count(), 0, `${action} cancels transient gate shapes`);
+        assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, `${action} cannot leave a stale win`);
+        assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+      }
+
+      await activate(page, page.locator('#mode-random'));
+      await importJson(page, { circuit: [['ZU', 'ZU'], ['XD', 'XD']] });
+      await select({ rule: 'cancel-cnot-down', row: 0, column: 0 });
+      await page.evaluate(() => {
+        const board = document.getElementById('circuit-board'), cell = board.querySelector('[data-cell]');
+        const metrics = window.rewriteMetrics = { gaps: [], replacedCells: 0, stable: true, longTasks: [] };
+        const observer = new MutationObserver(records => {
+          for (const record of records) for (const removed of record.removedNodes) if (removed.matches?.('[data-cell]')) metrics.replacedCells++;
+        });
+        observer.observe(board, { childList: true });
+        const tasks = new PerformanceObserver(list => metrics.longTasks.push(...list.getEntries().map(entry => entry.duration)));
+        tasks.observe({ type: 'longtask' });
+        document.querySelector('[data-rule="cancel-cnot-down"]').click();
+        metrics.nativeAnimations = board.getAnimations({ subtree: true }).length;
+        let previous;
+        function frame(now) {
+          if (board.dataset.rewriteAnimating) {
+            if (previous !== undefined) metrics.gaps.push(now - previous);
+            previous = now; metrics.stable &&= cell.isConnected;
+            requestAnimationFrame(frame);
+          } else { observer.disconnect(); tasks.disconnect(); metrics.finished = true; }
+        }
+        requestAnimationFrame(frame);
+      });
+      await page.waitForFunction(() => window.rewriteMetrics.finished);
+      const metrics = await page.evaluate(() => window.rewriteMetrics);
+      assert.equal(metrics.nativeAnimations, 6, 'Controlled cancellation animates four endpoints and two links');
+      assert.equal(metrics.stable, true, 'Cells stay in place throughout the native animation');
+      assert.ok(metrics.gaps.length >= 3, 'Several intermediate frames are displayed');
+      // Final rendering replaces cells once, after the overlay finishes.
+      assert.ok(metrics.replacedCells <= 4, 'There is no per-frame circuit rebuild');
+      const sorted = metrics.gaps.toSorted((a, b) => a - b);
+      console.log(`${mobile ? 'Mobile' : 'Desktop'} rewrite frames: ${JSON.stringify({ frames: sorted.length, medianMs: sorted[Math.floor(sorted.length / 2)], p95Ms: sorted[Math.floor(sorted.length * .95)], maxMs: sorted.at(-1), longTasks: metrics.longTasks })}`);
+      await page.locator('#win-dialog[open]').waitFor(); await activate(page, page.locator('#close-win'));
+      await activate(page, page.locator('#replay'));
+      await page.waitForFunction(() => Boolean(document.getElementById('circuit-board').dataset.rewriteAnimating));
+      await activate(page, page.locator('#resume-round'));
+      await page.waitForTimeout(450);
+      assert.ok(isSolved(await boardCircuit(page)));
+      assert.equal(await page.locator('.rewrite-overlay').count(), 0, 'Leaving replay cancels its active transition');
+      assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false);
+      await noOverflow(page);
+    } finally { await page.context().close(); }
+  }
+  const page = await pageFor({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  try {
+    await activate(page, page.locator('#mode-random'));
+    await importJson(page, { circuit: [['H', 'H']] }); await apply(page, cancelH);
+    assert.ok(isSolved(await boardCircuit(page)));
+    assert.equal(await page.locator('.rewrite-overlay').count(), 0, 'Reduced motion keeps instant rewrites');
+  } finally { await page.context().close(); }
+  assert.deepEqual(errors, [], 'Animated rewrites, cancellation, replay and reduced motion have no uncaught browser errors');
+}
 try {
-  if (process.env.GAME_TEST_SCOPE === 'tutorial') await focusedTutorial();
+  if (process.env.GAME_TEST_SCOPE === 'animation') await focusedAnimation();
+  else if (process.env.GAME_TEST_SCOPE === 'tutorial') await focusedTutorial();
   else if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
   else if (process.env.GAME_TEST_SCOPE === 'registration') await focusedRegistration();
   else if (process.env.GAME_TEST_SCOPE === 'mobile-layout') await focusedMobileLayout();
@@ -631,7 +740,7 @@ try {
       await registerScore(desktop, 'Desktop test');
       await desktop.locator('#close-win').click();
       await desktop.locator('#replay').click();
-      await desktop.locator('#review-note').filter({ hasText: `Step ${replaySteps} / ${replaySteps}` }).waitFor({ timeout: Math.max(20000, replaySteps * 800) });
+      await desktop.locator('#review-note').filter({ hasText: `Step ${replaySteps} / ${replaySteps}` }).waitFor({ timeout: Math.max(20000, replaySteps * 1200) });
       await desktop.locator('#resume-round').click();
       console.log(`Daily: certified ${puzzle.optimalMoves}-move puzzle solved and score accepted through ${scoreTransport}`);
     }

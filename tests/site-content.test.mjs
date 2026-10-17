@@ -178,10 +178,16 @@ async function wallpaperFixture({ idleSupported = true, hidden = false } = {}) {
   class Canvas { getContext() { return context; } }
   const canvas = new Canvas();
   const document = events({ hidden, querySelector: () => canvas });
+  let viewportWidth = 1280, viewportHeight = 800;
+  const viewportReads = { width: 0, height: 0 };
   const window = events({
-    innerWidth: 1280, innerHeight: 800, devicePixelRatio: 3,
+    devicePixelRatio: 3,
     setTimeout(callback, delay) { const id = ++nextId; timers.set(id, { callback, delay }); return id; },
     clearTimeout: id => timers.delete(id),
+  });
+  Object.defineProperties(window, {
+    innerWidth: { get() { viewportReads.width++; return viewportWidth; }, set(value) { viewportWidth = value; } },
+    innerHeight: { get() { viewportReads.height++; return viewportHeight; }, set(value) { viewportHeight = value; } },
   });
   if (idleSupported) {
     window.requestIdleCallback = callback => { const id = ++nextId; idleJobs.set(id, callback); return id; };
@@ -203,8 +209,32 @@ async function wallpaperFixture({ idleSupported = true, hidden = false } = {}) {
     timer.callback();
   }
   return { window, document, canvas, timers, idleJobs, flushIdle, tick,
+    viewportReads: () => ({ ...viewportReads }),
     counts: () => ({ gradients: gradientCount, paints: paintCount }) };
 }
+
+test('wallpaper defers its initial viewport reads until idle and reads each dimension once per paint', async () => {
+  const fixture = await wallpaperFixture();
+  assert.deepEqual(fixture.viewportReads(), { width: 0, height: 0 });
+  fixture.window.emit('pageshow');
+  fixture.window.innerWidth = 900;
+  fixture.window.innerHeight = 600;
+  fixture.window.emit('resize');
+  assert.equal(fixture.idleJobs.size, 1);
+  assert.deepEqual(fixture.viewportReads(), { width: 0, height: 0 }, 'Initial scheduling must not force content layout');
+  fixture.flushIdle();
+  assert.deepEqual(fixture.viewportReads(), { width: 1, height: 1 });
+  assert.equal(fixture.canvas.width, 900);
+  assert.equal(fixture.canvas.height, 600);
+  fixture.window.emit('resize');
+  assert.equal(fixture.idleJobs.size, 0, 'The unchanged viewport fast path is retained');
+  fixture.window.innerWidth = 1000;
+  fixture.window.emit('resize');
+  const before = fixture.viewportReads();
+  fixture.flushIdle();
+  assert.deepEqual(fixture.viewportReads(), { width: before.width + 1, height: before.height + 1 });
+  assert.equal(fixture.canvas.width, 1000);
+});
 
 test('wallpaper paints once after content and stays static across page and visibility events', async () => {
   const fixture = await wallpaperFixture();
@@ -292,7 +322,9 @@ test('wallpaper paints once without idle-callback support', async () => {
   const fallback = await wallpaperFixture({ idleSupported: false });
   assert.equal([...fallback.timers.values()][0].delay, 25);
   assert.equal(fallback.counts().paints, 0);
+  assert.deepEqual(fallback.viewportReads(), { width: 0, height: 0 });
   fallback.tick();
+  assert.deepEqual(fallback.viewportReads(), { width: 1, height: 1 });
   assert.equal(fallback.counts().paints, 1);
   assert.equal(fallback.timers.size, 0);
 });

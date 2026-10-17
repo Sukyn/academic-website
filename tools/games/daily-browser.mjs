@@ -179,6 +179,10 @@ try {
       await page.locator('#mode-daily[aria-pressed="true"]').waitFor({ state: 'attached' });
       await page.locator('#daily-heading:not([hidden])').waitFor();
       await page.waitForFunction(() => document.getElementById('daily-status').textContent !== 'Loading…');
+      const dates = await page.locator('#daily-date option').evaluateAll(options => options.map(option => option.value));
+      assert.equal(dates[0], date);
+      assert.equal(dates.at(-1), fixture.getDaily(game).startDate, 'Archives stop at each game’s own launch date');
+      if (game === 'circuit-reduction') assert.deepEqual(dates, [date], 'The retired Circuit simplification dailies are absent');
       await cards(page, index);
       assert.equal(await page.locator('.mode-menu').isVisible(), true);
       assert.equal(await page.locator('iframe').count(), 0);

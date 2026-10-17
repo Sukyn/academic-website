@@ -152,6 +152,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const rules = dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '';
   const actions = dialogs[1].match(/<button slot="result-actions"[\s\S]*?<\/button>/)?.[0] ?? '';
   html = html.replace(dialogs[0], (await component('GameDialogs'))
+    .replace('<GamePuzzleJsonDialog />', await component('GamePuzzleJsonDialog'))
     .replace('<slot name="rules" />', rules).replace('<slot name="result-actions" />', actions));
   const advancedMarkup = html.match(/(<details\b[^>]*\bid="advanced-features"[^>]*>)([\s\S]*?)<\/details>/);
   assert.ok(advancedMarkup, 'Advanced controls use a native disclosure');
@@ -941,6 +942,28 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(get('best-count').textContent, 'Optimum unavailable');
   assert.doesNotMatch(get('best-count').textContent, /NaN/);
   assert.equal(get('gate-h').disabled, false, 'Solver failure leaves the game playable');
+
+  for (const data of [null, {}, { status: 'optimal', optimalMoves: NaN }, { status: 'optimal', optimalMoves: -1 },
+    { status: 'limit', checkedDepth: NaN }, { status: 'unknown', checkedDepth: 2 }]) {
+    click('new-hole');
+    const search = workers.at(-1);
+    assert.doesNotThrow(() => search.respond(data));
+    assert.equal(search.terminated, true);
+    assert.equal(get('best-count').textContent, 'Optimum unavailable', 'Malformed solver replies do not retain a pending label or invent a benchmark');
+    assert.equal(get('gate-h').disabled, false);
+  }
+  for (const failure of ['onerror', 'onmessageerror']) {
+    click('new-hole');
+    const search = workers.at(-1);
+    let prevented = false;
+    search[failure]({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, true, 'Worker failures are handled without a page error');
+    assert.equal(search.terminated, true);
+    assert.equal(get('best-count').textContent, 'Optimum unavailable');
+    assert.equal(get('gate-h').disabled, false);
+    search.respond({ status: 'optimal', optimalMoves: 99 });
+    assert.equal(get('best-count').textContent, 'Optimum unavailable', 'A late reply cannot revive a failed solver');
+  }
 
   // Custom JSON exchanges only target geometry and epsilon. Native overlays
   // suspend game shortcuts, and rejected imports leave the round unchanged.

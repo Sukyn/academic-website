@@ -81,6 +81,34 @@ test('inspection cancels motion and an interrupted transition stops playback wit
   assert.equal(state.timers.size, 0);
 });
 
+test('a throwing transition stops playback at the last complete snapshot', context => {
+  const state = fixture(context, 2, () => { throw new Error('Animation unavailable'); });
+  state.replay.play();
+  assert.doesNotThrow(state.tick);
+  assert.equal(state.replay.step, 0); assert.equal(state.replay.playing, false);
+  assert.equal(state.timers.size, 0);
+  assert.deepEqual(state.renders.at(-1), { step: 0, playing: false });
+});
+
+test('rejected animations clean up and stale rejections cannot interrupt a new replay', async context => {
+  const jobs = [];
+  const state = fixture(context, 2, () => {
+    let reject;
+    const job = { finished: new Promise((_, fail) => { reject = fail; }), cancel() { this.cancelled = true; }, reject: error => reject(error) };
+    jobs.push(job); return job;
+  });
+  state.replay.play(); state.tick(); jobs[0].reject(new Error('Animation failed')); await Promise.resolve();
+  assert.equal(jobs[0].cancelled, true);
+  assert.equal(state.replay.step, 0); assert.equal(state.replay.playing, false);
+  assert.equal(state.timers.size, 0);
+  assert.deepEqual(state.renders.at(-1), { step: 0, playing: false });
+  state.replay.play(); state.tick(); state.replay.clear(); state.replay.play();
+  const timer = state.timers.values().next().value;
+  jobs[1].reject(new Error('Old failure')); await Promise.resolve();
+  assert.equal(state.replay.step, 0); assert.equal(state.replay.playing, true);
+  assert.equal(state.timers.values().next().value, timer);
+});
+
 test('single-move and empty rounds respect their boundaries', context => {
   const state = fixture(context, 1);
   state.replay.play(); state.tick();

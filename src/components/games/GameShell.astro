@@ -1,9 +1,11 @@
 ---
 import '../../styles/games.css';
 import DailyGameLinks from './DailyGameLinks.astro';
+interface Props { daily?: boolean }
+const { daily = true } = Astro.props;
 ---
 
 <div class="quantum-game">
-  <DailyGameLinks current={Astro.url.pathname.split('/').filter(Boolean).at(-1)} hidden />
+  {daily && <DailyGameLinks current={Astro.url.pathname.split('/').filter(Boolean).at(-1)} hidden />}
   <slot />
 </div>

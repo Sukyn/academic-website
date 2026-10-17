@@ -1,70 +1,21 @@
-// Offline catalogue construction. Exact search is deliberately outside the
-// browser/API hot path; committed boards and witnesses are transformed at runtime.
+// Build and certify a varied catalogue offline. Browsers load only boards/scores.
 import { readFile, writeFile } from 'node:fs/promises';
 import {
-  RULES, applyMove, compactCircuit, getRewriteMoves, isIdentity, isSolved,
-  lowerBound, seededRandom, sequenceCost, solveShortest,
+  LEARNED_RULE_IDS, applyMove, isIdentity, isSolved, moveCost,
+  sequenceCost, solveShortest,
 } from '../../src/lib/circuit-reduction/engine.js';
 import { encodeCircuit, encodeSequence } from '../../src/lib/circuit-reduction/stored-puzzles.js';
+import { generateCandidates } from './candidates.mjs';
+import { circuitMetrics, structuralDistance, catalogueMetrics } from './diversity.mjs';
 
-const RULE_IDS = RULES.map(rule => rule.id);
+const version = 'circuit-reduction-generator-v3';
 const proofUrl = new URL('./catalogue-certificates.json', import.meta.url);
-const exactCheck = process.argv.includes('--check');
-if (exactCheck || process.argv.includes('--check-data')) {
-  const { CERTIFIED_PUZZLES, LEVELS } = await import('./witnesses.js');
-  const provenance = JSON.parse(await readFile(proofUrl, 'utf8'));
-  if (provenance.nodes.length !== CERTIFIED_PUZZLES.length || JSON.stringify(provenance.ruleIds) !== JSON.stringify(RULE_IDS)) throw new Error('Catalogue provenance does not match the current rules.');
-  for (const [index, entry] of CERTIFIED_PUZZLES.entries()) {
-    if (sequenceCost(entry.solution) !== entry.optimalMoves) throw new Error(`Precomputed score failed: certified-${index + 1}`);
-    if (exactCheck) {
-      const result = solveShortest(entry.circuit, { maxDepth: entry.optimalMoves, maxNodes: Math.max(25000, provenance.nodes[index] * 2), allowedRules: RULE_IDS });
-      if (result.status !== 'optimal' || result.optimalMoves !== entry.optimalMoves) throw new Error(`Certificate failed: certified-${index + 1}`);
-    }
-    certificate(entry.circuit, entry.solution);
-  }
-  for (const level of LEVELS) {
-    if (sequenceCost(level.solution) !== (level.optimalMoves ?? level.parMoves)) throw new Error(`Precomputed campaign score failed: ${level.id}`);
-    certificate(level.circuit, level.solution);
-  }
-  console.log(`Verified ${LEVELS.length} campaign witnesses, ${CERTIFIED_PUZZLES.length} identity-to-puzzle derivations and ${exactCheck ? 'exact shortest paths' : 'precomputed scores'} with all ${RULE_IDS.length} rules.`);
-  process.exit(0);
-}
-const targets = new Set((process.env.CATALOGUE_DIFFICULTIES || '3,6,10,11,12,13,14').split(',').map(Number));
-const perTarget = Number(process.env.CATALOGUE_PER_TARGET || 6);
-const budget = Number(process.env.CATALOGUE_MAX_NODES || 150000);
-const catalogue = [];
-const seen = new Set();
+const advanced = rule => /^(phase-|stabilizer-|corner-|transfer$|control-order$)/.test(rule);
+const family = rule => rule.split('-')[0];
+const advancedFamilies = solution => new Set(solution.map(move => move.rule).filter(advanced).map(family));
+const minimumDistance = .2;
 
-const join = (a, b) => a.map((row, wire) => [...row, ...b[wire]]);
-function core(pair = 0) {
-  const rows = Array.from({ length: 3 }, () => Array(5).fill('.'));
-  rows[pair] = ['X', 'ZU', 'X', '.', 'ZU'];
-  rows[pair + 1] = ['H', 'ZD', 'Z', 'H', 'XD'];
-  return rows;
-}
-function braid(quartets = 2, reverse = false) {
-  const rows = Array.from({ length: 3 }, () => Array(4 * quartets).fill('.'));
-  for (let column = 0; column < rows[0].length; column++) {
-    const row = (column + Number(reverse)) % 2;
-    rows[row][column] = 'ZU'; rows[row + 1][column] = 'ZD';
-  }
-  return rows;
-}
-function expand(circuit, random, count) {
-  for (let i = 0; i < count; i++) {
-    const options = getRewriteMoves(circuit, { allowedRules: RULE_IDS }).filter(item => item.move.rule.startsWith('basis') && lowerBound(item.next) > lowerBound(circuit));
-    if (!options.length) break;
-    circuit = compactCircuit(options[Math.floor(random() * options.length)].next);
-  }
-  return circuit;
-}
-function commute(circuit, random) {
-  const options = getRewriteMoves(circuit, { allowedRules: RULE_IDS }).filter(item => item.move.rule.startsWith('phase-'));
-  return options.length ? compactCircuit(options[Math.floor(random() * options.length)].next) : circuit;
-}
 function certificate(circuit, solution) {
-  // Verify the reverse derivation without storing a duplicate sequence.
-  // Arrangement edits are reversed by restoring their prior layout.
   const states = [circuit];
   for (const move of solution) states.push(applyMove(states.at(-1), move));
   if (!isSolved(states.at(-1)) || !isIdentity(circuit)) throw new Error('Invalid solver certificate');
@@ -76,55 +27,95 @@ function certificate(circuit, solution) {
   if (JSON.stringify(grown) !== JSON.stringify(circuit)) throw new Error('Invalid identity-to-puzzle derivation');
 }
 
-async function saveCatalogue() {
-  const output = `// Generated offline by tools/circuit-reduction/certify-generated.mjs.
-// Entry order is part of the frozen Daily v2 seed. Witnesses live only in tools/.
+function varied(entry) {
+  const metrics = circuitMetrics(entry.circuit);
+  if (metrics.maxAlternatingCZ > 4) return false;
+  if (entry.optimalMoves < 10) return true;
+  const rules = entry.solution.map(move => move.rule);
+  return Object.keys(metrics.gateTypes).length >= 3 && metrics.entropy >= 1.3 &&
+    rules.some(rule => rule.startsWith('basis-')) && advancedFamilies(entry.solution).size >= 2;
+}
+
+if (process.argv.includes('--audit')) {
+  const { CERTIFIED_PUZZLES, generatePuzzle, dailyPuzzle } = await import('./witnesses.js');
+  const { DAILY_START } = await import('../../src/lib/circuit-reduction/puzzles.js');
+  const summary = entries => ({ count: entries.length, ...catalogueMetrics(entries),
+    maxAlternatingCZ: Math.max(...entries.map(entry => circuitMetrics(entry.circuit).maxAlternatingCZ)) });
+  const random = Array.from({ length: 1000 }, (_, seed) => generatePuzzle(`diversity:${seed}`, 10 + seed % 5));
+  const daily = Array.from({ length: 365 }, (_, day) => dailyPuzzle(new Date(Date.parse(DAILY_START) + day * 86400000).toISOString().slice(0, 10)));
+  console.log(JSON.stringify({ catalogue: summary(CERTIFIED_PUZZLES), hard: summary(CERTIFIED_PUZZLES.filter(entry => entry.optimalMoves >= 10)),
+    random: summary(random), daily: summary(daily) }, null, 2));
+} else if (process.argv.includes('--check') || process.argv.includes('--check-data')) {
+  const { CERTIFIED_PUZZLES, LEVELS, dailyPuzzle } = await import('./witnesses.js');
+  const { DAILY_START } = await import('../../src/lib/circuit-reduction/puzzles.js');
+  const provenance = JSON.parse(await readFile(proofUrl, 'utf8'));
+  if (provenance.version !== version || provenance.nodes.length !== CERTIFIED_PUZZLES.length ||
+      JSON.stringify(provenance.ruleIds) !== JSON.stringify(LEARNED_RULE_IDS)) throw new Error('Catalogue provenance does not match the current generator/rules.');
+  for (const [index, entry] of CERTIFIED_PUZZLES.entries()) {
+    if (sequenceCost(entry.solution) !== entry.optimalMoves || !varied(entry)) throw new Error(`Catalogue quality failed: ${index + 1}`);
+    if (process.argv.includes('--check')) {
+      const result = solveShortest(entry.circuit, { maxDepth: entry.optimalMoves, maxNodes: Math.max(25000, provenance.nodes[index] * 2), allowedRules: LEARNED_RULE_IDS });
+      if (result.status !== 'optimal' || result.optimalMoves !== entry.optimalMoves) throw new Error(`Certificate failed: ${index + 1}`);
+    }
+    certificate(entry.circuit, entry.solution);
+  }
+  for (const level of [...LEVELS, dailyPuzzle(DAILY_START)]) {
+    if (sequenceCost(level.solution) !== (level.optimalMoves ?? level.parMoves)) throw new Error('Precomputed score failed');
+    certificate(level.circuit, level.solution);
+  }
+  const metrics = catalogueMetrics(CERTIFIED_PUZZLES);
+  if (metrics.minimumNearestNeighborDistance < minimumDistance - 1e-9 ||
+      LEARNED_RULE_IDS.some(rule => moveCost({ rule }) && !metrics.ruleUse[rule])) throw new Error('Catalogue diversity or rule coverage failed');
+  for (const difficulty of [10, 11, 12, 13, 14]) {
+    const entries = CERTIFIED_PUZZLES.filter(entry => entry.optimalMoves === difficulty), counts = new Map();
+    for (const entry of entries) for (const name of advancedFamilies(entry.solution)) counts.set(name, (counts.get(name) ?? 0) + 1);
+    if ([...counts.values()].some(count => count > Math.max(1, Math.floor(entries.length * 2 / 3)))) throw new Error('One advanced rule family dominates a difficulty');
+  }
+  console.log(`Verified ${CERTIFIED_PUZZLES.length} catalogue boards, ${LEVELS.length} lessons and the first daily puzzle; all 18 scored rules occur in certified solutions.`);
+} else if (process.argv.includes('--generate')) {
+  const targets = [3, 6, 10, 11, 12, 13, 14];
+  const perTarget = Number(process.env.CATALOGUE_PER_TARGET || 12), budget = Number(process.env.CATALOGUE_MAX_NODES || 25000);
+  if (!Number.isInteger(perTarget) || perTarget < 1 || perTarget > 1000 || !Number.isSafeInteger(budget) || budget < 1) throw new RangeError('Choose valid catalogue size and search budgets');
+  const catalogue = [], seen = new Set();
+  const sources = targets.map(difficulty => ({ difficulty,
+    source: generateCandidates(version, { difficulty, count: 1000 }), count: 0, families: new Map() }));
+  for (let round = 0; round < 1000 && sources.some(source => source.count < perTarget); round++) {
+    for (const source of sources) {
+      if (source.count >= perTarget) continue;
+      const candidate = source.source.next();
+      if (candidate.done) continue;
+      const circuit = candidate.value, metrics = circuitMetrics(circuit);
+      if (metrics.maxAlternatingCZ > 4 || seen.has(metrics.structuralKey)) continue;
+      seen.add(metrics.structuralKey);
+      if (catalogue.some(entry => structuralDistance(circuit, entry.circuit) < minimumDistance)) continue;
+      const result = solveShortest(circuit, { maxDepth: source.difficulty, maxNodes: budget, allowedRules: LEARNED_RULE_IDS });
+      if (result.status !== 'optimal' || result.optimalMoves !== source.difficulty || !varied({ circuit, ...result })) continue;
+      const families = advancedFamilies(result.solution);
+      if (source.difficulty >= 10 && [...families].some(name => (source.families.get(name) ?? 0) >= Math.max(1, Math.floor(perTarget * 2 / 3)))) continue;
+      certificate(circuit, result.solution);
+      catalogue.push({ circuit, ...result }); source.count++;
+      for (const name of families) source.families.set(name, (source.families.get(name) ?? 0) + 1);
+      console.log(`Accepted ${source.difficulty} moves: ${source.count}/${perTarget}, nodes=${result.nodes}, CZ run=${metrics.maxAlternatingCZ}`);
+    }
+  }
+  if (sources.some(source => source.count !== perTarget)) throw new Error('Candidate budget exhausted before filling every difficulty');
+  const metrics = catalogueMetrics(catalogue);
+  if (LEARNED_RULE_IDS.some(rule => moveCost({ rule }) && !metrics.ruleUse[rule])) throw new Error('The selected catalogue must exercise every scored rule');
+  const output = `// Generated offline by tools/circuit-reduction/certify-generated.mjs --generate.
+// Entry order is frozen for Daily v3; witnesses remain in tools/.
 import { decodeCircuit } from './stored-puzzles.js';
-const stored = [\n${catalogue.map(entry => `  { circuit: ${JSON.stringify(encodeCircuit(entry.circuit))}, optimalMoves: ${sequenceCost(entry.solution)} },`).join('\n')}\n];
+const stored = [\n${catalogue.map(entry => `  { circuit: ${JSON.stringify(encodeCircuit(entry.circuit))}, optimalMoves: ${entry.optimalMoves} },`).join('\n')}\n];
 export const CERTIFIED_PUZZLES = stored.map(({ circuit, optimalMoves }) => ({ circuit: decodeCircuit(circuit), optimalMoves }));
 `;
-  await writeFile(new URL('../../src/lib/circuit-reduction/generated-catalogue.js', import.meta.url), output);
-  const witness = `// Generated offline. Same entry order as src/lib/circuit-reduction/generated-catalogue.js.
+  const witnesses = `// Generated offline. Same order as src/lib/circuit-reduction/generated-catalogue.js.
 import { decodeSequence } from '../../src/lib/circuit-reduction/stored-puzzles.js';
 export const CATALOGUE_WITNESSES = [\n${catalogue.map(entry => `  [\n${encodeSequence(entry.solution).map(move => '    ' + JSON.stringify(move) + ',').join('\n')}  ],`).join('\n')}\n].map(decodeSequence);
 `;
-  await writeFile(new URL('./catalogue-witnesses.js', import.meta.url), witness);
-  await writeFile(proofUrl, JSON.stringify({ version: 'circuit-reduction-generator-v2', method: 'complete-iterative-deepening', generation: 'reverse-certified-solution', ruleIds: RULE_IDS, nodes: catalogue.map(entry => entry.nodes) }, null, 2) + '\n');
+  await writeFile(new URL('../../src/lib/circuit-reduction/generated-catalogue.js', import.meta.url), output);
+  await writeFile(new URL('./catalogue-witnesses.js', import.meta.url), witnesses);
+  await writeFile(proofUrl, JSON.stringify({ version, method: 'complete-iterative-deepening', generation: 'rule-relators-and-reversible-rewrites',
+    ruleIds: LEARNED_RULE_IDS, minimumDistance, nodes: catalogue.map(entry => entry.nodes) }, null, 2) + '\n');
+  console.log(JSON.stringify(metrics, null, 2));
+} else {
+  console.log('Use --generate, --check-data, --check (exact search), or --audit (1,000 random / 365 daily puzzles).');
 }
-
-for (let attempt = 0; attempt < 1000; attempt++) {
-  const difficulty = [...targets][attempt % targets.size];
-  if (catalogue.filter(item => item.optimalMoves === difficulty).length >= perTarget) {
-    if ([...targets].every(target => catalogue.filter(item => item.optimalMoves === target).length >= perTarget)) break;
-    continue;
-  }
-  const random = seededRandom(`circuit-reduction-hard-catalogue-v2:${attempt}`);
-  let circuit;
-  if (difficulty === 3) circuit = braid(1, random() < .5);
-  else if (difficulty === 6) circuit = expand(core(random() < .5 ? 0 : 1), random, 2);
-  else if (difficulty === 14) {
-    const first = core(random() < .5 ? 0 : 1), second = core(random() < .5 ? 0 : 1), crossings = braid(1, random() < .5);
-    circuit = random() < .5 ? join(join(first, crossings), second) : join(join(crossings, first), second);
-    circuit = expand(compactCircuit(circuit), random, 3);
-  } else {
-    const motif = core(random() < .5 ? 0 : 1), crossings = braid(2, random() < .5);
-    circuit = random() < .5 ? join(motif, crossings) : join(crossings, motif);
-    circuit = expand(compactCircuit(circuit), random, Math.min(3, difficulty - 10));
-    if (difficulty >= 11 && random() < .35) circuit = commute(circuit, random);
-  }
-  circuit = compactCircuit(circuit);
-  const key = JSON.stringify(circuit);
-  if (seen.has(key)) continue;
-  seen.add(key);
-  const start = performance.now();
-  const result = solveShortest(circuit, { maxDepth: difficulty, maxNodes: budget, allowedRules: RULE_IDS });
-  console.log(`attempt=${attempt} target=${difficulty} result=${result.status}/${result.optimalMoves ?? '-'} nodes=${result.nodes} ms=${Math.round(performance.now() - start)}`);
-  if (result.status !== 'optimal' || result.optimalMoves !== difficulty) continue;
-  const rules = result.solution.filter(move => move.rule !== 'arrange').map(move => move.rule);
-  if (difficulty >= 10 && (!rules.includes('control-order') || !rules.some(rule => rule.startsWith('basis')) || !rules.some(rule => rule.startsWith('stabilizer')))) continue;
-  certificate(circuit, result.solution);
-  catalogue.push({ circuit, solution: result.solution, optimalMoves: result.optimalMoves, nodes: result.nodes });
-  await saveCatalogue();
-}
-console.log('Catalogue counts', Object.fromEntries([...targets].map(target => [target, catalogue.filter(item => item.optimalMoves === target).length])));
-if (![...targets].every(target => catalogue.some(item => item.optimalMoves === target))) process.exitCode = 1;

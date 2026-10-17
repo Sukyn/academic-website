@@ -82,8 +82,8 @@ export function highlightFlowBits(svg, wires = []) {
   }
 }
 
-export function renderFlow(svg, targetSvg, puzzle, placements, selected) {
-  const { snapshots, columns, cancellations } = flowTrace(puzzle, placements), output = snapshots.at(-1);
+export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace } = {}) {
+  const { snapshots, columns, cancellations } = trace ?? flowTrace(puzzle, placements), output = snapshots.at(-1);
   const target = canonicalTarget(puzzle.target), count = output.length;
   const width = boardWidth(puzzle) - 52, height = count * 34 + 62;
   const x = flowColumnX, y = basis => 44 + basisRow(basis) * 34;

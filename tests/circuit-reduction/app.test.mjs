@@ -21,6 +21,7 @@ async function gameMarkup() {
   const dialogs = html.match(/<GameDialogs\b[^>]*>([\s\S]*?)<\/GameDialogs>/);
   assert.ok(dialogs, 'The circuit game uses the same overlays as Golf');
   html = html.replace(dialogs[0], (await component('GameDialogs'))
+    .replace('<GamePuzzleJsonDialog />', await component('GamePuzzleJsonDialog'))
     .replace('<slot name="rules" />', dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '')
     .replace('<slot name="result-actions" />', ''));
   html = html.replace(/\{RULES\.map\(rule => <button[^\n]+/g,
@@ -63,6 +64,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     removeAttribute(name) { delete this.attrs[name]; }
     matches(selector) {
       if (selector.includes(',')) return selector.split(',').some(part => this.matches(part.trim()));
+      if (/^[a-z]+$/i.test(selector)) return this.tagName === selector.toUpperCase();
       if (selector === 'dialog[open]') return this.tagName === 'DIALOG' && this.open;
       if (selector.startsWith('#')) return this.attrs.id === selector.slice(1);
       if (selector.startsWith('.')) return (this.className ?? '').split(/\s+/).includes(selector.slice(1));
@@ -132,7 +134,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   const descriptors = new Map(globals.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   context.after(() => { for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } });
   const originalDateNow = Date.now;
-  Date.now = () => Date.parse('2026-10-14T12:00:00Z');
+  Date.now = () => Date.parse('2026-10-17T12:00:00Z');
   context.after(() => { Date.now = originalDateNow; });
   const { ReplayWorker, gifs } = replayWorkers();
   const windowMock = new Element('WINDOW'), requests = [], workers = [], timers = new Map();
@@ -241,7 +243,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     }
   }
   async function finish(puzzle) { for (const move of puzzle.solution) await play(move); assert.ok(isSolved(boardCircuit())); assert.equal(get('win-dialog').open, true); }
-  function metadata(date, serverNow = Date.parse('2026-10-14T12:00:00Z')) {
+  function metadata(date, serverNow = Date.parse('2026-10-17T12:00:00Z')) {
     const today = dailyDate(serverNow), bounds = dailyBounds(date);
     return { today, date, startDate: DAILY_START, serverNow, ...bounds, nextChangeAt: dailyBounds(today).closesAt,
       acceptingScores: date === today && serverNow >= bounds.opensAt && serverNow < bounds.closesAt, puzzle: dailyPuzzle(date) };
@@ -306,7 +308,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await windowMock.dispatch('pageshow', { persisted: true });
   assert.equal(get('restart').disabled, false);
   assert.ok(get('circuit-board').querySelectorAll('[data-cell]').every(cell => !cell.disabled));
-  await reply(interruptedDaily, metadata('2026-10-14')); await interruptedDailyLoad; await boards();
+  await reply(interruptedDaily, metadata('2026-10-17')); await interruptedDailyLoad; await boards();
   assert.equal(boardSignature(), beforeRestoreBoard, 'A cancelled Daily response preserves the restored board');
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true');
 
@@ -556,7 +558,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   // Re-selecting the active mode and disclosing the archive retain progress.
   await chooseLevel(3); await play(LEVELS[2].solution[0]);
   const progress = boardSignature(); await click('mode-campaign'); assert.equal(moveCount(), 1); assert.equal(boardSignature(), progress);
-  const disclosure = click('daily-toggle'); await reply(pendingDaily(), metadata('2026-10-14')); await disclosure; await boards();
+  const disclosure = click('daily-toggle'); await reply(pendingDaily(), metadata('2026-10-17')); await disclosure; await boards();
   assert.equal(get('mode-campaign').getAttribute('aria-pressed'), 'true'); assert.equal(boardSignature(), progress);
   const staleLoad = click('mode-daily'), stale = pendingDaily(); assert.equal(get('undo').disabled, true);
   await cellAt(0, 0).dispatch('pointerdown', mouse(0, 0));
@@ -565,7 +567,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.deepEqual(selectedKeys(), [], 'Daily loading locks drag selection');
   assert.equal(moveCount(), 1, 'Daily loading also locks keyboard undo');
   await click('mode-campaign'); assert.equal(stale.options.signal.aborted, true);
-  await reply(stale, metadata('2026-10-14')); await staleLoad;
+  await reply(stale, metadata('2026-10-17')); await staleLoad;
   assert.equal(boardSignature(), progress); assert.equal(moveCount(), 1);
 
   // Reset and switching modes invalidate saved-score and ranking responses.
@@ -609,6 +611,61 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await finish({ solution: LEVELS[0].solution }); assert.equal(get('score-form').hidden, true);
   const beforeRandomSubmit = requests.length; await get('score-form').dispatch('submit'); assert.equal(requests.length, beforeRandomSubmit, 'Random/custom wins never create a ranked score');
 
+  // Native rewrites commit once but keep the old board visible until the tween
+  // finishes. Metadata refreshes and cancellation cannot expose a stale win.
+  await click('close-win');
+  await importCircuit(LEVELS[1].circuit);
+  workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
+  const nativeJobs = [];
+  Element.prototype.animate = function () {
+    let resolve, reject;
+    const finished = new Promise((done, fail) => { resolve = done; reject = fail; });
+    const job = { finished, finish: resolve, cancel: () => reject(new Error('Cancelled')) };
+    nativeJobs.push(job); return job;
+  };
+  const finishAnimations = async () => { for (const job of nativeJobs.splice(0)) job.finish(); await settle(); };
+  const originalHadamards = boardCircuit();
+  await play(LEVELS[1].solution[0]);
+  assert.equal(moveCount(), 1);
+  assert.deepEqual(boardCircuit(), originalHadamards, 'The old board remains under the transient gates');
+  assert.equal(get('circuit-board').dataset.rewriteAnimating, 'true');
+  assert.equal(get('win-dialog').open, false, 'The result waits for cancellation to be visible');
+  assert.ok(get('circuit-board').querySelectorAll('[data-cell]').every(cell => cell.disabled));
+  assert.ok(rules.every(button => button.disabled), 'Metadata/UI updates cannot re-enable a rewrite in flight');
+  await click('undo'); await boards(); await finishAnimations();
+  assert.deepEqual(boardCircuit(), originalHadamards);
+  assert.equal(moveCount(), 0);
+  assert.equal(get('win-dialog').open, false, 'An undone transition cannot finish the round later');
+  assert.equal(get('circuit-board').querySelectorAll('.rewrite-overlay').length, 0);
+  await play(LEVELS[1].solution[0]);
+  await click('restart'); await boards(); await finishAnimations();
+  assert.deepEqual(boardCircuit(), originalHadamards);
+  assert.equal(get('win-dialog').open, false, 'Reset cancels the pending result');
+  await play(LEVELS[1].solution[0]); await finishAnimations();
+  assert.ok(isSolved(boardCircuit()));
+  assert.equal(get('win-dialog').open, true);
+  await click('close-win'); await click('replay');
+  let nativeTimer = [...timers.values()].find(timer => timer.delay === 650);
+  timers.delete(nativeTimer); nativeTimer.callback();
+  assert.equal(get('review-note').textContent, 'Step 0 / 1', 'Replay waits for its native transition');
+  await click('resume-round'); await finishAnimations();
+  assert.equal(get('review-controls').hidden, true);
+  assert.ok(isSolved(boardCircuit()), 'Cancelling replay restores the completed round');
+  await click('mode-tutorial');
+  await click('tutorial-start');
+  const guidedMove = click('tutorial-next');
+  await settle();
+  assert.ok(nativeJobs.length, 'The tutorial rewrite is still animating');
+  const requestCountDuringGuide = requests.length;
+  await click('mode-daily');
+  assert.equal(requests.length, requestCountDuringGuide, 'Daily requests cannot interrupt an executing tutorial step');
+  await finishAnimations(); await guidedMove;
+  assert.equal(get('tutorial-heading').textContent, `Step 2 of ${TUTORIAL_STEPS.length}`);
+  delete Element.prototype.animate;
+  await importCircuit([['.', 'X', 'X', '.']]);
+  workers.at(-1).respond({ status: 'optimal', optimalMoves: 1 });
+  await finish({ solution: LEVELS[0].solution });
+
   // Replay reviews snapshots, permits undo, and cannot mutate a later round.
   await click('close-win');
   assert.equal(get('replay-actions').hidden, false, 'The replay row is visible once a move exists');
@@ -630,7 +687,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.deepEqual(boardCircuit(), finishedBoard, 'Undo restores the circuit before the free layout step');
   assert.equal(moveCount(), 1);
   await click('replay-result'); assert.equal(get('win-dialog').open, false); assert.equal(get('review-note').textContent, 'Step 0 / 1');
-  const replayTimer = [...timers.values()].find(timer => timer.delay === 650); timers.delete(replayTimer); replayTimer.callback();
+  const replayTimer = [...timers.values()].find(timer => timer.delay === 650); timers.delete(replayTimer); replayTimer.callback(); await settle();
   assert.equal(get('review-note').textContent, 'Step 1 / 1');
   await click('undo'); await boards(); assert.equal(moveCount(), 0); assert.equal(get('review-controls').hidden, true);
   assert.equal(get('replay-actions').hidden, true, 'Undoing the final move hides the empty replay row');
@@ -653,7 +710,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   interruptedSearch.respond({ status: 'optimal', optimalMoves: 99 });
   assert.match(get('custom-status').textContent, /Identity verified.*unavailable/);
   await windowMock.dispatch('pageshow', { persisted: true });
-  await reply(pendingDaily(), metadata('2026-10-14')); await boards();
+  await reply(pendingDaily(), metadata('2026-10-17')); await boards();
   assert.equal(boardSignature(), beforeSearchRestore);
   assert.match(get('custom-status').textContent, /Identity verified.*unavailable/);
 
@@ -718,7 +775,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   const restoredRanking = requests.at(-1);
   assert.equal(new URL(restoredRanking.url, 'https://example.test').searchParams.get('player'), String(savedPlayer.id));
   await reply(restoredRanking, boardData(savedPlayer));
-  await reply(pendingDaily(), metadata('2026-10-14')); await boards();
+  await reply(pendingDaily(), metadata('2026-10-17')); await boards();
   restoredExport.resolve(new Blob(['GIF89a'], { type: 'image/gif' })); await settle();
   assert.equal(boardSignature(), savedBoard); assert.equal(moveCount(), savedMoves);
   assert.equal(get('win-dialog').open, true); assert.equal(get('score-form').hidden, true);
@@ -736,7 +793,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   }
 
   // Server time is authoritative, and reopening today's puzzle preserves play.
-  const today = '2026-10-14', beforeMidnight = dailyBounds(today).closesAt - 1000;
+  const today = '2026-10-17', beforeMidnight = dailyBounds(today).closesAt - 1000;
   await loadDaily(today, beforeMidnight, true); const puzzle = dailyPuzzle(today);
   Date.now = () => Date.parse('2036-01-01T12:00:00Z');
   assert.equal(get('replay').closest('.advanced-features'), null, 'Daily replay is directly reachable');
@@ -766,19 +823,19 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.match(get('daily-note').textContent, /Practice.*closed/);
   await reply(pendingDaily(), metadata(today, beforeMidnight + 1050)); await refreshing; await boards();
   assert.equal(moveCount(), puzzle.optimalMoves); assert.equal(boardSignature(), winningBoard); assert.equal(get('score-form').hidden, true);
-  assert.equal(get('daily-date').children[0].value, '2026-10-15'); assert.equal(get('daily-date').value, today);
+  assert.equal(get('daily-date').children[0].value, '2026-10-18'); assert.equal(get('daily-date').value, today);
   const beforePastSubmit = requests.length; await get('score-form').dispatch('submit'); assert.equal(requests.length, beforePastSubmit);
   await click('try-again'); await boards(); assert.equal(moveCount(), 0);
-  Date.now = () => Date.parse('2026-10-14T12:00:00Z');
+  Date.now = () => Date.parse('2026-10-17T12:00:00Z');
 
   // An API rejection at midnight turns an already-won round into practice.
-  await loadDaily('2026-10-15', dailyBounds('2026-10-15').opensAt + 100, true);
-  const next = dailyPuzzle('2026-10-15'); await finish(next);
+  await loadDaily('2026-10-18', dailyBounds('2026-10-18').opensAt + 100, true);
+  const next = dailyPuzzle('2026-10-18'); await finish(next);
   get('player-name').value = 'Ada';
   const expiring = get('score-form').dispatch('submit'), expired = requests.at(-1);
   await reply(expired, { error: 'This puzzle’s leaderboard is closed.' }, 409); await expiring;
   assert.equal(get('score-form').hidden, true); assert.equal(get('win-practice').hidden, false);
-  await reply(pendingDaily(), metadata('2026-10-15', dailyBounds('2026-10-15').closesAt + 10)); await boards();
+  await reply(pendingDaily(), metadata('2026-10-18', dailyBounds('2026-10-18').closesAt + 10)); await boards();
   assert.equal(moveCount(), next.optimalMoves); assert.equal(get('win-dialog').open, true);
 
   // An unavailable daily API leaves the current puzzle intact.
@@ -791,8 +848,8 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.ok([...timers.values()].some(timer => timer.delay === 60_000), 'The requested daily puzzle retries its server API');
   const requestCount = requests.length; documentMock.hidden = true; await documentMock.dispatch('visibilitychange'); assert.equal(requests.length, requestCount);
   documentMock.hidden = false; const resumed = documentMock.dispatch('visibilitychange');
-  assert.equal(new URL(pendingDaily().url, 'https://example.test').searchParams.get('date'), '2026-10-15', 'Recovery refreshes the preserved puzzle date');
-  await reply(pendingDaily(), metadata('2026-10-15', dailyBounds('2026-10-15').closesAt + 10)); await resumed; await boards();
+  assert.equal(new URL(pendingDaily().url, 'https://example.test').searchParams.get('date'), '2026-10-18', 'Recovery refreshes the preserved puzzle date');
+  await reply(pendingDaily(), metadata('2026-10-18', dailyBounds('2026-10-18').closesAt + 10)); await resumed; await boards();
   assert.equal(get('daily-status').textContent, '');
   assert.equal(boardSignature(), beforeOutage, 'A metadata refresh preserves progress after the outage');
   await click('mode-campaign'); await boards();

@@ -216,18 +216,20 @@ function bestScore() {
     worker = search;
     const finish = data => {
       if (worker !== search) return;
-      get('best-count').textContent = data.status === 'optimal'
-        ? `Optimal: ${data.optimalMoves} strokes`
-        : data.status === 'error' ? 'Optimum unavailable'
-        : data.status === 'boundary' ? 'Boundary requires higher precision'
-          : `No solution through ${Math.max(0, data.checkedDepth)} strokes`;
+      const minimum = data?.status === 'optimal' && Number.isSafeInteger(data.optimalMoves) && data.optimalMoves >= 0
+        ? data.optimalMoves : null;
+      get('best-count').textContent = minimum !== null ? `Optimal: ${minimum} strokes`
+        : data?.status === 'boundary' ? 'Boundary requires higher precision'
+        : data?.status === 'limit' && Number.isSafeInteger(data.checkedDepth) && data.checkedDepth >= -1
+          ? `No solution through ${Math.max(0, data.checkedDepth)} strokes` : 'Optimum unavailable';
       search.terminate();
       worker = null;
-      optimalMoves = data.status === 'optimal' ? data.optimalMoves : null;
+      optimalMoves = minimum;
       update();
     };
     search.onmessage = ({ data }) => finish(data);
-    search.onerror = () => finish({ status: 'error' });
+    const fail = event => { event?.preventDefault(); finish(); };
+    search.onerror = search.onmessageerror = fail;
     search.postMessage({ target, epsilon: epsilon() });
   } catch {
     worker?.terminate();

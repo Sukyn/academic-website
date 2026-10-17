@@ -21,12 +21,12 @@ export function circuitWires(circuit, { cellWidth = 64, cellHeight = 72, gutter 
   circuit.forEach((line, row) => line.forEach((cell, column) => {
     if (cell.endsWith('U')) {
       const x = gutter + (column + .5) * cellWidth, y = header + (row + .5) * cellHeight;
-      svg.appendChild(svgNode('line', { x1: x, y1: y, x2: x, y2: y + cellHeight, stroke: CIRCUIT_COLORS.z, 'stroke-width': 2.4 }));
+      svg.appendChild(svgNode('line', { x1: x, y1: y, x2: x, y2: y + cellHeight, stroke: CIRCUIT_COLORS.z, 'stroke-width': 2.4, 'data-link': `${row}:${column}` }));
     }
   }));
   return svg;
 }
-export function drawCircuit(ctx, circuit, { left, top, spacing, rowSpacing = 72, radius = 16, selected } = {}) {
+export function drawCircuit(ctx, circuit, { left, top, spacing, rowSpacing = 72, radius = 16 } = {}) {
   const colors = CIRCUIT_COLORS;
   ctx.lineWidth = 1.5; ctx.strokeStyle = colors.wire;
   circuit.forEach((_, row) => {
@@ -43,7 +43,6 @@ export function drawCircuit(ctx, circuit, { left, top, spacing, rowSpacing = 72,
   }));
   circuit.forEach((line, row) => line.forEach((cell, column) => {
     const x = left + (column + .5) * spacing, y = top + row * rowSpacing;
-    if (selected?.(row, column)) { ctx.strokeStyle = colors.z; ctx.lineWidth = 1; ctx.strokeRect(x - spacing / 2 + 2, y - 28, spacing - 4, 56); }
     drawGate(ctx, cell, x, y, radius);
   }));
 }

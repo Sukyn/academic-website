@@ -1,0 +1,15 @@
+<dialog class="game-dialog puzzle-json-dialog" id="puzzle-json-dialog" aria-labelledby="puzzle-json-title">
+  <button class="close-dialog" id="puzzle-json-close" type="button" aria-label="Close JSON">×</button>
+  <h2 id="puzzle-json-title">Input a json</h2>
+  <form id="puzzle-json-form">
+    <label for="puzzle-json-text">Puzzle JSON</label>
+    <textarea id="puzzle-json-text" rows="10" maxlength="65536" spellcheck="false" autocapitalize="off" autocomplete="off" required></textarea>
+    <label id="puzzle-json-file-label">JSON file<input id="puzzle-json-file" type="file" accept=".json,application/json" /></label>
+    <div class="share-actions">
+      <button class="button" id="puzzle-json-apply" type="submit">Play puzzle</button>
+      <button class="button" id="puzzle-json-copy" type="button" hidden>Copy</button>
+      <button class="button ghost" id="puzzle-json-download" type="button" hidden>Download JSON</button>
+    </div>
+  </form>
+  <p class="message" id="puzzle-json-status" role="status"></p>
+</dialog>

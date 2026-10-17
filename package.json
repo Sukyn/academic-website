@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs tests/games/*.test.mjs tests/quantum-golf/*.test.mjs tests/circuit-reduction/*.test.mjs tests/quantum-signals/*.test.mjs tests/graph-states/*.test.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs tests/games/*.test.mjs tests/quantum-golf/*.test.mjs tests/circuit-reduction/*.test.mjs tests/quantum-signals/*.test.mjs tests/graph-states/*.test.mjs tests/categorical-circuits/*.test.mjs",
     "test:circuits": "node --test tests/circuits.test.mjs",
     "test:site:browser": "node tools/quality/browser.mjs",
     "test:golf": "node --test tests/quantum-golf/*.test.mjs",

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeReplay } from '../../src/scripts/circuit-reduction-gif-worker.js';
-import { RULES, cloneCircuit, solveShortest, sequenceCost, moveCost } from '../../src/lib/circuit-reduction/engine.js';
 
 function replace(context, object, key, value) {
   const original = object[key];
@@ -13,14 +12,17 @@ function canvases(context) {
   const surfaces = [];
   replace(context, globalThis, 'OffscreenCanvas', class {
     constructor(width, height) {
-      this.width = width; this.height = height; this.frames = [];
+      this.width = width; this.height = height; this.frames = []; this.crops = [];
       let commands = [];
       this.commands = () => commands;
-      const record = name => (...args) => commands.push({ name, args, fillStyle: this.context.fillStyle, strokeStyle: this.context.strokeStyle, lineWidth: this.context.lineWidth });
-      this.context = Object.fromEntries(['fillRect', 'strokeRect', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'arc', 'fill', 'fillText'].map(name => [name, record(name)]));
-      this.context.getImageData = (_x, _y, w, h) => {
-        this.frames.push(commands); commands = [];
-        this.pixels ??= new Uint8ClampedArray(w * h * 4);
+      const record = name => (...args) => commands.push({ name, args, fillStyle: this.context.fillStyle, strokeStyle: this.context.strokeStyle, lineWidth: this.context.lineWidth, opacity: this.context.globalAlpha });
+      this.context = { globalAlpha: 1, ...Object.fromEntries(['fillRect', 'strokeRect', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'arc', 'fill', 'fillText', 'translate', 'scale'].map(name => [name, record(name)])) };
+      const states = [];
+      this.context.save = () => { states.push(this.context.globalAlpha); };
+      this.context.restore = () => { this.context.globalAlpha = states.pop(); };
+      this.context.getImageData = (x, y, w, h) => {
+        this.frames.push(commands); this.crops.push({ x, y, width: w, height: h }); commands = [];
+        if (this.pixels?.length !== w * h * 4) this.pixels = new Uint8ClampedArray(w * h * 4);
         return { data: this.pixels };
       };
       surfaces.push(this);
@@ -30,13 +32,14 @@ function canvases(context) {
   return surfaces;
 }
 
-// Inspect actual GIF blocks, dimensions, palettes, frame controls and the trailer.
+// Parse actual GIF image descriptors, palette flags, frame controls and trailer.
 function gifFrames(bytes, expectedHeight) {
   assert.equal(new TextDecoder().decode(bytes.subarray(0, 6)), 'GIF89a');
   const word = index => bytes[index] | bytes[index + 1] << 8;
-  assert.equal(word(6), 960); assert.equal(word(8), expectedHeight);
+  assert.equal(word(6), 720); assert.equal(word(8), expectedHeight);
   let position = 13, control;
-  assert.ok(bytes[10] & 128, 'The replay has a global palette');
+  assert.ok(bytes[10] & 128, 'The replay has one global palette');
+  assert.ok((1 << ((bytes[10] & 7) + 1)) <= 64, 'The fixed palette remains small');
   position += 3 * (1 << ((bytes[10] & 7) + 1));
   const frames = [];
   const skipBlocks = () => { let length; while ((length = bytes[position++])) position += length; };
@@ -47,27 +50,32 @@ function gifFrames(bytes, expectedHeight) {
       const kind = bytes[position++];
       if (kind === 0xf9) {
         assert.equal(bytes[position], 4);
-        control = { delay: word(position + 2) * 10, transparent: Boolean(bytes[position + 1] & 1) };
+        control = { delay: word(position + 2) * 10, transparent: Boolean(bytes[position + 1] & 1), disposal: bytes[position + 1] >> 2 & 7 };
       }
       skipBlocks();
     } else if (marker === 0x2c) {
-      assert.equal(word(position + 4), 960); assert.equal(word(position + 6), expectedHeight);
+      const frame = { ...control, left: word(position), top: word(position + 2), width: word(position + 4), height: word(position + 6) };
       const packed = bytes[position + 8]; position += 9;
-      if (packed & 128) position += 3 * (1 << ((packed & 7) + 1));
+      assert.equal(packed & 128, 0, 'Later frames reuse the global palette');
+      assert.equal(frame.left, 0); assert.equal(frame.width, 720);
+      assert.equal(frame.top, frames.length ? 100 : 0);
+      assert.equal(frame.height, expectedHeight - frame.top);
+      assert.ok(frame.top + frame.height <= expectedHeight, 'Circuit crops remain inside the logical screen');
       const depth = bytes[position++]; assert.ok(depth >= 2 && depth <= 8);
-      const firstBlock = bytes[position]; assert.ok(firstBlock > 0, 'Encoded image data is present');
-      skipBlocks(); frames.push(control);
+      assert.ok(bytes[position] > 0, 'Encoded image data is present');
+      skipBlocks(); frames.push(frame);
     } else assert.fail(`Unexpected GIF block ${marker}`);
   }
   assert.fail('Missing GIF trailer');
 }
 
 const texts = frame => frame.filter(command => command.name === 'fillText').map(command => command.args[0]);
-const selectedCells = frame => frame.filter(command => command.name === 'strokeRect' && command.strokeStyle === '#9ad9d1' && command.lineWidth === 1);
+const selectedCells = frame => frame.filter(command => command.name === 'strokeRect');
+const arcs = frame => frame.filter(command => command.name === 'arc');
 const move = (rule, row = 0, column = 0) => ({ rule, row, column });
 const round = { label: 'Level 1 · Two flips', circuit: [['.', 'X', 'X', '.']], sequence: [move('cancel-x', 0, 1)], optimalMoves: 1 };
 
-test('share image draws the original circuit without move highlights, captions, links or GIF frames', context => {
+test('share image keeps the original 960px layout, header and original gates', context => {
   const surfaces = canvases(context), progress = [], saved = structuredClone(round);
   const image = encodeReplay(round, value => progress.push(value), true);
   assert.equal(image, surfaces[0]);
@@ -75,99 +83,124 @@ test('share image draws the original circuit without move highlights, captions, 
   assert.equal(image.frames.length, 0, 'No GIF pixels are read');
   assert.equal(image.commands().filter(command => command.name === 'fillRect' && command.args[2] === 960).length, 1);
   assert.deepEqual(texts(image.commands()), [round.label, 'Optimal : 1', 'My score : 1']);
-  assert.equal(image.commands().filter(command => command.name === 'arc').length, 2, 'The two original X gates remain visible');
-  assert.equal(selectedCells(image.commands()).length, 0, 'A share image has no selected move window');
+  assert.equal(arcs(image.commands()).length, 2);
+  assert.equal(selectedCells(image.commands()).length, 0);
   assert.deepEqual(progress, []);
   assert.deepEqual(round, saved);
   assert.throws(() => encodeReplay({ ...round, sequence: [move('slide-h')] }, undefined, true));
 });
 
-test('GIF shows every rule window, includes the full replay, and ends on an empty identity circuit', context => {
-  const surfaces = canvases(context);
-  for (const rule of RULES) {
-    let circuit = cloneCircuit(rule.left), row = 0;
-    if (circuit.length === 1 && circuit[0].some(cell => cell.endsWith('U'))) circuit.push(circuit[0].map(cell => cell.endsWith('U') ? 'ZD' : '.'));
-    if (circuit.length === 1 && circuit[0].some(cell => cell.endsWith('D'))) {
-      circuit.unshift(circuit[0].map(cell => cell.endsWith('D') ? 'ZU' : '.')); row = 1;
-    }
-    // A circuit followed by its reverse is identity because each column is involutive.
-    circuit = circuit.map(line => [...line, ...[...line].reverse()]);
-    const solution = solveShortest(circuit, { maxDepth: 18, maxNodes: 25000 });
-    assert.equal(solution.status, 'optimal', rule.id);
-    const sequence = [move(rule.id, row), move(rule.id, row), ...solution.solution], saved = cloneCircuit(circuit), progress = [];
-    const bytes = encodeReplay({ ...round, circuit, sequence, optimalMoves: solution.optimalMoves }, value => progress.push(value));
-    const surface = surfaces.at(-1), frames = gifFrames(bytes, 224 + circuit.length * 80);
-    assert.equal(frames.length, sequence.length + 1);
-    assert.equal(surface.frames.length, frames.length);
-    assert.equal(selectedCells(surface.frames[0]).length, rule.left.length * rule.left[0].length, rule.id);
-    assert.ok(texts(surface.frames[0]).includes(`${moveCost(sequence[0]) ? 'Move 1' : 'Layout'}: ${rule.title}`));
-    const final = surface.frames.at(-1);
-    assert.deepEqual(texts(final), [round.label, `Optimal : ${solution.optimalMoves}`, `My score : ${sequenceCost(sequence)}`]);
-    assert.ok(surface.frames.every(frame => !texts(frame).some(text => /GG|colin-blake|Identity circuit/.test(text))));
-    assert.ok(surface.frames.every(frame => !texts(frame).includes('⊕')), 'Every target plus is drawn with paths rather than a font glyph');
-    assert.equal(final.filter(command => command.name === 'arc').length, 0, 'No gates remain in the final image');
-    assert.equal(final.filter(command => command.name === 'strokeRect').length, 0, 'No Hadamards or selected cells remain');
-    assert.equal(frames[0].delay, 1000); assert.equal(frames.at(-1).delay, 1800);
-    assert.ok(frames.every(frame => frame.transparent === false));
-    assert.equal(progress[0], 0); assert.equal(progress.at(-1), 1);
-    assert.deepEqual(circuit, saved, 'Export leaves the saved starting circuit intact');
-  }
+test('GIF animates cancellation while keeping a static clean header and ending on the identity', context => {
+  const surfaces = canvases(context), progress = [], saved = structuredClone(round);
+  const bytes = encodeReplay(round, value => progress.push(value));
+  const surface = surfaces[0], frames = gifFrames(bytes, 168);
+  assert.equal(frames.length, 9); assert.equal(surface.frames.length, 9);
+  assert.deepEqual(texts(surface.frames[0]), [round.label, 'Optimal : 1', 'My score : 1']);
+  assert.ok(surface.frames.slice(1).every(frame => texts(frame).length === 0), 'Summary text is drawn only once');
+  assert.ok(surface.frames.every(frame => selectedCells(frame).length === 0), 'There are no rewrite highlights');
+  assert.ok(surface.frames.every(frame => !texts(frame).some(text => /Move|Layout|Cancel/.test(text))), 'There are no per-move captions');
+  const positions = surface.frames.slice(1, -1).map(frame => frame.filter(command => command.name === 'translate').map(command => command.args[0]));
+  assert.ok(positions.every(pair => pair.length === 2));
+  assert.ok(positions.every((pair, index) => !index || pair[1] - pair[0] < positions[index - 1][1] - positions[index - 1][0]), 'The cancelling glyphs converge');
+  assert.ok(surface.frames[3].some(command => command.name === 'scale' && command.args[0] < 1), 'The glyphs shrink');
+  assert.ok(arcs(surface.frames[3]).every(command => command.opacity > 0 && command.opacity < 1), 'The glyphs fade');
+  assert.equal(arcs(surface.frames.at(-1)).length, 0);
+  assert.equal(frames[0].delay, 1000); assert.equal(frames.at(-1).delay, 1800);
+  assert.ok(frames.slice(1, -1).every(frame => frame.delay === 50));
+  assert.ok(frames.every(frame => !frame.transparent && frame.disposal === 1));
+  assert.deepEqual(surface.crops[0], { x: 0, y: 0, width: 720, height: 168 });
+  assert.ok(surface.crops.slice(1).every(crop => crop.y === 100 && crop.height === 68));
+  assert.deepEqual(progress, [0, 1]);
+  assert.deepEqual(round, saved);
 });
 
-test('Padding frames redraw changed circuit widths and finish the complete sequence', context => {
+test('linked cancellation exports adjacent connector frames behind the moving target glyphs', context => {
+  const surfaces = canvases(context);
+  const bytes = encodeReplay({ ...round, circuit: [['ZU', 'ZU'], ['XD', 'XD']], sequence: [move('cancel-cnot-down')] });
+  assert.equal(gifFrames(bytes, 228).length, 9);
+  const tween = surfaces[0].frames[2];
+  const firstGate = tween.findIndex(command => command.name === 'translate');
+  const connector = tween.findIndex(command => command.name === 'lineTo' && command.strokeStyle === '#9ad9d1');
+  assert.ok(connector >= 0 && connector < firstGate, 'Connectors are drawn before glyphs');
+  assert.equal(arcs(tween).length, 4);
+  assert.equal(arcs(surfaces[0].frames.at(-1)).length, 0);
+});
+
+test('free layouts jump to the next rewrite and layout-only replays retain sensible snapshots', context => {
   const surfaces = canvases(context);
   const sequence = [move('insert-column', 0, 1), move('remove-column', 0, 1), move('cancel-x')];
-  const frames = gifFrames(encodeReplay({ ...round, circuit: [['X', 'X']], sequence }), 304);
-  assert.equal(frames.length, 4);
+  const frames = gifFrames(encodeReplay({ ...round, circuit: [['X', 'X']], sequence }), 168);
+  assert.equal(frames.length, 10);
   const rendered = surfaces[0].frames;
-  assert.ok(texts(rendered[0]).includes('Layout: Identity spacing · free'));
-  assert.ok(texts(rendered[1]).includes('Layout: Identity spacing · free'));
-  const wireLengths = rendered.map(frame => {
-    const start = frame.find(command => command.name === 'moveTo').args[0];
-    const end = frame.find(command => command.name === 'lineTo').args[0];
-    return end - start;
-  });
-  assert.deepEqual(wireLengths, [112, 168, 112, 112]);
-  assert.equal(selectedCells(rendered[2]).length, 2);
-  assert.deepEqual(texts(rendered[3]), [round.label, 'Optimal : 1', 'My score : 1']);
-});
-
-test('wire spacing and one-click identity compaction export every free layout with the true rewrite score', context => {
-  const surfaces = canvases(context);
-  const sequence = [
+  const wireLengths = rendered.map(frame => frame.find(command => command.name === 'lineTo').args[0] - frame.find(command => command.name === 'moveTo').args[0]);
+  assert.deepEqual(wireLengths, Array(10).fill(84));
+  assert.deepEqual(texts(rendered[0]), [round.label, 'Optimal : 1', 'My score : 1']);
+  assert.equal(arcs(rendered.at(-1)).length, 0);
+  const freeSequence = [
     { ...move('insert-space', 0, 1), count: 100 }, move('compact-identities'), move('cancel-x'),
     { ...move('insert-column'), count: 50 }, move('compact-identities'),
   ];
-  const frames = gifFrames(encodeReplay({ ...round, circuit: [['X', 'X']], sequence }), 304);
-  assert.equal(frames.length, 6);
-  assert.ok(texts(surfaces[0].frames[0]).includes('Layout: Identity spacing · free'));
-  assert.ok(texts(surfaces[0].frames[2]).includes('Move 1: Cancel XX'));
-  assert.deepEqual(texts(surfaces[0].frames.at(-1)), [round.label, 'Optimal : 1', 'My score : 1']);
+  assert.equal(gifFrames(encodeReplay({ ...round, circuit: [['X', 'X']], sequence: freeSequence }), 168).length, 11);
+  assert.deepEqual(texts(surfaces[1].frames[0]), [round.label, 'Optimal : 1', 'My score : 1']);
+  assert.equal(arcs(surfaces[1].frames.at(-1)).length, 0);
+  const layoutOnly = { ...round, circuit: [['.', '.']], sequence: sequence.slice(0, 2), optimalMoves: 0 };
+  assert.equal(gifFrames(encodeReplay(layoutOnly), 168).length, 3);
+  const layoutWidths = surfaces[2].frames.map(frame => frame.find(command => command.name === 'lineTo').args[0] - frame.find(command => command.name === 'moveTo').args[0]);
+  assert.deepEqual(layoutWidths, [84, 126, 84]);
+  assert.deepEqual(texts(surfaces[2].frames[0]), [round.label, 'Optimal : 0', 'My score : 0']);
 });
 
-test('2000-move boundary replay samples at most 97 frames while retaining the final identity', context => {
+test('all thirteen rewrites animate when separated by many free spacing edits, including the final layout', context => {
+  const surfaces = canvases(context), sequence = [];
+  for (let index = 0; index < 13; index++) {
+    sequence.push(move('insert-column', 0, 1), move('compact-identities'), move('cancel-x'));
+  }
+  sequence.push({ ...move('insert-column'), count: 4 });
+  const bytes = encodeReplay({ ...round, circuit: [['X', 'X']], sequence });
+  const frames = gifFrames(bytes, 168), surface = surfaces[0];
+  assert.equal(frames.length, 119);
+  assert.deepEqual(texts(surface.frames[0]), [round.label, 'Optimal : 1', 'My score : 13']);
+  assert.equal(surface.frames.filter(frame => frame.some(command => command.name === 'scale')).length, 13 * 7, 'All thirteen cancellation or creation tweens are present');
+  for (let sample = 1; sample <= 13; sample++) {
+    assert.equal(arcs(surface.frames[sample * 9]).length, sample % 2 ? 0 : 2, 'Each rewrite reaches its exact resulting state');
+  }
+  const final = surface.frames.at(-1);
+  const wireWidth = final.find(command => command.name === 'lineTo').args[0] - final.find(command => command.name === 'moveTo').args[0];
+  assert.equal(wireWidth, 252, 'The trailing layout is retained in the final frame');
+  assert.equal(arcs(final).length, 0); assert.equal(frames.at(-1).delay, 1800);
+});
+
+test('2000 moves validate fully and retain the exact final identity within 145 cropped frames', context => {
   const surfaces = canvases(context), progress = [];
   const sequence = [move('slide-x'), ...Array.from({ length: 1999 }, () => move('cancel-x', 0, 1))];
   const bytes = encodeReplay({ ...round, circuit: [['X', '.', 'X']], sequence }, value => progress.push(value));
-  const frames = gifFrames(bytes, 304), surface = surfaces[0];
-  assert.equal(frames.length, 97); assert.equal(surface.frames.length, 97);
-  assert.ok(frames.reduce((sum, frame) => sum + frame.delay, 0) < 15000, 'Long replay remains under fifteen seconds');
-  assert.ok(texts(surface.frames[0]).includes('Layout: Move X'));
-  for (let index = 1; index < 96; index++) {
-    const step = Math.round(index * sequence.length / 96), rendered = surface.frames[index];
-    assert.ok(texts(rendered).includes(`Move ${step}: Cancel XX`), 'Sampled labels retain the complete rewrite count');
-    assert.equal(rendered.filter(command => command.name === 'arc').length, step % 2 ? 2 : 0, 'Sampled circuits retain the complete replay state');
+  const frames = gifFrames(bytes, 168), surface = surfaces[0];
+  assert.equal(frames.length, 145); assert.equal(surface.frames.length, 145);
+  assert.ok(frames.reduce((sum, frame) => sum + frame.delay, 0) < 15000);
+  assert.deepEqual(texts(surface.frames[0]), [round.label, 'Optimal : 1', 'My score : 1999']);
+  for (let sample = 1; sample <= 16; sample++) {
+    const step = Math.round(sample * 1999 / 16) + 1;
+    assert.equal(arcs(surface.frames[sample * 9]).length, step % 2 ? 2 : 0, 'Sampled transitions retain the complete replay state');
   }
-  assert.deepEqual(texts(surface.frames.at(-1)), [round.label, 'Optimal : 1', 'My score : 1999']);
-  assert.equal(surface.frames.at(-1).filter(command => command.name === 'arc').length, 0);
-  assert.equal(progress.length, 97); assert.equal(progress[0], 0); assert.equal(progress.at(-1), 1);
+  assert.equal(arcs(surface.frames.at(-1)).length, 0);
+  assert.equal(progress.length, 17); assert.equal(progress[0], 0); assert.equal(progress.at(-1), 1);
   assert.ok(progress.every((value, index) => value >= 0 && value <= 1 && (!index || value > progress[index - 1])));
   assert.throws(() => encodeReplay({ ...round, sequence: Array(2001).fill(move('cancel-x', 0, 1)) }), /Finish a circuit/);
   const invalidBetweenSamples = [...sequence]; invalidBetweenSamples[2] = move('unknown');
-  assert.throws(() => encodeReplay({ ...round, circuit: [['X', '.', 'X']], sequence: invalidBetweenSamples }), /Unknown circuit rule/, 'Moves between sampled frames are still validated');
+  assert.throws(() => encodeReplay({ ...round, circuit: [['X', '.', 'X']], sequence: invalidBetweenSamples }), /Unknown circuit rule/, 'Skipped moves are validated');
 });
 
-test('Unsupported drawing, invalid rules and unfinished replay fail explicitly', context => {
+test('free gate slides cannot crowd thirteen scored rewrites out of the GIF', context => {
+  const surfaces = canvases(context);
+  const sequence = [...Array.from({ length: 101 }, () => move('slide-x')),
+    ...Array.from({ length: 13 }, () => move('cancel-x', 0, 1))];
+  const bytes = encodeReplay({ ...round, circuit: [['X', '.', 'X']], sequence });
+  assert.equal(gifFrames(bytes, 168).length, 106);
+  assert.equal(surfaces[0].frames.filter(frame => frame.some(command => command.name === 'scale')).length, 13 * 7);
+  assert.equal(arcs(surfaces[0].frames.at(-1)).length, 0);
+});
+
+test('unsupported drawing, invalid rules and unfinished replay fail explicitly', context => {
   replace(context, globalThis, 'OffscreenCanvas', undefined);
   assert.throws(() => encodeReplay(round), { name: 'NotSupportedError' });
   canvases(context);
@@ -179,7 +212,7 @@ test('Unsupported drawing, invalid rules and unfinished replay fail explicitly',
   assert.throws(() => encodeReplay(round), { name: 'NotSupportedError' });
 });
 
-test('Worker independently returns one PNG or transfers a GIF, and serializes export failures', async context => {
+test('worker independently returns one PNG or transfers a GIF and serializes failures', async context => {
   replace(context, globalThis, 'WorkerGlobalScope', class {
     static [Symbol.hasInstance](value) { return value === globalThis; }
   });
@@ -193,27 +226,22 @@ test('Worker independently returns one PNG or transfers a GIF, and serializes ex
     assert.deepEqual(options, { type: 'image/png' });
     assert.equal(this, surfaces.at(-1));
     assert.deepEqual(texts(this.commands()), [round.label, 'Optimal : 1', 'My score : 1']);
-    assert.equal(this.commands().filter(command => command.name === 'arc').length, 2);
-    assert.equal(this.frames.length, 0, 'A static preview reads no GIF frames');
+    assert.equal(arcs(this.commands()).length, 2);
+    assert.equal(this.frames.length, 0);
     return new Promise(resolve => { finishConversion = resolve; });
   };
   await import('../../src/scripts/circuit-reduction-gif-worker.js?worker-message-test');
   const encoding = globalThis.onmessage({ data: { round, imageOnly: true } });
-  assert.equal(conversions, 1);
-  assert.equal(messages.length, 0, 'A static preview has no GIF progress');
+  assert.equal(conversions, 1); assert.equal(messages.length, 0);
   const image = new Blob(['png'], { type: 'image/png' });
   finishConversion(image);
   await encoding;
-  const completed = messages.at(-1);
-  assert.equal(completed.data.image, image);
-  assert.equal(completed.data.bytes, undefined);
-  assert.equal(completed.transfer, undefined);
+  assert.deepEqual(messages.at(-1), { data: { image }, transfer: undefined });
 
   messages.length = 0;
   await globalThis.onmessage({ data: { round, imageOnly: false } });
-  assert.equal(conversions, 1, 'GIF-only exports never convert the final frame to PNG');
-  assert.equal(messages.at(-1).data.image, undefined);
-  assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2);
+  assert.equal(conversions, 1);
+  assert.equal(gifFrames(messages.at(-1).data.bytes, 168).length, 9);
   assert.deepEqual(messages.at(-1).transfer, [messages.at(-1).data.bytes.buffer]);
   assert.deepEqual(messages.slice(0, -1).map(item => item.data), [{ progress: 0 }, { progress: 1 }]);
 
@@ -221,10 +249,9 @@ test('Worker independently returns one PNG or transfers a GIF, and serializes ex
   globalThis.OffscreenCanvas.prototype.convertToBlob = async () => { throw new Error('PNG unsupported'); };
   await globalThis.onmessage({ data: { round, imageOnly: true } });
   assert.equal(messages.at(-1).data.error, 'PNG unsupported');
-  assert.equal(messages.at(-1).data.bytes, undefined);
   messages.length = 0;
   await globalThis.onmessage({ data: { round, imageOnly: false } });
-  assert.equal(gifFrames(messages.at(-1).data.bytes, 304).length, 2, 'PNG failure leaves GIF export available');
+  assert.equal(gifFrames(messages.at(-1).data.bytes, 168).length, 9);
   messages.length = 0;
   await globalThis.onmessage({ data: { round: { ...round, sequence: [move('unknown')] }, imageOnly: false } });
   assert.deepEqual(messages, [{ data: { error: 'Unknown circuit rule.', name: 'RangeError' }, transfer: undefined }]);

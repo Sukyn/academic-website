@@ -23,12 +23,17 @@ export function createStepReplay({ length, canReview, onEnter, onChange, transit
         onChange();
       };
       if (!transition) { complete(); return; }
-      const job = animation = transition(step);
+      let job;
+      try { job = animation = transition(step); }
+      catch { onChange(); return; }
       onChange();
       job.finished.then(completed => {
         if (revision !== current || animation !== job) return;
         animation = null;
         if (completed) complete(); else onChange();
+      }, () => {
+        if (revision !== current || animation !== job) return;
+        animation = null; job.cancel(); onChange();
       });
     };
     timer = setTimeout(advance, interval);

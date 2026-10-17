@@ -77,7 +77,7 @@ async function completions(sql: ReturnType<typeof getSql>, campaign: string, lev
 export default {
   async fetch(request: Request) {
     if (request.method !== "GET" && request.method !== "POST") {
-      return new Response(null, { status: 405, headers: { "Allow": "GET, POST" } });
+      return new Response(null, { status: 405, headers: { "Allow": "GET, POST", "Cache-Control": "no-store" } });
     }
     try {
       checkOrigin(request);

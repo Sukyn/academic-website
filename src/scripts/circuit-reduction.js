@@ -2,6 +2,7 @@ import { getRule, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getLega
 import { customCircuit, identityCircuit } from '../lib/circuit-reduction/custom.js';
 import { generatePuzzle } from '../lib/circuit-reduction/generator.js';
 import { spaceGlyph, circuitWires } from '../lib/circuit-reduction/rendering.js';
+import { animateRewrite } from '../lib/circuit-reduction/animation.js';
 import { gateGlyph } from '../lib/games/circuit-graphics.js';
 import { LEVELS, DAILY_START } from '../lib/circuit-reduction/puzzles.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
@@ -24,7 +25,8 @@ const ruleButtons = [...document.querySelectorAll('[data-rule]')];
 const cellNames = { '.': 'empty slot', H: 'H', X: 'X', Z: 'Z', ZU: 'upper Z endpoint', ZD: 'lower Z endpoint', XU: 'upper X endpoint', XD: 'lower X endpoint' };
 let mode = 'campaign', level = LEVELS[0], campaignLevel = level, editing = false;
 let circuit = level.circuit, sequence = [], states = [circuit];
-let boardLocked;
+let boardLocked, animation;
+function cancelAnimation() { const current = animation; animation = null; current?.cancel(); }
 const selection = new Set();
 let searchWorker, guide;
 const tutorialLocked = () => guide?.active && !guide.executing;
@@ -50,7 +52,7 @@ const scores = createScoreboard({
   get, selector: () => mode === 'campaign' || mode === 'daily' ? selector() : null,
   benchmark: () => ({ optimalMoves: level?.optimalMoves ?? level?.parMoves,
     benchmarkLabel: level?.optimalMoves == null ? 'Best known' : 'Optimal' }),
-  canSubmit: () => !daily.loading && canScore() && isSolved(circuit),
+  canSubmit: () => !animation && !daily.loading && canScore() && isSolved(circuit),
   sequence: () => sequence, update: () => update({ board: false }),
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
@@ -58,6 +60,7 @@ const daily = createDailySession({
   game: GAME, startDate: DAILY_START, get, update: () => update({ board: false }),
   validatePuzzle: puzzle => ({ ...puzzle, circuit: validateCircuit(puzzle.circuit) }),
   selectedDate: () => mode === 'daily' ? level.date : undefined,
+  isBusy: () => Boolean(guide?.executing),
   onPuzzle(info, select) {
     if (select && (mode !== 'daily' || level.date !== info.date)) {
       guide.leave();
@@ -73,8 +76,15 @@ const daily = createDailySession({
   },
 });
 const review = createStepReplay({
-  length: () => sequence.length, canReview: () => mode !== 'tutorial' && !editing && !daily.loading,
+  length: () => sequence.length, canReview: () => !animation && mode !== 'tutorial' && !editing && !daily.loading,
   onEnter: () => { clearSelection(); winDialog.close(); }, onChange: () => update(),
+  transition(step) {
+    const job = animation = animateRewrite(get('circuit-board'), states[step], states[step + 1], sequence[step]);
+    return job ? { cancel: cancelAnimation, finished: job.finished.then(completed => {
+      if (animation === job) animation = null;
+      return completed;
+    }) } : { finished: Promise.resolve(true), cancel() {} };
+  },
 });
 guide = createTutorial({
   get, isBlocked: () => daily.loading,
@@ -82,7 +92,7 @@ guide = createTutorial({
   controls: '[data-cell], [data-space], [data-rule], #undo, #restart, #compact-identities, #replay, #replay-result, #share-score, #share-result, #show-results',
   intro: 'Reach the identity: empty wires that leave every input unchanged. Choose a rule matching the selected gates.',
   onReset: () => setPuzzle('tutorial', { circuit: cloneCircuit(TUTORIAL_CIRCUIT), optimalMoves: null }),
-  onLeave: () => { review.clear(); clearSelection(); },
+  onLeave: () => { cancelAnimation(); review.clear(); clearSelection(); },
   steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => ({
     text, target: target ?? `[data-rule="${move.rule}"]`,
     prepare() {
@@ -99,8 +109,9 @@ guide = createTutorial({
     },
     action() {
       const before = sequence.length;
-      playMove(move);
+      const completed = playMove(move);
       if (sequence.length === before) throw new Error('The tutorial action could not be applied.');
+      return completed;
     },
   })),
 });
@@ -164,9 +175,10 @@ function renderCircuit() {
 }
 
 function update({ board = true } = {}) {
-  const solved = isSolved(circuit), won = !editing && solved, locked = daily.loading || review.step !== null;
+  if (daily.loading && animation) { cancelAnimation(); board = true; }
+  const solved = isSolved(circuit), won = !editing && solved, locked = Boolean(animation) || daily.loading || review.step !== null;
   const scorable = canScore(), hasPlayer = Boolean(scores.player);
-  if (board) { renderCircuit(); boardLocked = locked; }
+  if (board && !animation) { renderCircuit(); boardLocked = locked; }
   else if (boardLocked !== locked) {
     if (locked) { cancelSelectionDrag(); cancelTouchPress(); }
     for (const button of get('circuit-board').querySelectorAll('button')) button.disabled = locked;
@@ -197,17 +209,17 @@ function update({ board = true } = {}) {
   get('daily-date').disabled = !daily.info;
   if (mode === 'campaign') get('level').value = String(level.id);
   get('previous-level').disabled = daily.loading || mode !== 'campaign' || level.id === 1;
-  get('next-level').disabled = daily.loading || scores.submitting || mode !== 'campaign' || !won || level.id === LEVELS.length;
+  get('next-level').disabled = Boolean(animation) || daily.loading || scores.submitting || mode !== 'campaign' || !won || level.id === LEVELS.length;
   get('result-next').disabled = get('next-level').disabled;
   get('result-next').hidden = mode !== 'campaign' || level.id === LEVELS.length;
   get('level').disabled = daily.loading;
   get('undo').disabled = daily.loading || !sequence.length;
   get('restart').disabled = daily.loading;
   get('compact-identities').disabled = locked;
-  for (const id of ['replay', 'replay-result']) get(id).disabled = editing || daily.loading || !sequence.length || review.playing;
+  for (const id of ['replay', 'replay-result']) get(id).disabled = Boolean(animation) || editing || daily.loading || !sequence.length || review.playing;
   get('replay').hidden = mode === 'tutorial' || editing || !sequence.length;
   get('replay-actions').hidden = get('replay').hidden;
-  for (const id of ['share-score', 'share-result']) { get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = daily.loading; }
+  for (const id of ['share-score', 'share-result']) { get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = Boolean(animation) || daily.loading; }
   for (const [share, daily, regular] of [
     [get('share-score'), get('daily-replay-actions'), get('replay-actions')],
     [get('share-result'), get('daily-result-actions'), get('result-replay-actions')],
@@ -219,6 +231,7 @@ function update({ board = true } = {}) {
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : `Step ${review.step} / ${sequence.length}`;
   get('show-results').hidden = mode === 'tutorial' || !won || !sequence.length;
+  get('show-results').disabled = Boolean(animation) || daily.loading;
   get('show-results').textContent = scorable || hasPlayer ? 'Scores' : 'Result';
   const showForm = scorable && !hasPlayer && !scores.automatic;
   get('score-form').hidden = !showForm;
@@ -240,12 +253,12 @@ function resetScore() {
 }
 function reset() {
   if (tutorialLocked() || daily.loading) return;
-  cancelTouchPress(); suppressBoardClick = false; review.clear(); resetScore(); clearSelection();
+  cancelAnimation(); cancelTouchPress(); suppressBoardClick = false; review.clear(); resetScore(); clearSelection();
   circuit = level.circuit; sequence = []; states = [circuit]; get('status').textContent = ''; update();
   if (mode !== 'tutorial') scores.load();
 }
 function playMove(move) {
-  if (tutorialLocked()) return;
+  if (animation || tutorialLocked()) return false;
   const free = moveCost(move) === 0, wasWon = !editing && isSolved(circuit);
   if (daily.loading || (!free && (review.step !== null || wasWon)) || (!free && !allowedRules().includes(move.rule))) return;
   if (free && review.step !== null) review.clear();
@@ -254,15 +267,25 @@ function playMove(move) {
     if ((move.rule === 'compact-identities' || move.rule === 'arrange') && circuitKey(next) === circuitKey(circuit)) {
       get('status').textContent = ''; return;
     }
+    const job = animation = animateRewrite(get('circuit-board'), circuit, next, move);
+    // Commit once; the old board remains under the small transition overlay.
     // applyMove never mutates its input, so history can retain each result directly.
     circuit = next; sequence.push({ ...move }); states.push(circuit); clearSelection();
     get('status').textContent = ''; update();
-    if (!editing && isSolved(circuit) && !wasWon) openWin();
+    const finish = () => { if (!editing && isSolved(circuit) && !wasWon) openWin(); };
+    if (!job) { finish(); return true; }
+    return job.finished.then(completed => {
+      if (animation !== job) return false;
+      animation = null; update();
+      if (completed) finish();
+      return completed;
+    });
   } catch (error) { get('status').textContent = error.message; }
 }
 function openWin() {
-  if (mode === 'tutorial' || editing || !isSolved(circuit) || !sequence.length || winDialog.open) return;
-  review.clear(); update(); scores.autoSubmit(); winDialog.showModal();
+  if (animation || mode === 'tutorial' || editing || !isSolved(circuit) || !sequence.length || winDialog.open) return;
+  const reviewing = review.step !== null;
+  review.clear(); update({ board: reviewing }); scores.autoSubmit(); winDialog.showModal();
   get(scores.automatic ? 'close-win' : canScore() && !scores.player ? 'player-name' : 'try-again').focus();
 }
 function setPuzzle(nextMode, puzzle, editor = false) {
@@ -306,12 +329,12 @@ function playCustom(custom) {
 }
 
 function share(source) {
-  if (mode === 'tutorial' || editing || daily.loading || !isSolved(circuit) || !sequence.length) return;
+  if (animation || mode === 'tutorial' || editing || daily.loading || !isSolved(circuit) || !sequence.length) return;
   sharing.open(source, { label: mode === 'daily' ? `Daily puzzle : ${formatPuzzleDate(level.date)}` : mode === 'campaign' ? `Level : ${level.id}` : 'Custom circuit', circuit: cloneCircuit(level.circuit), sequence: sequence.map(move => ({ ...move })), optimalMoves: level?.optimalMoves ?? null }, `circuit-simplification-${level?.date ?? (mode === 'campaign' ? `level-${level.id}` : 'custom')}.gif`);
 }
 
 get('circuit-board').addEventListener('click', event => {
-  if (tutorialLocked() || daily.loading || review.step !== null) return;
+  if (animation || tutorialLocked() || daily.loading || review.step !== null) return;
   if (suppressBoardClick && event.detail !== 0) { suppressBoardClick = false; return; }
   suppressBoardClick = false;
   const space = event.target.closest('button[data-space]');
@@ -334,14 +357,14 @@ function removeSpace(row, column) {
 }
 get('circuit-board').addEventListener('contextmenu', event => {
   event.preventDefault();
-  if (tutorialLocked() || daily.loading || review.step !== null || suppressBoardClick) return;
+  if (animation || tutorialLocked() || daily.loading || review.step !== null || suppressBoardClick) return;
   const cell = event.target.closest('button[data-cell]'), space = event.target.closest('button[data-space]');
   if (cell) removeSpace(...cell.dataset.cell.split(':').map(Number));
   else if (space) { const [row, boundary] = space.dataset.space.split(':').map(Number); removeSpace(row, boundary - 1); }
 });
 get('circuit-board').addEventListener('pointerdown', event => {
   cancelTouchPress(); cancelSelectionDrag(); suppressBoardClick = false;
-  if (tutorialLocked() || daily.loading || review.step !== null || event.isPrimary === false) return;
+  if (animation || tutorialLocked() || daily.loading || review.step !== null || event.isPrimary === false) return;
   const cell = event.target.closest('button[data-cell]');
   if (!cell || cell.disabled) return;
   if (event.pointerType === 'touch') {
@@ -385,7 +408,7 @@ for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) documen
 window.addEventListener('blur', () => { cancelTouchPress(); cancelSelectionDrag(); });
 get('circuit-scroll').addEventListener('scroll', cancelTouchPress);
 for (const button of ruleButtons) button.addEventListener('click', () => { const move = matchingSelection().find(move => move.rule === button.dataset.rule); if (move) playMove(move); });
-onClick('undo', () => { if (tutorialLocked() || daily.loading || !sequence.length) return; review.clear(); resetScore(); clearSelection(); sequence.pop(); states.pop(); circuit = states.at(-1); update(); scores.load(); });
+onClick('undo', () => { if (tutorialLocked() || daily.loading || !sequence.length) return; cancelAnimation(); review.clear(); resetScore(); clearSelection(); sequence.pop(); states.pop(); circuit = states.at(-1); update(); scores.load(); });
 onClick('restart', reset); onClick('try-again', reset); onClick('show-results', openWin);
 onClick('mode-tutorial', () => guide.enter());
 onClick('mode-campaign', () => { if (mode === 'campaign') { daily.cancel(); update(); } else setPuzzle('campaign', campaignLevel); });
@@ -397,7 +420,7 @@ onClick('new-circuit', randomCircuit); get('difficulty').addEventListener('chang
 onClick('create-circuit', createCircuit);
 get('editor-wires').addEventListener('change', () => { if (editing) createCircuit(); });
 onClick('save-circuit', () => {
-  if (!editing || daily.loading || review.step !== null) return;
+  if (animation || !editing || daily.loading || review.step !== null) return;
   try { playCustom(customCircuit({ circuit })); }
   catch (error) { get('custom-status').textContent = error.message; }
 });
@@ -412,20 +435,21 @@ document.addEventListener('keydown', event => {
     if (!event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); get('undo').click(); }
     return;
   }
-  if (event.key === 'Enter' && !daily.loading && review.step === null && (editing || !isSolved(circuit))) {
+  if (event.key === 'Enter' && !animation && !daily.loading && review.step === null && (editing || !isSolved(circuit))) {
     const cell = event.target.closest('button[data-cell]');
     if (cell?.parentElement === get('circuit-board') || event.target === get('circuit-scroll')) {
       const matches = matchingSelection();
       if (matches.length === 1) {
         event.preventDefault();
         const focusKey = cell?.dataset.cell ?? selectionAnchor;
-        playMove(matches[0]);
-        if (!winDialog.open) [...get('circuit-board').querySelectorAll('[data-cell]')].find(button => button.dataset.cell === focusKey)?.focus();
+        const completed = playMove(matches[0]);
+        const focus = success => { if (success && !winDialog.open) get('circuit-board').querySelector(`[data-cell="${focusKey}"]`)?.focus(); };
+        if (completed?.then) completed.then(focus); else focus(completed);
       }
     }
   }
   if (event.key === 'Backspace') { event.preventDefault(); get('undo').click(); }
-  if (event.key === 'Delete' && !daily.loading && review.step === null) {
+  if (event.key === 'Delete' && !animation && !daily.loading && review.step === null) {
     const cell = event.target.closest('button[data-cell]');
     if (cell?.dataset.gate === '.') {
       event.preventDefault();

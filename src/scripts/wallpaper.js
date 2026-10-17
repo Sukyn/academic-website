@@ -47,11 +47,11 @@
     const randInt = (min, max) => Math.floor(rand(min, max + 1));
     const pick = (items) => items[Math.floor(Math.random() * items.length)];
 
-    function resize() {
+    function resize(width, height) {
       // Soft, translucent decoration needs one pixel per CSS pixel. Extra DPR
       // multiplies fullscreen raster work without sharpening the page content.
-      cssW = window.innerWidth;
-      cssH = window.innerHeight;
+      cssW = width;
+      cssH = height;
 
       canvas.width = cssW;
       canvas.height = cssH;
@@ -320,11 +320,15 @@
     }
 
     function queuePaint() {
-      if (idle || document.hidden || (cssW === window.innerWidth && cssH === window.innerHeight)) return;
+      if (idle || document.hidden) return;
+      // Before the first idle paint, viewport reads could force content layout.
+      if (cssW && cssH && cssW === window.innerWidth && cssH === window.innerHeight) return;
       const paint = () => {
         idle = 0;
-        if (document.hidden || (cssW === window.innerWidth && cssH === window.innerHeight)) return;
-        resize();
+        if (document.hidden) return;
+        const width = window.innerWidth, height = window.innerHeight;
+        if (cssW === width && cssH === height) return;
+        resize(width, height);
         init();
         draw();
       };

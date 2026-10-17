@@ -1,4 +1,5 @@
 ---
+import GamePuzzleJsonDialog from './GamePuzzleJsonDialog.astro';
 interface Props { gameTitle: string; unit?: string; completionOnly?: boolean }
 const { gameTitle, unit = 'Moves', completionOnly = false } = Astro.props;
 const ranked = !completionOnly;
@@ -11,21 +12,7 @@ const shareTitle = ranked ? 'Share your score' : 'Share your replay';
   <slot name="rules" />
 </dialog>
 
-<dialog class="game-dialog puzzle-json-dialog" id="puzzle-json-dialog" aria-labelledby="puzzle-json-title">
-  <button class="close-dialog" id="puzzle-json-close" type="button" aria-label="Close JSON">×</button>
-  <h2 id="puzzle-json-title">Input a json</h2>
-  <form id="puzzle-json-form">
-    <label for="puzzle-json-text">Puzzle JSON</label>
-    <textarea id="puzzle-json-text" rows="10" maxlength="65536" spellcheck="false" autocapitalize="off" autocomplete="off" required></textarea>
-    <label id="puzzle-json-file-label">JSON file<input id="puzzle-json-file" type="file" accept=".json,application/json" /></label>
-    <div class="share-actions">
-      <button class="button" id="puzzle-json-apply" type="submit">Play puzzle</button>
-      <button class="button" id="puzzle-json-copy" type="button" hidden>Copy</button>
-      <button class="button ghost" id="puzzle-json-download" type="button" hidden>Download JSON</button>
-    </div>
-  </form>
-  <p class="message" id="puzzle-json-status" role="status"></p>
-</dialog>
+<GamePuzzleJsonDialog />
 
 <dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
   <button class="close-dialog" id="close-win" type="button" aria-label="Close popup">×</button>

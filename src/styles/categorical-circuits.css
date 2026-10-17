@@ -1,0 +1,55 @@
+.categorical-game .categorical-profile,
+.categorical-game .categorical-actions,
+.categorical-game .categorical-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  font-family: var(--font-ui);
+  font-size: .9rem;
+}
+.categorical-game .categorical-profile { margin-block: .8rem; }
+.categorical-game .categorical-profile select { flex: 0 1 15rem; min-height: 2.75rem; }
+.categorical-game .categorical-scroll { padding-block: .45rem; border-radius: 4px; }
+.categorical-game .categorical-board { margin-inline: auto; user-select: none; -webkit-touch-callout: none; }
+.categorical-game .categorical-cell { appearance: none; border-radius: 5px; cursor: pointer; touch-action: manipulation; }
+.categorical-game .categorical-cell:disabled { opacity: 1; cursor: default; }
+.categorical-game .categorical-cell.is-selected,
+.categorical-game .categorical-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--color-accent); }
+.categorical-game .categorical-cell:focus-visible { outline: 2px solid var(--color-heading); outline-offset: -4px; }
+.categorical-game .categorical-cell.is-hole[data-filled="true"] .categorical-hole { border-style: solid !important; }
+.categorical-game .categorical-count { margin-block: .7rem .4rem; color: var(--color-heading); font: .9rem var(--font-ui); font-variant-numeric: tabular-nums; }
+.categorical-game .categorical-rule-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .5rem; }
+.categorical-game .categorical-rule-list .button { min-height: 3rem; padding: .45rem .65rem; font-size: .85rem; }
+.categorical-game .categorical-rule { display: flex; align-items: center; justify-content: center; gap: .35rem; min-width: 0; }
+.categorical-game .categorical-rule-mini { flex: none; margin: 0; zoom: .2; pointer-events: none; }
+.categorical-game .categorical-rule-mini .categorical-endpoint { width: 88px !important; height: 88px !important; }
+.categorical-game .categorical-rule-mini .categorical-link { stroke-width: 6px; }
+.categorical-game .categorical-rule-list .button:disabled { opacity: .35; }
+.categorical-game .categorical-expand { display: flex; align-items: center; gap: .4rem; min-height: 2.75rem; width: fit-content; margin-top: .4rem; font: .85rem var(--font-ui); }
+.categorical-game input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent); }
+.categorical-game .categorical-gate-palette { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; margin-top: .8rem; }
+.categorical-game .categorical-gate-palette .button { display: grid; place-items: center; min-width: 3rem; min-height: 3rem; padding: .25rem; }
+.categorical-game .categorical-gate-palette .gate-glyph { width: 40px; height: 40px; }
+.categorical-game .categorical-custom,
+.categorical-game .categorical-editor { display: grid; gap: .8rem; margin-top: 1rem; padding: .8rem; border: 1px solid var(--color-border); border-radius: 4px; }
+.categorical-game .categorical-custom select { min-height: 2.75rem; max-width: 10rem; }
+.categorical-game .categorical-dimensions { display: flex; flex-wrap: wrap; gap: .8rem; font: .9rem var(--font-ui); }
+.categorical-game .categorical-dimensions label { display: grid; gap: .3rem; min-width: 7rem; flex: 1 1 7rem; }
+.categorical-game .categorical-dimensions select { min-height: 2.75rem; width: 100%; max-width: none; }
+.categorical-game .categorical-editor-tools .button { min-width: 2.75rem; min-height: 2.75rem; }
+.categorical-game .categorical-editor .message { margin: 0; }
+.categorical-game .categorical-context { display: flex; flex-wrap: wrap; gap: .7rem; margin: 0; padding: .6rem; border: 1px solid var(--color-border); font: .85rem var(--font-ui); }
+.categorical-game .categorical-context legend { padding-inline: .3rem; color: var(--color-muted); }
+.categorical-game .categorical-context label { display: flex; align-items: center; gap: .3rem; min-height: 2rem; }
+.categorical-game .categorical-references { margin-bottom: 0; }
+.categorical-game .mode-menu { align-content: start; }
+@media (max-width: 900px) {
+  .categorical-game .mode-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .categorical-game .categorical-profile { align-items: stretch; }
+  .categorical-game .categorical-profile select { flex: 1 1 100%; }
+  .categorical-game .categorical-custom,
+  .categorical-game .categorical-editor { padding: .6rem; }
+}

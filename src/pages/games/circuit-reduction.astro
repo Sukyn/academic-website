@@ -17,6 +17,7 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   <GameShell>
     <a class="back" href="/games/">← Games</a>
     <h1>Circuit simplification</h1>
+    <a class="back" href="/games/circuit-reduction/advanced/">Advanced circuits: SWAP and controls →</a>
     <div class="game-layout">
       <GameModeMenu />
       <div class="game-content">
@@ -83,6 +84,9 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
   #circuit-board :global(.circuit-wires) { position: absolute; top: 0; left: 0; pointer-events: none; }
   #circuit-board :global(.circuit-cell) { position: relative; height: 64px; width: 64px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--color-text); cursor: pointer; padding: 0; display: grid; place-items: center; }
   #circuit-board :global(.gate-glyph) { position: relative; }
+  #circuit-board :global(.rewrite-overlay) { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+  #circuit-board :global(.rewrite-gate), #circuit-board :global(.rewrite-link) { position: absolute; width: 44px; height: 44px; transform-origin: center; }
+  #circuit-board :global(.rewrite-link) { width: 4px; height: 72px; }
   #circuit-board :global(.circuit-cell:disabled) { opacity: 1; }
   #circuit-board :global(.circuit-cell[aria-pressed="true"]) { border-color: var(--color-accent); background: rgba(154, 217, 209, .12); }
   #circuit-board :global(.space-handle) { position: absolute; z-index: 2; width: 24px; height: 44px; transform: translate(-50%, -50%); border: 0; padding: 0; background: transparent; color: var(--color-muted); cursor: col-resize; display: grid; place-items: center; }

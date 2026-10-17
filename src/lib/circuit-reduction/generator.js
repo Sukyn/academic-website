@@ -3,6 +3,7 @@ import {
   getRewriteMoves, lowerBound, seededRandom,
 } from './engine.js';
 import { CERTIFIED_PUZZLES } from './generated-catalogue.js';
+import { DAY, dateTimestamp } from '../games/daily-calendar.js';
 
 const reflectedRules = { 'basis-up': 'basis-down', 'basis-down': 'basis-up', 'cancel-cnot-up': 'cancel-cnot-down', 'cancel-cnot-down': 'cancel-cnot-up', 'phase-up': 'phase-down', 'phase-down': 'phase-up', 'stabilizer-up': 'stabilizer-down', 'stabilizer-down': 'stabilizer-up', 'corner-up': 'corner-down', 'corner-down': 'corner-up' };
 const reflectedCells = { ZU: 'ZD', ZD: 'ZU', XU: 'XD', XD: 'XU' };
@@ -72,10 +73,35 @@ export function createPuzzleGenerator(catalogue, { includeSolution = false } = {
   return function generatePuzzle(seed, difficulty = 12, { wires = 3, columns } = {}) {
     if (!Number.isInteger(difficulty) || difficulty < 1 || difficulty > 20) throw new RangeError('Choose a difficulty from 1 to 20.');
     if (!Number.isInteger(wires) || wires < 1 || wires > MAX_WIRES || (columns !== undefined && (!Number.isSafeInteger(columns) || columns < 4 || columns > 256))) throw new RangeError('Choose valid whole-number wire and column counts.');
-    const random = seededRandom(`${seed}:catalogue-v2`);
+    const random = seededRandom(`${seed}:catalogue-v3`);
     const entries = catalogue.filter(entry => entry.optimalMoves === difficulty && entry.circuit.length <= wires);
     if (entries.length) return fromCertificate(entries[Math.floor(random() * entries.length)], random, { wires, columns }, includeSolution);
     return growIdentity(seed, difficulty, wires, columns, includeSolution);
+  };
+}
+
+// A shuffled cycle visits every hard structure once before reusing any of them.
+// Layout randomness is separate, so reflections cannot disguise repeated boards.
+export function createDailyPuzzleGenerator(catalogue, { startDate, version, includeSolution = false }) {
+  const entries = catalogue.filter(entry => entry.optimalMoves >= 10 && entry.optimalMoves <= 14);
+  if (entries.length < 3) throw new RangeError('Daily generation needs at least three certified circuits.');
+  const start = dateTimestamp(startDate);
+  const orderFor = cycle => {
+    const order = entries.map((_, index) => index), random = seededRandom(`${version}:cycle:${cycle}`);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order;
+  };
+  return date => {
+    const day = (dateTimestamp(date) - start) / DAY;
+    if (day < 0) throw new RangeError('Choose an available daily puzzle.');
+    const cycle = Math.floor(day / entries.length), order = orderFor(cycle);
+    // This swap does not change a cycle's last entry, so the previous raw order
+    // also gives its final last entry without recursively generating old cycles.
+    if (cycle && order[0] === orderFor(cycle - 1).at(-1)) [order[0], order[1]] = [order[1], order[0]];
+    return fromCertificate(entries[order[day % entries.length]], seededRandom(`${version}:${date}:layout`), { wires: 3 }, includeSolution);
   };
 }
 

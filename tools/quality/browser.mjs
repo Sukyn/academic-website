@@ -4,6 +4,10 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { LEVELS as SIGNAL_LEVELS } from '../../src/lib/quantum-signals/puzzles.js';
+import { solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
+import { LEVELS as GRAPH_LEVELS } from '../../src/lib/graph-states/puzzles.js';
+import { solutionForGraph } from '../../src/lib/graph-states/engine.js';
 
 const requireFrom = directory => createRequire(resolve(directory, 'package.json'));
 const qualityRequire = requireFrom(process.env.QUALITY_MODULE_DIR ?? 'tmp/quality-tools/node_modules');
@@ -16,7 +20,8 @@ const resilienceOnly = process.argv.includes('--resilience-only');
 await mkdir(output, { recursive: true });
 const routes = (await readdir('dist', { recursive: true })).filter(file => file.endsWith('.html'));
 assert.ok(routes.length > 0, 'Build the website before auditing it.');
-const fixture = createBrowserApi();
+const auditTime = new Date('2026-10-17T10:00:00Z');
+const fixture = createBrowserApi({ now: auditTime.getTime() });
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
 const results = [], failures = [], resilience = [], links = new Map();
@@ -73,7 +78,7 @@ try {
       try {
         await fixture.install(page);
         if (archive) await page.route('https://iww.inria.fr/**', route => route.abort());
-        await page.clock.setFixedTime(new Date('2026-10-14T10:00:00Z'));
+        await page.clock.setFixedTime(auditTime);
         const response = await page.goto(new URL(pathname === '404.html' ? '__quality-missing__/' : pathname, base).href);
         if (/http-equiv=["']refresh["']/i.test(html)) {
           await page.waitForURL('**/games/quantum-golf/');
@@ -249,7 +254,7 @@ try {
     await recovery.close();
   }
   // Server outages and denied browser storage must not prevent local play.
-  for (const game of ['quantum-golf', 'circuit-reduction']) {
+  for (const game of ['quantum-golf', 'circuit-reduction', 'quantum-signals', 'graph-states']) {
     const context = await browser.newContext({ reducedMotion: 'reduce' });
     try {
       await context.addInitScript(() => {
@@ -259,25 +264,38 @@ try {
       });
       const page = await context.newPage(), errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.clock.setFixedTime(new Date('2026-10-14T10:00:00Z'));
+      await page.clock.setFixedTime(auditTime);
       await page.route('**/api/**', route => route.fulfill({ status: 503,
         contentType: 'application/json', body: '{"error":"Service unavailable"}' }));
       await page.goto(new URL(`games/${game}/?unexpected=%00#%E0%A4%A`, base).href);
       await page.locator('#mode-campaign').click();
-      await page.locator('#leaderboard-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
+      const unavailable = game === 'quantum-signals' ? 'Completions temporarily unavailable.' : 'Scores temporarily unavailable.';
+      await page.locator('#leaderboard-status').filter({ hasText: unavailable }).waitFor();
       if (game === 'quantum-golf') await page.locator('#gate-t').click();
-      else {
+      else if (game === 'circuit-reduction') {
         await page.locator('[data-cell="0:1"]').click();
         await page.locator('[data-cell="0:2"]').click();
         await page.locator('[data-rule="cancel-x"]').click();
+      } else if (game === 'quantum-signals') {
+        for (const [hole, gate] of Object.entries(solvePuzzle(SIGNAL_LEVELS[0], { limit: 1 })[0])) {
+          if (gate === 'I') continue;
+          await page.locator(`[data-hole="${hole}"]`).click();
+          await page.locator(`[data-choice="${gate}"]`).click();
+        }
+      } else {
+        for (const move of solutionForGraph(GRAPH_LEVELS[0])) {
+          const key = move.vertex === undefined ? `[data-edge="${move.edge.join(':')}"]` : `[data-vertex="${move.vertex}"]`;
+          await page.locator(`#graph-board ${key}`).click();
+          await page.waitForFunction(() => !document.querySelector('[data-graph-animating]'));
+        }
       }
       await page.locator('#win-dialog[open]').waitFor();
       await page.locator('#player-name').fill('Quality test');
       await page.locator('#submit-score').click();
-      await page.locator('#score-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
+      await page.locator('#score-status').filter({ hasText: unavailable }).waitFor();
       assert.equal(await page.locator('#submit-score').isEnabled(), true, 'A failed save permits retry');
       await page.locator('#close-win').click();
-      const board = page.locator(game === 'quantum-golf' ? '#sequence' : '#circuit-board');
+      const board = page.locator({ 'quantum-golf': '#sequence', 'circuit-reduction': '#circuit-board', 'quantum-signals': '#signal-board', 'graph-states': '#graph-board' }[game]);
       const previousBoard = await board.innerHTML();
       await page.locator('#mode-daily').click();
       await page.locator('#daily-status').filter({ hasText: 'Daily puzzle unavailable. Try again.' }).waitFor();
@@ -292,6 +310,28 @@ try {
       await context.close();
     }
   }
+  const optimumRecovery = await browser.newContext({ reducedMotion: 'reduce' });
+  try {
+    const page = await optimumRecovery.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await fixture.install(page);
+    const workerAsset = /\/_astro\/quantum-golf-worker[-.][^/]+\.js$/;
+    let failed = 0;
+    await page.route(workerAsset, route => { failed++; return route.abort('connectionfailed'); });
+    await page.goto(new URL('games/quantum-golf/', base).href);
+    await page.locator('#mode-random').click();
+    await page.locator('#best-count').filter({ hasText: 'Optimum unavailable' }).waitFor();
+    assert.equal(failed, 1, 'The Golf optimum worker asset request failed');
+    await page.locator('#gate-t').click();
+    await page.locator('#sequence button').waitFor();
+    assert.equal(await page.locator('#sequence button').count(), 1, 'An unavailable advisory optimum does not prevent play');
+    if (await page.locator('#win-dialog').evaluate(dialog => dialog.open)) await page.locator('#close-win').click();
+    await page.unroute(workerAsset);
+    await page.locator('#new-hole').click();
+    await page.waitForFunction(() => !/Finding optimum|Optimum unavailable/.test(document.getElementById('best-count').textContent));
+    assert.deepEqual(errors, [], 'Worker HTTP failures are handled without uncaught page errors');
+    resilience.push('Golf optimum worker HTTP failure leaves play usable and a fresh puzzle retries successfully.');
+  } finally { await optimumRecovery.close(); }
   // Prove that the production policy blocks an injected executable script.
   const context = await browser.newContext();
   const page = await context.newPage();

@@ -1,5 +1,7 @@
 // Real Clifford gates suffice for this game. Row 0 is the most significant bit;
 // the small state vector keeps phase and entanglement visible without sampling.
+import { applyRealGate } from '../games/real-gates.js';
+
 export const GATES = Object.freeze(['I', 'H', 'X', 'Z', 'CX', 'XC', 'CZ']);
 const EPSILON = 1e-9;
 const stateSize = size => size >= 2 && size <= 16 && Number.isInteger(Math.log2(size));
@@ -110,20 +112,10 @@ export function applyPlacement(puzzle, placements, move) {
 
 export function applyGate(state, gate, wires, wireCount) {
   const first = 1 << (wireCount - controlWire(gate, wires) - 1);
-  const second = 1 << (wireCount - wires[gate === 'XC' ? 0 : 1] - 1);
-  if (gate === 'I') return;
-  for (let index = 0; index < state.length; index++) {
-    if (gate === 'Z' && (index & first)) state[index] *= -1;
-    else if (gate === 'CZ' && (index & first) && (index & second)) state[index] *= -1;
-    else if ((gate === 'X' || gate === 'H') && !(index & first)) {
-      const other = index | first, a = state[index], b = state[other];
-      state[index] = gate === 'H' ? (a + b) * Math.SQRT1_2 : b;
-      state[other] = gate === 'H' ? (a - b) * Math.SQRT1_2 : a;
-    } else if ((gate === 'CX' || gate === 'XC') && (index & first) && !(index & second)) {
-      const other = index | second;
-      [state[index], state[other]] = [state[other], state[index]];
-    }
-  }
+  if (gate === 'CX' || gate === 'XC' || gate === 'CZ') {
+    const second = 1 << (wireCount - wires[gate === 'XC' ? 0 : 1] - 1);
+    applyRealGate(state, gate === 'CZ' ? 'Z' : 'X', second, first);
+  } else applyRealGate(state, gate, first);
 }
 
 function evolve(puzzle, placements) {

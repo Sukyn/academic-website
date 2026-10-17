@@ -1,8 +1,13 @@
+---
+interface Props { daily?: boolean }
+const { daily = true } = Astro.props;
+---
+
 <nav class="mode-menu" aria-label="Game modes">
   <button class="button ghost" id="mode-tutorial" type="button" aria-pressed="true">Tutorial</button>
   <button class="button ghost" id="mode-campaign" type="button" aria-pressed="false">Levels</button>
   <button class="button ghost" id="mode-random" type="button" aria-pressed="false">Custom/Random</button>
-  <div>
+  {daily && <div>
     <div class="daily-menu">
       <button class="button ghost" id="mode-daily" type="button" aria-pressed="false">Daily Puzzle</button>
       <button class="button ghost" id="daily-toggle" type="button" aria-label="Past daily puzzles" aria-expanded="false" aria-controls="daily-archive">▾</button>
@@ -11,6 +16,6 @@
       <label for="daily-date">Past puzzles</label>
       <select id="daily-date" disabled><option value="">Loading…</option></select>
     </div>
-  </div>
-  <p class="message" id="daily-status" role="status"></p>
+  </div>}
+  {daily && <p class="message" id="daily-status" role="status"></p>}
 </nav>

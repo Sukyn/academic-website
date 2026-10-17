@@ -13,7 +13,7 @@ const { DAILY_VERSION, dailyBounds, dailyPuzzle } = await import(websiteFile('sr
 const { MAX_SUBMISSION_BYTES } = await import(websiteFile('src/lib/games/submission.js'));
 const { CAMPAIGN: CIRCUIT_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_CIRCUIT_BYTES } =
   await import(websiteFile('src/lib/circuit-reduction/leaderboard.js'));
-const { DAILY_VERSION: CIRCUIT_DAILY_VERSION } = await import(websiteFile('src/lib/circuit-reduction/puzzles.js'));
+const { DAILY_START: CIRCUIT_DAILY_START, DAILY_VERSION: CIRCUIT_DAILY_VERSION } = await import(websiteFile('src/lib/circuit-reduction/puzzles.js'));
 const { LEVELS: CIRCUIT_LEVELS, dailyPuzzle: circuitPuzzle } = await import(websiteFile('tools/circuit-reduction/witnesses.js'));
 const { sequenceCost: circuitSequenceCost } = await import(websiteFile('src/lib/circuit-reduction/engine.js'));
 const { DAILY_START: SIGNAL_START, LEVELS: SIGNAL_LEVELS, dailyPuzzle: signalDailyPuzzle } =
@@ -138,6 +138,7 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
       const unsupported = await route.fetch(new Request(endpoint, { method }));
       assert.equal(unsupported.status, 405);
       assert.equal(unsupported.headers.get('Allow'), 'GET, POST');
+      assert.equal(unsupported.headers.get('Cache-Control'), 'no-store');
     }
     for (const id of ['NaN', '1.5', '-1', '0', '9007199254740992']) {
       assert.equal((await get(1, id)).status, 400);
@@ -483,7 +484,7 @@ test('database waits stop on request cancellation or timeout and errors never ex
 test('JSON export restores scores and completions safely and refuses to overwrite a backup', async () => {
   const { migrate } = await import(websiteFile('tools/quantum-golf/migrate.mjs'));
   const { exportScores } = await import(websiteFile('tools/quantum-golf/export.mjs'));
-  const databases = [new PGlite(), new PGlite()];
+  const databases = [new PGlite()];
   const adapter = database => ({
     query: (query, values = []) => ({ query, values }),
     transaction: queries => database.transaction(async transaction => {
@@ -512,6 +513,9 @@ test('JSON export restores scores and completions safely and refuses to overwrit
     assert.deepEqual(backup.completions, completions, 'Checkbox completions are included alongside ranked scores');
     await assert.rejects(() => exportScores(source, path), { code: 'EEXIST' });
     assert.equal(await readFile(path, 'utf8'), saved);
+    // The backup is on disk; release its source before allocating the restore.
+    await databases[0].close(); databases[0] = null;
+    databases[1] = new PGlite();
     await migrate(adapter(databases[1]), backup.rows, backup.completions);
     await migrate(adapter(databases[1]), backup.rows, backup.completions);
     assert.deepEqual((await databases[1].query('SELECT * FROM scores ORDER BY id')).rows, rows);
@@ -545,7 +549,7 @@ test('JSON export restores scores and completions safely and refuses to overwrit
       assert.equal(queries, 0, 'Malformed completions fail before any database statements');
     }
   } finally {
-    await Promise.all(databases.map(database => database.close()));
+    await Promise.all(databases.filter(Boolean).map(database => database.close()));
     assert.equal(dirname(directory), resolve(tmpdir()));
     assert.ok(basename(directory).startsWith('quantum-golf-backup-'));
     await rm(directory, { recursive: true, force: true });
@@ -661,6 +665,28 @@ test('daily metadata follows Paris midnight without a database or cached future 
     if (originalUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = originalUrl;
   }
+});
+
+test('daily puzzle failures return uncached JSON without exposing implementation details', async context => {
+  const { getGame } = await import(websiteFile('src/lib/games/server.js'));
+  const logs = [];
+  let failure;
+  context.mock.method(Date, 'now', () => dailyBounds('2026-10-17').opensAt);
+  context.mock.method(console, 'error', (...items) => logs.push(items));
+  context.mock.method(getGame(), 'dailyPuzzle', () => { throw failure; });
+  const address = endpoint.replace('leaderboard', 'daily');
+  for (const ErrorType of [Error, TypeError, RangeError]) {
+    failure = new ErrorType('Sensitive puzzle configuration or internal file path');
+    const response = await dailyRoute.fetch(new Request(address));
+    assert.equal(response.status, 503, 'Generator errors cannot masquerade as invalid user dates');
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(await response.json(), { error: 'Puzzles are temporarily unavailable. Try again.' });
+  }
+  assert.deepEqual(logs, Array.from({ length: 3 }, () => ['Game daily puzzle failed.']));
+  const invalid = await dailyRoute.fetch(new Request(`${address}?date=invalid`));
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(await invalid.json(), { error: 'Choose an available daily puzzle.' });
+  assert.equal(logs.length, 3, 'Expected validation failures need no server error log');
 });
 
 test('daily PostgreSQL writes enforce the real scoring day at midnight, independently of the request clock', async () => {
@@ -1126,7 +1152,7 @@ test('circuit daily metadata and database scoring share Paris deadlines and rema
     return (await database.query(query, values)).rows;
   };
   const dailyAddress = endpoint.replace('leaderboard', 'daily');
-  const date = '2026-10-14', bounds = dailyBounds(date);
+  const date = CIRCUIT_DAILY_START, bounds = dailyBounds(date);
   const address = `${endpoint}?game=circuit-reduction`;
   const payload = { game: 'circuit-reduction', date, name: 'Daily Ada', sequence: circuitPuzzle(date).solution };
   const boardFor = chosen => route.fetch(new Request(`${address}&date=${chosen}`));
@@ -1153,8 +1179,9 @@ test('circuit daily metadata and database scoring share Paris deadlines and rema
     assert.deepEqual(Object.keys(info.puzzle).sort(), ['circuit', 'optimalMoves'], 'The endpoint publishes only the board and benchmark; daily play uses all learned rules');
     assert.deepEqual(info.puzzle.circuit, circuitPuzzle(date).circuit);
     assert.ok(info.puzzle.optimalMoves >= 10 && info.puzzle.optimalMoves <= 14);
-    for (const chosen of ['2026-10-13', '2026-10-15', '2026-02-30']) {
+    for (const chosen of ['2026-10-16', '2026-10-18', '2026-02-30']) {
       assert.equal((await dailyRoute.fetch(new Request(`${dailyAddress}?game=circuit-reduction&date=${chosen}`))).status, 400);
+      assert.equal((await boardFor(chosen)).status, 400, 'Retired and unavailable boards cannot load scores');
     }
     await databaseNow(bounds.opensAt - 1);
     assert.equal((await post(payload, origin, address)).status, 409, 'The database rejects early requests');
@@ -1163,7 +1190,7 @@ test('circuit daily metadata and database scoring share Paris deadlines and rema
     assert.equal(result.currentPlayer.moves, info.puzzle.optimalMoves);
     const saved = (await database.query('SELECT * FROM scores WHERE id = $1', [result.currentPlayer.id])).rows[0];
     assert.equal(saved.campaign, CIRCUIT_DAILY_VERSION);
-    assert.equal(saved.level, 20261014);
+    assert.equal(saved.level, Number(date.replaceAll('-', '')));
     assert.equal(Number(saved.created_at), bounds.opensAt);
     assert.equal((await (await get()).json()).total, 0);
     assert.equal((await (await route.fetch(new Request(`${endpoint}?date=${date}`))).json()).total, 0,
@@ -1175,7 +1202,7 @@ test('circuit daily metadata and database scoring share Paris deadlines and rema
     assert.equal((await (await boardFor(date)).json()).total, 1, 'Closed daily scores remain readable');
     const past = await (await dailyRoute.fetch(new Request(`${dailyAddress}?game=circuit-reduction&date=${date}`))).json();
     assert.equal(past.acceptingScores, false);
-    assert.equal(past.nextChangeAt, dailyBounds('2026-10-15').closesAt);
+    assert.equal(past.nextChangeAt, dailyBounds('2026-10-18').closesAt);
     assert.deepEqual(past.puzzle, info.puzzle);
   } finally {
     Date.now = originalNow;

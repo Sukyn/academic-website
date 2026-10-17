@@ -7,9 +7,11 @@ import {
   lowerBound, moveCost, sequenceCost, solveShortest, validateCircuit,
 } from '../../src/lib/circuit-reduction/engine.js';
 import { CERTIFIED_PUZZLES, generatePuzzle, LEVELS, dailyPuzzle } from '../../tools/circuit-reduction/witnesses.js';
-import { generatePuzzle as generateBoard, CERTIFIED_PUZZLES as boards } from '../../src/lib/circuit-reduction/generator.js';
+import { createPuzzleGenerator, generatePuzzle as generateBoard, CERTIFIED_PUZZLES as boards } from '../../src/lib/circuit-reduction/generator.js';
 import { encodeCircuit, decodeCircuit, encodeSequence, decodeSequence } from '../../src/lib/circuit-reduction/stored-puzzles.js';
-import { LEVELS as levelBoards, dailyPuzzle as dailyBoard, DAILY_VERSION } from '../../src/lib/circuit-reduction/puzzles.js';
+import { LEVELS as levelBoards, dailyPuzzle as dailyBoard, DAILY_VERSION, DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
+import { circuitMetrics, catalogueMetrics } from '../../tools/circuit-reduction/diversity.mjs';
+import { generateCandidates } from '../../tools/circuit-reduction/candidates.mjs';
 const provenance = JSON.parse(await readFile(new URL('../../tools/circuit-reduction/catalogue-certificates.json', import.meta.url), 'utf8'));
 const reflect = circuit => [...circuit].reverse().map(row => row.map(cell => ({ ZU: 'ZD', ZD: 'ZU', XU: 'XD', XD: 'XU' })[cell] || cell));
 
@@ -26,17 +28,24 @@ test('Runtime boards retain only playable data and match offline witnesses', () 
     const { solution, ...board } = generatePuzzle('runtime-preservation', difficulty, { wires, columns: 24 });
     assert.deepEqual(generateBoard('runtime-preservation', difficulty, { wires, columns: 24 }), board);
   }
-  const { solution, ...board } = dailyPuzzle('2026-10-14');
-  assert.deepEqual(dailyBoard('2026-10-14'), board);
+  const { solution, ...board } = dailyPuzzle(DAILY_START);
+  assert.deepEqual(dailyBoard(DAILY_START), board);
 });
 
-test('Daily v2 retains its published boards, witnesses and certified scores', () => {
-  assert.equal(DAILY_VERSION, 'circuit-reduction-daily-v2');
+test('Daily generation starts with the new v3 series', () => {
+  assert.equal(DAILY_START, '2026-10-17');
+  assert.equal(DAILY_VERSION, 'circuit-reduction-daily-v3');
+  for (const date of ['2026-10-14', '2026-10-15', '2026-10-16']) {
+    assert.throws(() => dailyBoard(date), RangeError);
+    assert.throws(() => dailyPuzzle(date), RangeError);
+  }
+});
+
+test('Released v3 daily seeds remain fixed across deployments', () => {
   for (const [date, expected] of [
-    ['2026-10-14', '3d9696a5e767eaec2a085d8ae91422c1ea9090deb2fbb95375108d1b9c988658'],
-    ['2026-10-15', 'e82c0d72fd407c65b4264b7f87ad7a6b79bf56718bed6d08de0c6ac92ad4ce76'],
-    ['2026-11-03', 'b50c68f0a842e27adc636c4cb280c2830754f3d0f5c0c415ebbe560ed6d63d99'],
-    ['2027-04-12', 'b7075d6c3a532958ff3233bbba9915e3eb4b0a6ab13b89a08e4419b89d822cce'],
+    ['2026-10-17', '2fc61d4e4ec52042debb0d65221520abb0c9babd358b3ad4ab138bf2d58832ee'],
+    ['2026-10-18', 'cdb231f72ad93c5a26892c83de23936ac5913a3ea446693406539026d7e6b627'],
+    ['2026-12-17', '5dcc36d1f3a5edcb358ce60e99bf632884b103ec37503ced97f44cf84301c132'],
   ]) {
     const { circuit, solution, optimalMoves } = dailyPuzzle(date);
     assert.equal(createHash('sha256').update(JSON.stringify({ circuit, solution, optimalMoves })).digest('hex'), expected, date);
@@ -47,7 +56,7 @@ test('The catalogue contains exact-search certificates using every learned rule'
   for (const difficulty of [3, 6, 10, 11, 12, 13, 14]) assert.ok(CERTIFIED_PUZZLES.some(entry => entry.optimalMoves === difficulty), `difficulty ${difficulty}`);
   assert.deepEqual(provenance.ruleIds, LEARNED_RULE_IDS);
   assert.equal(provenance.method, 'complete-iterative-deepening');
-  assert.equal(provenance.generation, 'reverse-certified-solution');
+  assert.equal(provenance.generation, 'rule-relators-and-reversible-rewrites');
   assert.equal(provenance.nodes.length, CERTIFIED_PUZZLES.length);
   const keys = new Set();
   for (const [index, entry] of CERTIFIED_PUZZLES.entries()) {
@@ -71,12 +80,15 @@ test('The catalogue contains exact-search certificates using every learned rule'
   }
 });
 
-test('Hard circuits combine H conjugation, control commutation, and phase propagation', () => {
+test('Hard circuits mix advanced families without repeated CZ padding', () => {
   for (const entry of CERTIFIED_PUZZLES.filter(entry => entry.optimalMoves >= 10)) {
     const rules = entry.solution.map(move => move.rule);
+    const metrics = circuitMetrics(entry.circuit);
     assert.ok(rules.some(rule => rule.startsWith('basis')), 'conjugates');
-    assert.ok(rules.some(rule => ['control-order', 'phase-up', 'phase-down'].includes(rule)), 'commutes');
-    assert.ok(rules.some(rule => rule.startsWith('stabilizer')), 'propagates');
+    const advanced = rules.filter(rule => /^(phase-|stabilizer-|corner-|transfer$|control-order$)/.test(rule));
+    assert.ok(new Set(advanced.map(rule => rule.split('-')[0])).size >= 2, 'mixes advanced rule families');
+    assert.ok(metrics.maxAlternatingCZ <= 4, 'no long alternating CZ braid');
+    assert.ok(Object.keys(metrics.gateTypes).length >= 3, 'varied gate alphabet');
     assert.ok(entry.optimalMoves > lowerBound(entry.circuit), 'exceeds weight bound');
     let current = entry.circuit, decision = false;
     for (const move of entry.solution) {
@@ -112,15 +124,69 @@ test('Seeds vary circuit structure, and reflection preserves certified rewrite d
   }
 });
 
-test('The hard circuit cannot be solved at its optimum after removing either commutation or H conjugation', () => {
-  const entry = CERTIFIED_PUZZLES.find(entry => entry.optimalMoves === 10);
-  for (const excluded of [['control-order'], ['basis-x', 'basis-z', 'basis-up', 'basis-down']]) {
-    const maxNodes = 20000;
-    const result = solveShortest(entry.circuit, { maxDepth: entry.optimalMoves, maxNodes, allowedRules: LEARNED_RULE_IDS.filter(id => !excluded.includes(id)) });
-    assert.equal(result.status, 'limit');
-    // Below the node cap means every path up to the certified optimum was
-    // exhausted, rather than merely timing out while looking for a shortcut.
-    assert.ok(result.nodes < maxNodes, `${excluded.join(',')} search completed`);
+test('Diversity ignores superficial layouts and certified solutions cover every scored rule', () => {
+  const metrics = catalogueMetrics(CERTIFIED_PUZZLES);
+  assert.equal(metrics.structuralUnique, CERTIFIED_PUZZLES.length);
+  assert.ok(metrics.minimumNearestNeighborDistance >= .2 - 1e-9);
+  assert.ok(metrics.medianNearestNeighborDistance >= .2);
+  for (const rule of LEARNED_RULE_IDS.filter(rule => moveCost({ rule }))) assert.ok(metrics.ruleUse[rule], rule);
+  for (const difficulty of [10, 11, 12, 13, 14]) {
+    const entries = CERTIFIED_PUZZLES.filter(entry => entry.optimalMoves === difficulty), counts = new Map();
+    for (const entry of entries) {
+      const families = new Set(entry.solution.map(move => move.rule).filter(rule => /^(phase-|stabilizer-|corner-|transfer$|control-order$)/.test(rule)).map(rule => rule.split('-')[0]));
+      for (const name of families) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    assert.ok([...counts.values()].every(count => count <= Math.floor(entries.length * 2 / 3)), 'no single advanced recipe dominates a difficulty');
+  }
+});
+
+test('Every certified witness survives reflection, padding and an extra wire', () => {
+  for (const entry of CERTIFIED_PUZZLES) {
+    const generate = createPuzzleGenerator([entry], { includeSolution: true }), orientations = new Set();
+    for (let seed = 0; seed < 8; seed++) for (const wires of [3, 4]) {
+      const puzzle = generate(`transform:${seed}`, entry.optimalMoves, { wires, columns: 24 });
+      assert.ok(isSolved(puzzle.solution.reduce(applyMove, puzzle.circuit)));
+      assert.equal(sequenceCost(puzzle.solution), entry.optimalMoves);
+      if (wires === 3) orientations.add(circuitKey(compactCircuit(puzzle.circuit)));
+    }
+    assert.ok(orientations.has(circuitKey(compactCircuit(entry.circuit))));
+    assert.ok(orientations.has(circuitKey(compactCircuit(reflect(entry.circuit)))));
+  }
+});
+
+test('Rule-guided candidates are bounded, reproducible identity constructions', () => {
+  for (const difficulty of [3, 6, 10, 14]) {
+    const options = { difficulty, count: 8 };
+    const candidates = [...generateCandidates('candidate-regression', options)];
+    assert.deepEqual([...generateCandidates('candidate-regression', options)], candidates);
+    for (const circuit of candidates) {
+      validateCircuit(circuit);
+      assert.ok(isIdentity(circuit));
+      assert.ok(circuit[0].length <= 32);
+    }
+  }
+  for (const options of [{ count: 1001 }, { difficulty: 0 }, { maxColumns: 129 }]) {
+    assert.throws(() => [...generateCandidates('invalid', options)], RangeError);
+  }
+});
+
+test('Daily shuffled cycles have balanced difficulty and no disguised repetitions', () => {
+  const count = CERTIFIED_PUZZLES.filter(entry => entry.optimalMoves >= 10).length;
+  let previous;
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const keys = new Set(), difficulties = new Map();
+    for (let day = 0; day < count; day++) {
+      const date = new Date(Date.parse(DAILY_START) + (cycle * count + day) * 86400000).toISOString().slice(0, 10);
+      const { solution, ...board } = dailyPuzzle(date);
+      assert.deepEqual(dailyBoard(date), board);
+      assert.equal(sequenceCost(solution), board.optimalMoves);
+      const key = circuitMetrics(board.circuit).structuralKey;
+      assert.notEqual(key, previous, 'no duplicate across cycle boundaries');
+      assert.ok(!keys.has(key), 'reflection/reversal is not a new daily structure'); keys.add(key); previous = key;
+      difficulties.set(board.optimalMoves, (difficulties.get(board.optimalMoves) ?? 0) + 1);
+      assert.ok(board.optimalMoves >= 10 && board.optimalMoves <= 14);
+    }
+    assert.equal(new Set(difficulties.values()).size, 1, 'each difficulty appears equally often');
   }
 });
 

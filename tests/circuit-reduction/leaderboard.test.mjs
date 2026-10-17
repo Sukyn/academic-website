@@ -88,7 +88,7 @@ test('daily scores verify the selected date and respect shared Paris deadlines',
   const payload = { date, name: 'Daily Ada', sequence: puzzle.solution, circuit: [['.', '.']], moves: 0 };
   const score = validateSubmission(payload, opensAt);
   assert.equal(score.campaign, DAILY_VERSION);
-  assert.equal(score.level, 20261014);
+  assert.equal(score.level, 20261017);
   assert.equal(score.moves, puzzle.optimalMoves);
   assert.ok(score.moves >= 10 && score.moves <= 14);
   assert.equal(score.opensAt, opensAt);
@@ -97,8 +97,16 @@ test('daily scores verify the selected date and respect shared Paris deadlines',
   assert.throws(() => validateSubmission(payload, closesAt),
     error => error instanceof SubmissionError && error.status === 409);
   assert.equal(getBoard({ date }, closesAt).campaign, DAILY_VERSION, 'Archives remain readable');
-  for (const selector of [{ date, level: 1 }, { date: '2026-10-13' }, { date: '2026-10-15' },
-    { date: '2026-02-30' }, { date: 20261014 }, { date: '' }]) {
+  for (const selector of [{ date, level: 1 }, { date: '2026-10-16' }, { date: '2026-10-18' },
+    { date: '2026-02-30' }, { date: 20261017 }, { date: '' }]) {
     assert.throws(() => getBoard(selector, opensAt), SubmissionError);
   }
+});
+
+test('Daily boards before the new series remain unavailable after launch', () => {
+  const { opensAt } = dailyBounds('2026-10-18');
+  for (const date of ['2026-10-14', '2026-10-15', '2026-10-16']) {
+    assert.throws(() => getBoard({ date }, opensAt), SubmissionError);
+  }
+  assert.equal(getBoard({ date: DAILY_START }, opensAt).campaign, DAILY_VERSION);
 });
