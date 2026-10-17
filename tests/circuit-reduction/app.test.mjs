@@ -33,6 +33,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     constructor(tag = 'DIV') {
       this.tagName = tag; this.children = []; this.attrs = {}; this.dataset = {}; this.listeners = new Map();
       this.style = { setProperty() {} }; this.hidden = this.disabled = this.open = false; this.value = ''; this._text = '';
+      this.offsetWidth = 100; this.cssZoom = 1;
     }
     addEventListener(name, callback, options) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), { callback, capture: options === true || Boolean(options?.capture) }]); }
     async dispatch(name, extra = {}) {
@@ -93,7 +94,10 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     releasePointerCapture(id) { this.capturedPointers?.delete(id); }
     hasPointerCapture(id) { return this.capturedPointers?.has(id) ?? false; }
     reportValidity() { return true; }
-    getBoundingClientRect() { return { left: 0, right: 100, top: 0, bottom: 100 }; }
+    getBoundingClientRect() {
+      const width = this.offsetWidth * this.cssZoom, height = 100 * this.cssZoom;
+      return { left: 0, right: width, top: 0, bottom: height, width, height };
+    }
   }
 
   const html = await gameMarkup(), elements = new Map(), documentMock = new Element('DOCUMENT'), ancestors = [];
@@ -412,6 +416,21 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await documentMock.dispatch('pointerup', mouse(0, 0, { pointerType: 'pen', buttons: 0 }));
   await reverseOrigin.dispatch('click', { detail: 1, pointerId: 11 });
   assert.deepEqual(selectedKeys(), rectangle, 'Reverse pen drags use the same rectangle');
+
+  const zoomedBoard = get('circuit-board');
+  zoomedBoard.cssZoom = 1.25;
+  const zoomedMouse = (row, column, extra = {}) => {
+    const point = pointAt(row, column);
+    return mouse(row, column, { clientX: point.clientX * 1.25, clientY: point.clientY * 1.25, ...extra });
+  };
+  await documentMock.dispatch('keydown', { key: 'Escape' });
+  await dragOrigin.dispatch('pointerdown', zoomedMouse(0, 0));
+  await zoomedBoard.dispatch('pointermove', zoomedMouse(1, 2));
+  await documentMock.dispatch('pointerup', zoomedMouse(1, 2, { buttons: 0 }));
+  await dragOrigin.dispatch('click', { detail: 1, pointerId: 11 });
+  assert.deepEqual(selectedKeys(), rectangle, 'Enlarging the circuit preserves the selected rows and columns');
+  assert.equal(boardSignature(), dragBoard, 'Dragging on the enlarged board never inserts space');
+  zoomedBoard.cssZoom = 1;
 
   // Small hand movements retain ordinary toggles. Shift extends from the
   // previous clicked cell, and Escape resets that anchor as well as the paint.
