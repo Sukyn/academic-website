@@ -20,15 +20,18 @@
 .signal-twin::before { content: ''; position: absolute; left: 17px; top: 10px; bottom: 10px; width: 2px; background: #9ad9d1; }
 .signal-twin .gate-glyph { position: relative; width: 22px; height: 22px; }
 .signal-empty { font-size: 1.6rem; color: var(--color-muted); }
-.signal-flow-scroll { max-height: 420px; overflow-y: auto; }
+.quantum-game .signal-flow-panel { max-height: 420px; overflow-x: hidden; overflow-y: auto; }
+.signal-flow-layout { display: flex; }
+.signal-flow-scroll { flex: 1; min-width: 0; overflow-x: auto; }
+#signal-target { flex: 0 0 52px; box-shadow: inset 1px 0 var(--color-border); }
 #signal-flow { display: block; max-width: none; margin-inline: auto; }
 .signal-flow-lane { stroke: #6d7b71; stroke-opacity: .3; stroke-width: 1; }
-.signal-flow-divider { stroke: var(--color-border); stroke-width: 1; }
 .signal-flow-path { fill: none; stroke-linecap: round; stroke-opacity: .85; }
 .signal-flow-node, .signal-flow-target { stroke-width: 1.4; }
 .signal-flow-target { stroke-width: 2; }
-#signal-flow[data-match="true"] .signal-flow-target { stroke-width: 3; }
+#signal-target[data-match="true"] .signal-flow-target { stroke-width: 3; }
 .signal-flow-label { fill: var(--color-muted); font: 11px var(--font-mono); }
+.signal-flow-bit-highlight { fill: #f2d572; font-weight: 700; text-decoration: underline; }
 .signal-flow-gutter { pointer-events: none; }
 .signal-flow-gutter rect { fill: var(--color-surface-2); }
 .signal-flow-heading { fill: var(--color-muted); font: 11px var(--font-ui); }

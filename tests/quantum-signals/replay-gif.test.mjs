@@ -5,17 +5,25 @@ import { LEVELS } from '../../src/lib/quantum-signals/puzzles.js';
 import { solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
 import { CIRCUIT_COLORS as colors } from '../../src/lib/games/circuit-graphics.js';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
-import { PHASE_PATH_COLORS, phasePathColor } from '../../src/lib/quantum-signals/state-visuals.js';
+import { PHASE_PATH_COLORS, phasePathColor, grayBasis, basisRow } from '../../src/lib/quantum-signals/state-visuals.js';
 
 const sequenceFor = puzzle => Object.entries(solvePuzzle(puzzle, { limit: 1 })[0]).map(([hole, gate]) => ({ hole, gate }));
 
-function pathColors(commands, puzzle, placements, flowTop = 246 + (puzzle.wires - 1) * 76) {
+function pathColors(commands, puzzle, placements, flowTop = 246 + (puzzle.wires - 1) * 76, rowHeight = 28) {
   const paths = commands.filter(command => command.name === 'bezierCurveTo');
-  const edges = flowTrace(puzzle, placements).columns.flat();
+  const columns = flowTrace(puzzle, placements).columns, edges = columns.flat();
   assert.deepEqual(paths.map(path => path.strokeStyle), edges.map(edge => phasePathColor(edge.amplitude)),
     'Every path follows its signed contribution, including phase changes and interference');
   assert.deepEqual(paths.map(path => path.lineWidth), edges.map(edge => 2 + 4 * Math.abs(edge.amplitude)),
     'Path weight still follows amplitude magnitude');
+  const step = rowHeight === 38 ? 740 / puzzle.columns.length : Math.min(88, 740 / puzzle.columns.length);
+  const left = (960 - step * puzzle.columns.length) / 2;
+  const rounded = values => values.map(value => Number(value.toFixed(6)));
+  assert.deepEqual(paths.map(path => rounded(path.args)), columns.flatMap((edges, column) => edges.map(edge => rounded([
+    left + (column + .5) * step, flowTop + basisRow(edge.from) * rowHeight,
+    left + (column + .5) * step, flowTop + basisRow(edge.to) * rowHeight,
+    left + (column + 1) * step, flowTop + basisRow(edge.to) * rowHeight,
+  ]))), 'PNG and GIF paths connect the same basis states at their Gray-ordered positions');
   const dots = commands.filter(command => command.name === 'arc' && command.args[1] >= flowTop &&
     [1.4, 2].includes(command.lineWidth));
   assert.ok(dots.length > 0);
@@ -59,13 +67,13 @@ test('still image shows only the completed expanded paths and round label, witho
     assert.equal(image.width, 960);
     assert.equal(image.frames.length, 0, 'Static export skips GIF pixel reads and palette conversion');
     const commands = image.commands(), texts = commands.filter(command => command.name === 'fillText').map(command => command.args[0]);
-    assert.deepEqual(texts, [label, ...Array.from({ length: 2 ** puzzle.wires }, (_, basis) => basis.toString(2).padStart(puzzle.wires, '0'))],
+    assert.deepEqual(texts, [label, ...Array.from({ length: 2 ** puzzle.wires }, (_, row) => grayBasis(row).toString(2).padStart(puzzle.wires, '0'))],
       'The share card has no headings, status, link or redundant target');
     assert.equal(commands.filter(command => command.name === 'fillRect').length, 1,
       'No regular gate board or selected-hole boxes accompany the expanded paths');
     assert.ok(!commands.some(command => command.name === 'strokeRect'));
     const flowTop = (image.height + 48 - (2 ** puzzle.wires - 1) * 38) / 2;
-    pathColors(commands, puzzle, Object.fromEntries(sequence.map(({ hole, gate }) => [hole, gate])), flowTop);
+    pathColors(commands, puzzle, Object.fromEntries(sequence.map(({ hole, gate }) => [hole, gate])), flowTop, 38);
     assert.equal(commands.filter(command => command.name === 'arc' && command.args[0] === 850).length,
       puzzle.target.filter(amplitude => Math.abs(amplitude) > 1e-9).length,
       'The final state is shown once at the right end of the paths');
@@ -111,7 +119,7 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
     const targetX = (960 + step * puzzle.columns.length) / 2 + 54;
     const targets = surface.frames.at(-1).filter(command => command.name === 'arc' && command.args[0] === targetX && command.lineWidth === 2);
     const expected = puzzle.target.flatMap((amplitude, basis) => Math.abs(amplitude) < 1e-9 ? [] :
-      [{ y: flowTop + basis * 28, radius: Math.min(6, 16 * Math.abs(amplitude)), color: amplitude < 0 ? '#ffffff' : '#000000',
+      [{ y: flowTop + basisRow(basis) * 28, radius: Math.min(6, 16 * Math.abs(amplitude)), color: amplitude < 0 ? '#ffffff' : '#000000',
         outline: '#ffffff' }]);
     assert.deepEqual(targets.map(command => ({ y: command.args[1], radius: command.args[2], color: command.fillStyle, outline: command.strokeStyle })), expected,
       'The target keeps fixed basis positions, bounded marker sizes and white outlines');
@@ -174,7 +182,7 @@ test('replay basis paths distinguish Bell correlations and show interference', c
     const step = Math.min(88, 740 / puzzle.columns.length), right = (960 + step * puzzle.columns.length) / 2;
     const flowTop = 246 + 76;
     const dots = rendered.at(-1).frames.at(-1).filter(command => command.name === 'arc' && command.args[0] === right && command.args[1] >= flowTop);
-    assert.deepEqual(dots.map(command => (command.args[1] - flowTop) / 28), occupied,
+    assert.deepEqual(dots.map(command => (command.args[1] - flowTop) / 28), occupied.map(basisRow),
       'Complete basis states remain separate even when all local qubit states agree');
     assert.ok(dots.every(command => command.fillStyle === '#000000' && command.strokeStyle === '#ffffff'),
       'Positive amplitudes have the same black fill and white outline across distinct basis states');
@@ -257,10 +265,10 @@ test('opposite CNOTs keep their declared direction in fixed gates and editable r
     assert.ok(commands.some(command => command.name === 'moveTo' && command.args.join() === [480, 154 + wires[0] * 76].join() && command.strokeStyle === colors.z));
     assert.ok(commands.some(command => command.name === 'lineTo' && command.args.join() === [480, 154 + wires[1] * 76].join() && command.strokeStyle === colors.z));
     assert.ok(commands.some(command => command.name === 'bezierCurveTo' && command.args.join() ===
-      [480, flowTop + inputBasis * 28, 480, flowTop + 5 * 28, 524, flowTop + 5 * 28].join()),
+      [480, flowTop + basisRow(inputBasis) * 28, 480, flowTop + basisRow(5) * 28, 524, flowTop + basisRow(5) * 28].join()),
     'The opposite CNOT routes the occupied basis lane using the same control direction');
     assert.deepEqual(commands.filter(command => command.name === 'arc' && command.args[0] === 612 && command.args[1] >= flowTop)
-      .map(command => (command.args[1] - flowTop) / 28), [5], 'The final photon reaches the flipped output basis');
+      .map(command => (command.args[1] - flowTop) / 28), [basisRow(5)], 'The final photon reaches the flipped output basis');
     if (fixed) {
       assert.ok(frames.every(frame => glyphAt(frame, control, colors.z)), 'Fixed XC gates retain their direction throughout the replay');
     } else {
@@ -269,7 +277,7 @@ test('opposite CNOTs keep their declared direction in fixed gates and editable r
       assert.ok([frames[0], frames[2]].every(frame => !frame.some(command => command.name === 'arc' &&
         command.args[0] === 480 && command.args[1] < flowTop)), 'Unfilled and erased replay frames have no leftover gate');
       assert.ok(frames[1].some(command => command.name === 'bezierCurveTo' && command.args.join() ===
-        [480, flowTop + inputBasis * 28, 480, flowTop + inputBasis * 28, 524, flowTop + inputBasis * 28].join()),
+        [480, flowTop + basisRow(inputBasis) * 28, 480, flowTop + basisRow(inputBasis) * 28, 524, flowTop + basisRow(inputBasis) * 28].join()),
       'The other CNOT direction leaves this input unchanged');
     }
   }
@@ -313,7 +321,7 @@ test('replay keeps sixteen fixed outcomes within the canvas and ignores a global
   encodeReplay({ label: 'Four qubits', puzzle, sequence: [{ hole: 'a', gate: 'I' }] });
   const surface = rendered[0], commands = surface.frames.at(-1);
   const labels = commands.filter(command => command.name === 'fillText' && /^[01]{4}$/.test(command.args[0]));
-  assert.deepEqual(labels.map(command => command.args[0]), Array.from({ length: 16 }, (_, basis) => basis.toString(2).padStart(4, '0')));
+  assert.deepEqual(labels.map(command => command.args[0]), Array.from({ length: 16 }, (_, row) => grayBasis(row).toString(2).padStart(4, '0')));
   assert.ok(commands.filter(command => command.name === 'arc').every(command => command.args[1] + command.args[2] < surface.height - 56),
     'Every probability marker remains above the replay footer');
   const target = commands.findIndex(command => command.name === 'arc' && command.args[0] === 578 && command.args[2] === 6 && command.strokeStyle === '#ffffff');

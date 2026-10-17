@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getBoard, validateSubmission, MAX_REPLAY_MOVES, MAX_SUBMISSION_BYTES } from '../../src/lib/quantum-signals/completions.js';
+import { CAMPAIGN, getBoard, validateSubmission, MAX_REPLAY_MOVES, MAX_SUBMISSION_BYTES } from '../../src/lib/quantum-signals/completions.js';
 import { SubmissionError } from '../../src/lib/games/submission.js';
 import { DAILY_START, DAILY_VERSION, dailyPuzzle } from '../../src/lib/quantum-signals/puzzles.js';
 import { solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
 
 const valid = changes => ({ level: 1, name: 'Ada', sequence: [{ hole: 'a', gate: 'X' }], ...changes });
+
+test('redesigned campaign completions use a fresh board identity', () => {
+  assert.equal(CAMPAIGN, 'signals-completions-v2');
+  assert.equal(getBoard({ level: 1 }).campaign, CAMPAIGN);
+  assert.equal(validateSubmission(valid()).campaign, CAMPAIGN);
+});
 
 test('daily completions use the current puzzle version and accept omitted identities', () => {
   const filling = solvePuzzle(dailyPuzzle(DAILY_START), { limit: 1 })[0];

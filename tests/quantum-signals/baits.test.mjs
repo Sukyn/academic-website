@@ -5,43 +5,39 @@ import { LEVELS, dailyPuzzle, generatePuzzle } from '../../src/lib/quantum-signa
 
 const omitIdentities = solution => Object.fromEntries(Object.entries(solution).filter(([, gate]) => gate !== 'I'));
 
-test('official levels retain their original holes and need no identity baits', () => {
-  assert.deepEqual(LEVELS.map(puzzle => getHoles(puzzle).length), [1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 3, 5]);
+test('official levels need no identity baits, including the editable interference finish', () => {
+  assert.deepEqual(LEVELS.map(puzzle => getHoles(puzzle).length), [1, 1, 1, 1, 2, 2, 1, 1, 2, 2, 3, 5]);
   for (const puzzle of LEVELS) {
     assert.ok(puzzle.title.length > 0);
     assert.ok(getHoles(puzzle).length <= 6);
     assert.equal(stateEqual(simulate(puzzle).state, puzzle.target), false);
     assert.ok(getHoles(puzzle).every(hole => hole.choices.some(gate => gate !== 'I')));
     assert.ok(solvePuzzle(puzzle, { limit: 4096 }).some(solution => Object.values(solution).every(gate => gate !== 'I')),
-      'Every fixed level has a solution using a real gate in each original hole');
+      'Every fixed level has a solution using a real gate in every hole');
   }
-  assert.equal(getHoles(LEVELS.at(-1)).length, 5, 'The tutorial source level retains its five original holes');
+  assert.equal(simulate(LEVELS[4], { a: 'Z', b: 'H' }).solved, true);
 });
 
 test('random puzzles remain deterministic and can be solved with identity holes left empty', () => {
   for (let difficulty = 1; difficulty <= 3; difficulty++) {
-    let withIdentities = 0, baits = 0;
+    let withIdentities = 0;
     for (let seed = 0; seed < 24; seed++) {
       const puzzle = generatePuzzle(`bait-${seed}`, difficulty);
       assert.deepEqual(puzzle, generatePuzzle(`bait-${seed}`, difficulty));
       assert.deepEqual(Object.keys(puzzle).sort(), ['columns', 'target', 'wires']);
       assert.ok(getHoles(puzzle).length <= 6);
+      for (const hole of getHoles(puzzle)) {
+        assert.deepEqual(hole.choices, hole.wires.length === 1 ? ['I', 'H', 'X', 'Z'] : ['I', 'CX', 'XC', 'CZ'],
+          'Optional empty holes never restrict the other gates the player can choose');
+      }
       assert.equal(stateEqual(simulate(puzzle).state, puzzle.target), false, 'The untouched circuit is never already the solution');
       const solution = solvePuzzle(puzzle, { limit: 1 })[0];
       assert.ok(solution);
       const placements = omitIdentities(solution);
       if (Object.keys(placements).length < Object.keys(solution).length) withIdentities++;
       assert.equal(simulate(puzzle, placements).solved, true);
-      const bait = getHoles(puzzle).find(hole => hole.choices.length === 2 && hole.choices[0] === 'I' && hole.choices[1] === 'H');
-      if (bait) {
-        baits++;
-        const solutions = solvePuzzle(puzzle, { limit: 4096 });
-        assert.ok(solutions.every(solution => solution[bait.id] === 'I'), 'Every valid filling must leave the bait as identity');
-        assert.ok(solutions.every(solution => Object.values(solution).includes('I')), 'There is no solution made entirely of real gates');
-      }
     }
     assert.ok(withIdentities > 0, `Difficulty ${difficulty} includes solutions with empty identity holes`);
-    assert.ok(baits > 0 && baits < 24, `Difficulty ${difficulty} sometimes includes a forced identity`);
   }
 });
 

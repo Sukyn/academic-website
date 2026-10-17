@@ -26,14 +26,14 @@ async function checkInstructionSymbols(page, game) {
       shapes: [...node.querySelectorAll('.gate-glyph')].map(svg => ({
         rect: svg.querySelector('rect')?.getAttribute('fill'),
         circle: svg.querySelector('circle')?.getAttribute('fill'),
-        stroke: svg.querySelector('path')?.getAttribute('stroke'),
+        strokes: [...svg.querySelectorAll('path')].map(path => path.getAttribute('stroke')),
         radius: Number(svg.querySelector('circle')?.getAttribute('r')),
       })),
     };
   }));
   for (const symbol of symbols) {
     assert.equal(symbol.role, 'img', 'Inline gates retain an accessible name');
-    assert.equal(symbol.label, ['CX', 'XC'].includes(symbol.gate) ? 'CNOT' : symbol.gate);
+    assert.equal(symbol.label, ['CX', 'XC', 'XU'].includes(symbol.gate) ? 'CNOT' : symbol.gate === 'ZU' ? 'CZ' : symbol.gate);
     assert.equal(symbol.clipped, false, 'Inline symbols fit the instruction at this viewport');
     if (game === 'quantum-golf') {
       assert.equal(symbol.letter, true);
@@ -42,12 +42,12 @@ async function checkInstructionSymbols(page, game) {
         'Golf gate letters use the same color as their real buttons');
       continue;
     }
-    const cells = symbol.gate === 'CX' ? ['Z', 'X'] : symbol.gate === 'XC' ? ['X', 'Z'] : symbol.gate === 'CZ' ? ['Z', 'Z'] : [symbol.gate];
+    const cells = symbol.gate === 'CX' ? ['Z', 'X'] : symbol.gate === 'XC' ? ['X', 'Z'] : symbol.gate === 'CZ' ? ['Z', 'Z'] : [symbol.gate.replace(/U$/, '')];
     assert.equal(symbol.shapes.length, cells.length);
     for (const [index, cell] of cells.entries()) {
       const shape = symbol.shapes[index];
       if (cell === 'H') assert.equal(shape.rect, CIRCUIT_COLORS.h);
-      else if (cell === 'X') assert.equal(shape.stroke, CIRCUIT_COLORS.x);
+      else if (cell === 'X') assert.ok(shape.strokes.includes(CIRCUIT_COLORS.x));
       else { assert.equal(shape.circle, CIRCUIT_COLORS.z); assert.equal(shape.radius, 8, 'Inline controls use the readable shared dot size'); }
     }
   }
@@ -88,7 +88,7 @@ async function checkControlAppearance(page, game) {
     return Math.abs(rect.left + rect.width / 2 - parent.left - parent.width / 2) > 1 ||
       Math.abs(rect.top + rect.height / 2 - parent.top - parent.height / 2) > 1;
   }).map(glyph => glyph.parentElement.className)), [], 'Gate and add-space symbols stay centered in their controls');
-  if (game !== 'quantum-golf') assert.deepEqual(await page.locator('.gate-glyph path').evaluateAll(paths =>
+  if (game !== 'quantum-golf') assert.deepEqual(await page.locator('.gate-glyph path[d="M22 12V32M12 22H32"]').evaluateAll(paths =>
     paths.filter(path => getComputedStyle(path).stroke !== 'rgb(229, 168, 157)').map(path => getComputedStyle(path).stroke)),
   [], 'X targets keep their circuit color rather than native button/link blue');
 }
@@ -179,12 +179,12 @@ try {
     assert.ok(steps >= 5, 'The demonstration uses a challenging worked example');
     assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
     if (game === 'quantum-golf') assert.equal(await page.locator('#status').innerText(), 'In the hole!');
-    if (game === 'quantum-signals') assert.equal(await page.locator('#signal-flow').getAttribute('data-match'), 'true');
+    if (game === 'quantum-signals') assert.equal(await page.locator('#signal-target').getAttribute('data-match'), 'true');
     if (game === 'circuit-reduction') {
       assert.equal(await page.locator('.circuit-cell[data-gate]:not([data-gate="."])').count(), 0);
       assert.deepEqual(freeActions, ['space', 'tidy']);
-      assert.equal(await page.locator('#move-count').innerText(), '7 moves');
-      assert.ok(symbolsSeen.has('XC') && symbolsSeen.has('CZ') && symbolsSeen.has('H') && symbolsSeen.has('X') && symbolsSeen.has('Z'));
+      assert.equal(await page.locator('#move-count').innerText(), `${steps - freeActions.length} moves`);
+      assert.deepEqual([...symbolsSeen].sort(), ['H', 'X', 'XU', 'Z', 'ZU']);
     }
     if (game === 'quantum-golf') assert.deepEqual([...symbolsSeen].sort(), ['H', 'T']);
     if (game === 'quantum-signals') assert.deepEqual([...symbolsSeen].sort(), ['CX', 'CZ', 'H', 'Z']);

@@ -8,7 +8,7 @@ import { getHoles, solvePuzzle, puzzleData, validateCustomPuzzle, simulate, stat
 import { LEVELS, dailyPuzzle } from '../../src/lib/quantum-signals/puzzles.js';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
 import { gateLabel } from '../../src/lib/quantum-signals/rendering.js';
-import { phaseColor, phasePathColor, PHASE_COLORS, CANCELLATION_WALL } from '../../src/lib/quantum-signals/state-visuals.js';
+import { phaseColor, phasePathColor, PHASE_COLORS, CANCELLATION_WALL, grayBasis, basisRow } from '../../src/lib/quantum-signals/state-visuals.js';
 import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
 
@@ -278,20 +278,27 @@ async function basisFlow(page, puzzle, placements = undefined) {
     return {
     nodes: [...svg.querySelectorAll('[data-boundary][data-basis][data-amplitude]')].map(node => ({
       boundary: Number(node.dataset.boundary), basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
-      x: node.cx.baseVal.value, ...style(node),
+      x: node.cx.baseVal.value, y: node.cy.baseVal.value, ...style(node),
     })),
     edges: [...svg.querySelectorAll('[data-column][data-from][data-to][data-amplitude]')].map(node => ({
       column: Number(node.dataset.column), from: Number(node.dataset.from), to: Number(node.dataset.to), amplitude: Number(node.dataset.amplitude),
-      ...style(node),
+      path: node.getAttribute('d'), ...style(node),
     })),
-    lanes: [...svg.querySelectorAll('.signal-flow-lane')].map(node => ({ basis: Number(node.dataset.basis), end: node.x2.baseVal.value })),
-    targets: [...svg.querySelectorAll('.signal-flow-target')].map(node => ({ basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
-      x: node.cx.baseVal.value, ...style(node) })),
+    lanes: [...svg.querySelectorAll('.signal-flow-lane')].map(node => ({ basis: Number(node.dataset.basis), end: node.x2.baseVal.value, y: node.y1.baseVal.value })),
+    labels: [...svg.querySelectorAll('.signal-flow-label')].map(node => ({ basis: Number(node.dataset.basis), text: node.textContent,
+      bits: [...node.querySelectorAll('tspan')].map(bit => ({ wire: Number(bit.dataset.wire), value: bit.dataset.bit })) })),
+    targets: [...document.querySelectorAll('#signal-target .signal-flow-target')].map(node => ({ basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
+      x: node.cx.baseVal.value, y: node.cy.baseVal.value, ...style(node) })),
     cancellations: [...svg.querySelectorAll('.signal-flow-cancellation')].map(node => ({ boundary: Number(node.dataset.boundary),
       basis: Number(node.dataset.basis), path: node.getAttribute('d'), ...style(node), fill: node.getAttribute('fill') })),
-    divider: svg.querySelector('.signal-flow-divider')?.getBBox().x,
   }; });
-  assert.deepEqual(actual.lanes.map(lane => lane.basis), Array.from({ length: 2 ** puzzle.wires }, (_, basis) => basis), 'Every complete basis state has its own fixed lane');
+  const order = Array.from({ length: 2 ** puzzle.wires }, (_, row) => grayBasis(row));
+  assert.deepEqual(actual.lanes.map(lane => lane.basis), order, 'Every complete basis state has its own Gray-ordered lane');
+  assert.deepEqual(actual.labels.map(label => label.text), order.map(basis => basis.toString(2).padStart(puzzle.wires, '0')),
+    'Pinned basis labels follow the same Gray order');
+  for (const label of actual.labels) assert.deepEqual(label.bits, [...label.text].map((value, wire) => ({ wire, value })),
+    'Every label bit identifies the corresponding circuit wire');
+  for (const lane of actual.lanes) assert.equal(lane.y, 44 + basisRow(lane.basis) * 34);
   assert.deepEqual(actual.cancellations.map(({ boundary, basis }) => ({ boundary, basis })),
     expected.cancellations.flatMap((bases, column) => bases.map(basis => ({ boundary: column + 1, basis }))),
     'Walls mark exactly the outcomes whose opposite contributions cancel');
@@ -300,7 +307,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
     assert.equal(wall.fill, 'none');
     assert.equal(wall.strokeWidth, 2);
     assert.equal(wall.path, CANCELLATION_WALL.map(([dx, dy], index) =>
-      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (44 + wall.basis * 34 + dy)).join(' '));
+      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (44 + basisRow(wall.basis) * 34 + dy)).join(' '));
     assert.ok(wall.label.includes('opposite phases cancel'));
     assert.ok(!actual.nodes.some(node => node.boundary === wall.boundary && node.basis === wall.basis),
       'Canceled outcomes have a wall instead of a photon dot');
@@ -308,6 +315,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
       'No amplitude leaves a wall in the next column');
   }
   for (const item of [...actual.nodes, ...actual.targets]) {
+    assert.equal(item.y, 44 + basisRow(item.basis) * 34, 'Intermediate and target amplitudes occupy the same Gray-ordered lane');
     assert.equal(item.fill, phaseColor(item.amplitude), 'Positive phases have black dots; negative phases have white dots');
     assert.ok(item.strokeWidth > 0, 'The phase outline remains visible, including matched targets');
   }
@@ -315,14 +323,16 @@ async function basisFlow(page, puzzle, placements = undefined) {
   for (const target of actual.targets) assert.equal(target.stroke, PHASE_COLORS.negative, 'Both target phases have white outlines');
   for (const edge of actual.edges) {
     assert.equal(edge.stroke, phasePathColor(edge.amplitude), 'Negative paths are white; positive paths are darker');
+    const start = 48 + edge.column * 88, fromY = 44 + basisRow(edge.from) * 34, toY = 44 + basisRow(edge.to) * 34;
+    assert.equal(edge.path, `M${start},${fromY} C${start + 44},${fromY} ${start + 44},${toY} ${start + 88},${toY}`,
+      'Amplitude paths connect the original basis states at their Gray-ordered positions');
   }
   for (const item of [...actual.nodes, ...actual.edges, ...actual.targets]) assert.equal(item.dash, 'none', 'Paths and markers use solid strokes');
   for (const item of [...actual.nodes, ...actual.targets]) assert.ok(item.label.includes(item.amplitude < 0 ? '− phase' : '+ phase'),
     'Accessible descriptions state the signed phase');
   const outputX = actual.nodes.find(node => node.boundary === puzzle.columns.length).x;
-  assert.ok(Number.isFinite(actual.divider) && outputX < actual.divider && actual.targets.every(node => node.x > actual.divider),
-    'A divider separates the input-to-output diagram from every target marker');
-  assert.ok(actual.lanes.every(lane => Math.abs(lane.end - outputX) < 1e-8), 'Basis lane lines end at Output before the target divider');
+  assert.ok(actual.lanes.every(lane => Math.abs(lane.end - outputX) < 1e-8), 'Basis lane lines end at Output before the separate target column');
+  await fixedTarget(page);
   assert.equal(await page.locator('#signal-board svg text, #signal-board .signal-output, .signal-vessel').count(), 0, 'The regular circuit has no repeated state labels or separate vessels');
   const epsilon = 1e-8;
   const nodes = new Map(actual.nodes.map(node => [`${node.boundary}:${node.basis}`, node.amplitude]));
@@ -350,7 +360,8 @@ async function basisFlow(page, puzzle, placements = undefined) {
   assert.ok(stateEqual(target, puzzle.target), 'The target markers preserve the complete target, including relative phase');
   assert.equal(actual.targets.length, puzzle.target.filter(amplitude => Math.abs(amplitude) > epsilon).length, 'Only occupied target outcomes have markers');
   const diagram = await flow.boundingBox(), circuit = await page.locator('#signal-board').boundingBox();
-  assert.ok(Math.abs(diagram.width - circuit.width) < 0.1, 'The mirror uses exactly the same horizontal scale as the circuit');
+  const targetBox = await page.locator('#signal-target').boundingBox();
+  assert.ok(Math.abs(diagram.width + targetBox.width - circuit.width) < 0.1, 'The mirror and separate target keep the circuit’s horizontal scale');
   assert.ok(Math.abs(diagram.x - circuit.x) < 0.2, 'Circuit columns and mirrored transitions align on screen');
   const marker = await page.locator('.signal-flow-selection').boundingBox();
   const selected = await page.locator('[data-hole][aria-pressed="true"]').boundingBox();
@@ -367,7 +378,7 @@ async function finalAmplitudes(page, puzzle) {
   }, 2 ** puzzle.wires);
   return Promise.all([
     values(`#signal-flow .signal-flow-node[data-boundary="${puzzle.columns.length}"]`),
-    values('#signal-flow .signal-flow-target'),
+    values('#signal-target .signal-flow-target'),
   ]);
 }
 
@@ -387,6 +398,54 @@ async function pinnedBasisLabels(page) {
   }));
   assert.ok(labels.length > 0 && labels.every(label => label.left >= left + 7 && label.right <= left + 42),
     'The fixed basis labels remain readable at the left of the mirror after horizontal scrolling');
+}
+
+async function fixedTarget(page) {
+  const report = await page.evaluate(() => {
+    const target = document.getElementById('signal-target'), scroll = document.getElementById('flow-scroll');
+    const panel = document.getElementById('flow-panel');
+    const bounds = target.getBoundingClientRect(), viewport = panel.getBoundingClientRect();
+    const horizontal = scroll.getBoundingClientRect();
+    const lanes = new Map([...document.querySelectorAll('#signal-flow .signal-flow-lane')].map(node =>
+      [node.dataset.basis, node.getBoundingClientRect().y]));
+    return {
+      separate: !scroll.contains(target), width: bounds.width,
+      visible: bounds.left >= horizontal.right - 1 && bounds.right <= viewport.right + 1,
+      aligned: [...target.querySelectorAll('.signal-flow-target')].every(node => {
+        const dot = node.getBoundingClientRect();
+        return Math.abs(dot.y + dot.height / 2 - lanes.get(node.dataset.basis)) < .2;
+      }),
+      duplicates: document.querySelectorAll('.signal-flow-target').length !== target.querySelectorAll('.signal-flow-target').length,
+    };
+  });
+  assert.equal(report.separate, true, 'The target is outside the horizontally scrolling paths');
+  assert.ok(report.width > 0 && report.width <= 56, 'The fixed target column stays compact');
+  assert.equal(report.visible, true, 'Horizontal navigation keeps the complete target column visible');
+  assert.equal(report.aligned, true, 'Each target stays aligned with its corresponding Gray-ordered lane');
+  assert.equal(report.duplicates, false, 'There is one target vector rather than a scrolling duplicate');
+}
+
+async function targetScrollPositions(page) {
+  const original = await page.locator('#flow-scroll').evaluate(node => node.scrollLeft);
+  const initial = await page.locator('#signal-target').boundingBox();
+  for (const fraction of [0, .5, 1]) {
+    await page.locator('#flow-scroll').evaluate((node, fraction) => {
+      node.scrollLeft = (node.scrollWidth - node.clientWidth) * fraction;
+      node.dispatchEvent(new Event('scroll'));
+    }, fraction);
+    await fixedTarget(page);
+    const current = await page.locator('#signal-target').boundingBox();
+    assert.ok(Math.abs(current.x - initial.x) < .2 && Math.abs(current.y - initial.y) < .2,
+      'The target does not move between the input, middle and output of the expanded circuit');
+  }
+  if (page.viewportSize().width <= 390) {
+    // Locator screenshots can scroll the page, so capture after the position checks.
+    const lanes = await page.locator('.signal-flow-lane').count();
+    const position = await page.locator('#flow-panel').evaluate(node => node.scrollTop > 0 ? 'lower' : 'upper');
+    await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2; node.dispatchEvent(new Event('scroll')); });
+    await page.locator('#flow-panel').screenshot({ path: resolve(output, `fixed-target-${page.viewportSize().width}-${lanes}-${position}.png`) });
+  }
+  await page.locator('#flow-scroll').evaluate((node, left) => { node.scrollLeft = left; node.dispatchEvent(new Event('scroll')); }, original);
 }
 
 async function keyboardAndMouse(page) {
@@ -462,12 +521,14 @@ async function horizontalNavigation(page) {
   await selectedInView(page);
   await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
   await pinnedBasisLabels(page);
+  await targetScrollPositions(page);
 }
 
 async function centeredProgress(page, hole, column) {
   await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
   const report = await page.evaluate(hole => {
     const circuit = document.getElementById('signal-scroll'), flow = document.getElementById('flow-scroll');
+    const available = Math.min(circuit.clientWidth, flow.clientWidth);
     // A reserved scrollbar gutter can make scrollWidth - clientWidth exceed
     // Chrome's native limit. Probe that limit and restore before the next frame.
     const maximum = Math.min(...[circuit, flow].map(scroll => {
@@ -477,7 +538,7 @@ async function centeredProgress(page, hole, column) {
     return [[circuit, document.querySelector(`[data-hole="${hole}"]`)], [flow, document.querySelector('.signal-flow-selection')]].map(([scroll, node]) => {
       const bounds = scroll.getBoundingClientRect(), target = node.getBoundingClientRect();
       const center = target.left + target.width / 2;
-      const difference = center - (bounds.left + scroll.clientLeft + (40 + scroll.clientWidth) / 2);
+      const difference = center - (bounds.left + scroll.clientLeft + (40 + available) / 2);
       return { left: scroll.scrollLeft, maximum, difference, visible: center >= bounds.left + 40 && center <= bounds.left + scroll.clientWidth };
     });
   }, hole);
@@ -501,12 +562,13 @@ async function actionKeepsPage(page, locator) {
 async function completionInView(page, columns) {
   const report = await page.locator('#flow-scroll').evaluate((scroll, columns) => {
     const bounds = scroll.getBoundingClientRect();
-    return [...scroll.querySelectorAll(`.signal-flow-target, .signal-flow-node[data-boundary="${columns}"]`)].every(node => {
+    return [...scroll.querySelectorAll(`.signal-flow-node[data-boundary="${columns}"]`)].every(node => {
       const target = node.getBoundingClientRect();
       return target.left >= bounds.left + 40 && target.right <= bounds.left + scroll.clientWidth;
     });
   }, columns);
-  assert.ok(report, 'Completion reveals the output and target beyond the pinned labels');
+  assert.ok(report, 'Completion reveals the output beyond the pinned labels');
+  await fixedTarget(page);
   await pinnedBasisLabels(page);
 }
 
@@ -547,10 +609,11 @@ async function progressNavigation(page) {
   const load = () => importPuzzle(page, puzzleData(puzzle));
   await load();
   await centeredProgress(page, 'h1', 3);
-  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
-  assert.ok(await page.locator('#flow-scroll').evaluate(node => node.scrollTop > 0), 'The dense mirror is vertically scrollable');
+  await page.locator('#flow-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  assert.ok(await page.locator('#flow-panel').evaluate(node => node.scrollTop > 0), 'The dense mirror is vertically scrollable');
+  await fixedTarget(page);
   await activate(page, page.locator('#restart'));
-  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollTop), 0, 'Reset returns the mirror to the first basis lane');
+  assert.equal(await page.locator('#flow-panel').evaluate(node => node.scrollTop), 0, 'Reset returns the mirror to the first basis lane');
   await centeredProgress(page, 'h1', 3);
   for (const [index, column] of [6, 9, 12].entries()) {
     await actionKeepsPage(page, page.locator('[data-choice="I"]'));
@@ -586,14 +649,14 @@ async function progressNavigation(page) {
   await activate(page, page.locator('#resume-round'));
   await completionInView(page, columns.length);
   await page.clock.resume();
-  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await page.locator('#flow-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
   await load();
-  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollTop), 0, 'Loading another puzzle returns the mirror to the first basis lane');
+  assert.equal(await page.locator('#flow-panel').evaluate(node => node.scrollTop), 0, 'Loading another puzzle returns the mirror to the first basis lane');
   await noOverflow(page); await accessibility(page);
   await page.screenshot({ path: resolve(output, `navigation-${size.width}.png`), fullPage: true });
-  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await page.locator('#flow-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
   await activate(page, page.locator('#new-puzzle'));
-  assert.equal(await page.locator('#flow-scroll').evaluate(node => node.scrollTop), 0, 'New puzzle returns the mirror to the first basis lane');
+  assert.equal(await page.locator('#flow-panel').evaluate(node => node.scrollTop), 0, 'New puzzle returns the mirror to the first basis lane');
 }
 
 async function openDetails(page, selector) {
@@ -835,6 +898,8 @@ async function visualEditor(page) {
   assert.equal(await page.locator('[data-editor-cell]').count(), 8);
   assert.ok(await page.locator('[data-editor-cell]').evaluateAll(buttons => buttons.every(button => button.getAttribute('aria-label').endsWith('Empty wire'))), 'Scratch starts with empty wires');
   assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => button.dataset.sign)), ['1', '0', '0', '0'], 'Scratch starts at the all-zero basis state');
+  assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => Number(button.dataset.editorTarget))),
+    [0, 1, 3, 2], 'The two-wire target editor follows Gray order without changing target indices');
   await activate(page, page.locator('[data-editor-cell="0:0"]'));
   await activate(page, page.locator('[data-editor-tool="X"]'));
   await activate(page, page.locator('#new-circuit'));
@@ -966,6 +1031,8 @@ async function visualEditor(page) {
   await connect(15, 3, 0, 'phase');
   assert.equal(await page.locator('[data-editor-cell]').count(), 64);
   assert.equal(await page.locator('[data-editor-target]').count(), 16);
+  assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => Number(button.dataset.editorTarget))),
+    Array.from({ length: 16 }, (_, row) => grayBasis(row)), 'The four-wire target editor keeps adjacent states one bit apart');
   const targetBounds = await page.locator('[data-editor-target]').evaluateAll(nodes => nodes.map(node => {
     const bounds = node.getBoundingClientRect(); return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }));
@@ -1066,23 +1133,29 @@ async function denseMirror(page) {
   await basisFlow(page, puzzle);
   await noOverflow(page);
   await pinnedBasisLabels(page);
-  assert.equal(await page.locator('#signal-flow .signal-flow-target').count(), 16, 'Four qubits show all sixteen populated outcomes in separate lanes');
+  assert.equal(await page.locator('#signal-target .signal-flow-target').count(), 16, 'Four qubits show all sixteen populated outcomes in separate lanes');
   const initial = (await finalAmplitudes(page, puzzle))[1];
   assert.ok(initial.every(amplitude => Math.abs(amplitude - 0.25) < 1e-8));
-  const bounds = await page.locator('#signal-flow .signal-flow-target').evaluateAll(nodes => nodes.map(node => {
+  const bounds = await page.locator('#signal-target .signal-flow-target').evaluateAll(nodes => nodes.map(node => {
     const box = node.getBoundingClientRect();
     return { width: box.width, height: box.height };
   }));
   assert.ok(bounds.every(box => box.width >= 3 && box.height >= 3), 'All sixteen target markers remain visible at a narrow viewport');
-  assert.ok(await page.locator('#flow-scroll').evaluate(node => node.scrollHeight > node.clientHeight), 'The sixteen-lane mirror scrolls vertically inside its own bounded region');
-  await page.locator('#flow-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
-  const region = await page.locator('#flow-scroll').boundingBox();
-  const lastLabel = await page.locator('.signal-flow-label[data-basis="15"]').boundingBox();
+  await targetScrollPositions(page);
+  assert.ok(await page.locator('#flow-panel').evaluate(node => node.scrollHeight > node.clientHeight), 'The sixteen-lane mirror scrolls vertically inside its own bounded region');
+  await page.locator('#flow-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  const region = await page.locator('#flow-panel').boundingBox();
+  const lastLabel = await page.locator(`.signal-flow-label[data-basis="${grayBasis(15)}"]`).boundingBox();
   assert.ok(lastLabel.y >= region.y && lastLabel.y + lastLabel.height <= region.y + region.height,
     'The last basis lane and its fixed label can be reached through vertical scrolling');
+  const lastTarget = await page.locator(`#signal-target .signal-flow-target[data-basis="${grayBasis(15)}"]`).boundingBox();
+  assert.ok(lastTarget.y >= region.y && lastTarget.y + lastTarget.height <= region.y + region.height,
+    'Vertical navigation reveals the matching target beside the last basis lane');
+  await fixedTarget(page);
+  await targetScrollPositions(page);
   await pinnedBasisLabels(page);
   await accessibility(page);
-  await page.screenshot({ path: resolve(output, 'mobile-mirror-dense-320.png'), fullPage: true });
+  await page.screenshot({ path: resolve(output, `mobile-mirror-dense-${page.viewportSize().width}.png`), fullPage: true });
   await load({ ...puzzle, target: puzzle.target.map(value => -value) });
   const inverted = (await finalAmplitudes(page, puzzle))[1];
   assert.deepEqual(inverted, initial, 'An irrelevant global sign leaves the target marker comparison unchanged');
@@ -1117,7 +1190,7 @@ async function jointStateExamples(page) {
     await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = node.scrollWidth; });
     await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
     await pinnedBasisLabels(page);
-    const region = await page.locator('#flow-scroll').boundingBox();
+    const region = await page.locator('#flow-panel').boundingBox();
     const targets = await page.locator('.signal-flow-target').evaluateAll(nodes => nodes.map(node => {
       const bounds = node.getBoundingClientRect(); return { left: bounds.left, right: bounds.right };
     }));
@@ -1171,10 +1244,10 @@ async function controlledGeometry(page, screenshot) {
   const puzzle = { wires: 3,
     columns: [[{ gate: 'H', wires: [0] }, { gate: 'X', wires: [2] }],
       [{ gate: 'CX', wires: [2, 0] }],
-      [{ id: 'h1', wires: [2, 0], choices: ['I', 'CX', 'XC', 'CZ'] }],
-      [{ id: 'h2', wires: [0, 2], choices: ['I', 'CX', 'XC', 'CZ'] }],
       [{ gate: 'XC', wires: [2, 0] }],
       [{ gate: 'CZ', wires: [2, 0] }],
+      [{ id: 'h1', wires: [2, 0], choices: ['I', 'CX', 'XC', 'CZ'] }],
+      [{ id: 'h2', wires: [0, 2], choices: ['I', 'CX', 'XC', 'CZ'] }],
       [{ id: 'h3', wires: [1], choices: ['I', 'X'] }]], target: [1, ...Array(7).fill(0)] };
   const solution = { h1: 'XC', h2: 'XC', h3: 'X' };
   puzzle.target = simulate(puzzle, solution).state;
@@ -1300,23 +1373,29 @@ async function cancellationTutorial(page, profile) {
   const placements = {};
   for (const [index, { hole, gate }] of TUTORIAL_STEPS.entries()) {
     assert.equal(await page.locator('#tutorial-heading').innerText(), `Step ${index + 1} of ${TUTORIAL_STEPS.length}`);
+    const highlighted = await page.locator('.signal-flow-bit-highlight').evaluateAll(nodes => nodes.map(node => Number(node.dataset.wire)));
+    assert.deepEqual(highlighted, gate === 'CZ' ? Array(8).fill([0, 1]).flat() : [], 'CZ highlights the linked wires’ bit positions only for its explanation');
+    if (gate === 'CZ') {
+      await pinnedBasisLabels(page);
+      await page.locator('#flow-panel').screenshot({ path: resolve(output, `${profile}-tutorial-cz-bits.png`) });
+    }
     const history = await page.locator('#sequence').innerHTML();
     if (hole) {
       await activate(page, page.locator(`[data-choice="${gate}"]`));
       placements[hole] = gate;
     } else {
       assert.match(await page.locator('#tutorial-text').innerText(), /walls.*white.*dark.*cancel/i);
-      assert.equal(await page.locator('#signal-flow').getAttribute('data-match'), 'false', 'The wall explanation precedes matching the target');
+      assert.equal(await page.locator('#signal-target').getAttribute('data-match'), 'false', 'The wall explanation precedes matching the target');
       assert.equal(await page.locator('[data-hole="e"]').getAttribute('data-filled'), 'false');
       assert.equal(await page.locator('#signal-board').evaluate(board =>
         parseFloat(board.querySelector('[data-hole="e"]').style.left) > parseFloat(board.querySelector('[data-hole="f"]').style.left)), true,
       'The remaining gate is physically after the recombination');
       const focused = page.locator('.signal-flow-cancellation[data-tutorial-focus]');
       assert.equal(await focused.count(), 1, 'The observation highlights a real cancellation wall');
-      assert.deepEqual(await page.locator('.signal-flow-cancellation').evaluateAll(nodes => nodes.map(node => Number(node.dataset.basis))), [1, 3, 4, 6]);
+      assert.deepEqual(await page.locator('.signal-flow-cancellation').evaluateAll(nodes => nodes.map(node => Number(node.dataset.basis))), [2, 3, 4, 5]);
       await page.waitForFunction(() => {
         const wall = document.querySelector('.signal-flow-cancellation[data-tutorial-focus]').getBoundingClientRect();
-        const region = document.getElementById('flow-scroll').getBoundingClientRect();
+        const region = document.getElementById('flow-panel').getBoundingClientRect();
         return wall.left >= region.left && wall.right <= region.right && wall.top >= region.top && wall.bottom <= region.bottom;
       });
       await page.screenshot({ path: resolve(output, `${profile}-tutorial-cancellation.png`), fullPage: true });
@@ -1329,9 +1408,9 @@ async function cancellationTutorial(page, profile) {
     assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'The tutorial never interrupts its explanation with a win popup');
     await tutorialGateAppearance(page);
     await basisFlow(page, TUTORIAL_PUZZLE, placements);
-    if (placements.f) assert.equal(await page.locator('#signal-flow').evaluate(svg => [1, 3, 4, 6].every(basis =>
-      !svg.querySelector(`.signal-flow-path[data-column="7"][data-from="${basis}"]`) &&
-      !svg.querySelector(`.signal-flow-node[data-boundary="8"][data-basis="${basis}"]`))), true,
+    if (placements.f) assert.equal(await page.locator('#signal-flow').evaluate(svg => [2, 3, 4, 5].every(basis =>
+      !svg.querySelector(`.signal-flow-path[data-column="6"][data-from="${basis}"]`) &&
+      !svg.querySelector(`.signal-flow-node[data-boundary="7"][data-basis="${basis}"]`))), true,
     'Stopped paths remain absent through the later gate and at the output');
   }
   assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
@@ -1339,7 +1418,7 @@ async function cancellationTutorial(page, profile) {
     'The seven-step guide still demonstrates all six explicit gate placements');
   assert.equal(await page.locator('#sequence button').count(), 6, 'Observing interference adds no placement');
   assert.equal(await page.locator('.signal-flow-cancellation').count(), 4, 'The completed tutorial retains its cancellation walls');
-  await page.locator('#flow-scroll').screenshot({ path: resolve(output, `${profile}-tutorial-downstream.png`) });
+  await page.locator('#flow-panel').screenshot({ path: resolve(output, `${profile}-tutorial-downstream.png`) });
   await activate(page, page.locator('#tutorial-levels'));
   assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
 }
@@ -1355,18 +1434,19 @@ async function focusedCancellations() {
     await finish(page, LEVELS[3]); await closeWin(page);
     assert.equal(await page.locator('.signal-flow-cancellation').count(), 1);
     assert.equal(await page.locator('.signal-flow-cancellation').getAttribute('data-basis'), '1');
-    await page.locator('#flow-scroll').screenshot({ path: resolve(output, `${profile}-hh-cancellation.png`) });
+    await page.locator('#flow-panel').screenshot({ path: resolve(output, `${profile}-hh-cancellation.png`) });
     await openDetails(page, '#advanced-features');
     await activate(page, page.locator('#share-replay'));
     await page.locator('#share-preview').waitFor({ state: 'visible' });
     const column = LEVELS[3].columns.findIndex(entries => entries.some(entry => entry.id === 'a'));
-    const step = Math.min(88, 740 / LEVELS[3].columns.length), left = (960 - step * LEVELS[3].columns.length) / 2;
-    const pixel = await page.locator('#share-preview').evaluate(async (image, x) => {
+    const pixel = await page.locator('#share-preview').evaluate(async (image, { column, columns, wires, row }) => {
       await image.decode();
       const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
       const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
-      return [...context.getImageData(x, 274, 1, 1).data];
-    }, left + (column + 1) * step);
+      const step = 740 / columns, left = (canvas.width - step * columns) / 2;
+      const flowHeight = (2 ** wires - 1) * 38, top = (canvas.height + 48 - flowHeight) / 2;
+      return [...context.getImageData(left + (column + 1) * step, top + row * 38, 1, 1).data];
+    }, { column, columns: LEVELS[3].columns.length, wires: LEVELS[3].wires, row: basisRow(1) });
     assert.deepEqual(pixel, [255, 255, 255, 255], 'The actual static PNG contains the cancellation wall at the canceled output');
     const pending = page.waitForEvent('download');
     await activate(page, page.locator('#download-gif'));
@@ -1487,13 +1567,15 @@ async function focusedFlow() {
     await noOverflow(mobile); await accessibility(mobile);
     await mobile.screenshot({ path: resolve(output, `mobile-pinned-${width}.png`), fullPage: true });
   }
-  await mobile.setViewportSize({ width: 320, height: 900 });
-  await denseMirror(mobile);
+  for (const width of [320, 390]) {
+    await mobile.setViewportSize({ width, height: 900 });
+    await denseMirror(mobile);
+  }
   await jointStateExamples(mobile);
   await downloadReplay(mobile);
   await completionBoard(mobile);
   assert.deepEqual(errors, [], 'No uncaught browser errors');
-  console.log('Phase dots and target divider: desktop and 320/390/768 px touch layouts, synchronized scrolling, fixed labels, sixteen lanes, accessibility and lazy replay download verified.');
+  console.log('Phase dots and fixed target: desktop and 320/390/768 px touch layouts, synchronized scrolling, fixed labels, sixteen lanes, accessibility and lazy replay download verified.');
 }
 
 async function focusedNavigation() {
@@ -1608,8 +1690,10 @@ try {
   await mobile.screenshot({ path: resolve(output, 'mobile-primary-320.png'), fullPage: true });
   await horizontalNavigation(mobile);
   await mobile.screenshot({ path: resolve(output, 'mobile-navigation-320.png'), fullPage: true });
-  await mobile.locator('#level').selectOption('1');
   await mobile.setViewportSize({ width: 390, height: 844 });
+  await horizontalNavigation(mobile);
+  await mobile.screenshot({ path: resolve(output, 'mobile-navigation-390.png'), fullPage: true });
+  await mobile.locator('#level').selectOption('1');
   const holeBounds = await mobile.locator('[data-hole]').first().boundingBox();
   assert.ok(holeBounds.width >= 44 && holeBounds.height >= 44, 'Hole targets are touchable');
   for (const level of [LEVELS[0], LEVELS[2], LEVELS[6], LEVELS[7], LEVELS.at(-1)]) {
@@ -1630,8 +1714,11 @@ try {
     await accessibility(mobile);
     await mobile.screenshot({ path: resolve(output, `mobile-${width}.png`), fullPage: true });
   }
+  for (const width of [320, 390]) {
+    await mobile.setViewportSize({ width, height: 900 });
+    await denseMirror(mobile);
+  }
   await mobile.setViewportSize({ width: 320, height: 900 });
-  await denseMirror(mobile);
   await reverseCnot(mobile);
   await controlledGeometry(mobile, 'mobile-gate-geometry-320.png');
   await jointStateExamples(mobile);

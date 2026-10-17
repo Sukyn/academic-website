@@ -51,9 +51,13 @@ try {
           throw new Error('The Bell-pair illustration must populate 00 and 11.');
         }
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        stage.appendChild(svg); renderFlow(svg, LEVELS[6], placements);
-        svg.querySelectorAll('.signal-flow-heading,.signal-flow-gutter,.signal-flow-divider,.signal-flow-target').forEach(node => node.remove());
-        svg.setAttribute('viewBox', '28 24 216 140'); svg.setAttribute('width', '324'); svg.setAttribute('height', '210');
+        const target = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const diagram = document.createElement('div'); diagram.style.display = 'flex';
+        diagram.append(svg, target); stage.appendChild(diagram); renderFlow(svg, target, LEVELS[6], placements);
+        svg.querySelectorAll('.signal-flow-heading,.signal-flow-gutter').forEach(node => node.remove());
+        target.querySelector('.signal-flow-heading').remove();
+        svg.setAttribute('viewBox', '28 24 216 140'); svg.setAttribute('width', '270'); svg.setAttribute('height', '175');
+        target.setAttribute('viewBox', '0 24 52 140'); target.setAttribute('width', '65'); target.setAttribute('height', '175');
       } else {
         const { renderGraph } = await import('/src/lib/graph-states/rendering.js');
         const { LEVELS } = await import('/src/lib/graph-states/puzzles.js');

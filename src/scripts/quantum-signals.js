@@ -1,7 +1,7 @@
 import { getHoles, applyPlacement, simulate, validatePuzzle, validateCustomPuzzle, puzzleData } from '../lib/quantum-signals/engine.js';
 import { createPuzzleEditor } from '../lib/quantum-signals/puzzle-editor.js';
 import { LEVELS, generatePuzzle, DAILY_START } from '../lib/quantum-signals/puzzles.js';
-import { gateIcon, gateLabel, renderBoard, renderFlow, highlightFlow, pinFlowLabels } from '../lib/quantum-signals/rendering.js';
+import { gateIcon, gateLabel, renderBoard, renderFlow, highlightFlow, highlightFlowBits, pinFlowLabels } from '../lib/quantum-signals/rendering.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { startDailyFromLink } from '../lib/games/daily-links.js';
@@ -19,6 +19,7 @@ const GAME = 'quantum-signals', get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 let mode = 'tutorial', campaignIndex = 0, puzzle = TUTORIAL_PUZZLE, placements = {}, sequence = [], states = [placements];
 let selected = getHoles(puzzle)[0].id;
+let tutorialBits = [];
 // Puzzles and placements are replaced rather than mutated. Selection, replay
 // and leaderboard updates can reuse this single current-round result.
 let evaluatedPuzzle, evaluatedPlacements, cachedWin = false;
@@ -76,8 +77,9 @@ function followProgress(hole, finished) {
   const button = holeButton(hole);
   if (!button) { scrollTogether(0); return; }
   const bounds = scroll.getBoundingClientRect(), target = button.getBoundingClientRect();
+  const width = Math.min(scroll.clientWidth, get('flow-scroll').clientWidth);
   // Leave the pinned basis labels clear and show both sides of the active gate.
-  scrollTogether(scroll.scrollLeft + target.left + target.width / 2 - bounds.left - scroll.clientLeft - (40 + scroll.clientWidth) / 2);
+  scrollTogether(scroll.scrollLeft + target.left + target.width / 2 - bounds.left - scroll.clientLeft - (40 + width) / 2);
 }
 function selectHole(id) {
   if (tutorialBlocked() || daily.loading || review.step !== null || selected === id) return;
@@ -112,11 +114,12 @@ function update({ board = true, follow = false } = {}) {
     const focused = document.activeElement?.closest('[data-hole]');
     renderBoard(get('signal-board'), puzzle, visible, { selected: activeHole, locked });
     if (focused) focusSelected();
-    renderFlow(get('signal-flow'), puzzle, visible, activeHole);
+    renderFlow(get('signal-flow'), get('signal-target'), puzzle, visible, activeHole);
   } else {
     for (const button of get('signal-board').querySelectorAll('[data-hole]')) button.disabled = locked;
     highlightFlow(get('signal-flow'), puzzle, activeHole);
   }
+  highlightFlowBits(get('signal-flow'), tutorialBits);
   const hole = holes.find(entry => entry.id === (activeHole ?? selected));
   const wires = hole?.wires.join(':');
   const focusedControl = document.activeElement?.closest('.signal-palette button');
@@ -171,7 +174,7 @@ function update({ board = true, follow = false } = {}) {
 function reset() {
   if (tutorialBlocked() || daily.loading) return;
   review.clear(); closeResult(); placements = {}; sequence = []; states = [placements]; selected = getHoles(puzzle)[0].id;
-  get('flow-scroll').scrollTop = 0;
+  get('flow-panel').scrollTop = 0;
   get('status').textContent = ''; update({ follow: true }); completions.load();
 }
 function setPuzzle(nextMode, next) {
@@ -285,12 +288,17 @@ const customJson = createCustomPuzzleJson({ get, game: GAME, exportPuzzle: () =>
 } });
 const tutorial = createTutorial({
   renderText: renderCircuitInstruction,
-  get, isBlocked: () => daily.loading, intro: 'Fill the holes to match the target. This tutorial selects each hole for you.',
+  get, isBlocked: () => daily.loading, intro: 'Fixed gates prepare the input. Fill the holes on the right to match the target.',
   controls: '#signal-board button, .signal-palette button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #circuit-editor-controls button, #custom-details select',
-  steps: TUTORIAL_STEPS.map(({ hole, gate, text, target }) => ({
-    text, target: target ?? '[data-choice="' + gate + '"]', prepare: hole ? () => selectHole(hole) : undefined,
+  steps: TUTORIAL_STEPS.map(({ hole, gate, text, target, bits }) => ({
+    text, target: target ?? '[data-choice="' + gate + '"]', prepare() {
+      tutorialBits = bits ?? [];
+      if (hole) selectHole(hole);
+      highlightFlowBits(get('signal-flow'), tutorialBits);
+    },
     action: () => { if (gate) place(gate); },
   })),
   onReset: () => setPuzzle('tutorial', TUTORIAL_PUZZLE),
+  onLeave() { tutorialBits = []; highlightFlowBits(get('signal-flow'), tutorialBits); },
 });
 if (!startDailyFromLink(daily)) tutorial.enter();

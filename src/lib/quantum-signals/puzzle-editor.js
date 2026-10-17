@@ -1,7 +1,7 @@
 import { controlWire, validatePlayablePuzzle } from './engine.js';
 import { draftFromPuzzle, resizeDraft, setDraftEntry, connectDraftEntry, puzzleFromDraft } from './editor.js';
 import { gateIcon, gateLabel } from './rendering.js';
-import { PHASE_COLORS, phaseColor } from './state-visuals.js';
+import { PHASE_COLORS, phaseColor, grayBasis } from './state-visuals.js';
 
 const SINGLE = ['I', 'H', 'X', 'Z'], PAIR = ['I', 'CX', 'XC', 'CZ'], STEP = 64;
 const TOOLS = [['H', 'H'], ['X', 'X'], ['Z', 'Z'], ['hole', 'Hole'],
@@ -90,7 +90,8 @@ export function createPuzzleEditor({ get, onPlay }) {
     }) : []));
   }
   function renderTargets() {
-    get('editor-targets').replaceChildren(...draft.weights.map((weight, basis) => {
+    get('editor-targets').replaceChildren(...draft.weights.map((_, row) => {
+      const basis = grayBasis(row), weight = draft.weights[basis];
       const bits = basis.toString(2).padStart(draft.wires, '0'), button = element('button', 'editor-target');
       button.type = 'button'; button.id = 'editor-target-' + basis;
       button.dataset.editorTarget = basis; button.dataset.sign = weight;

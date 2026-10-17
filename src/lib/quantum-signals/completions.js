@@ -3,7 +3,7 @@ import { DAILY_START, DAILY_VERSION, LEVELS, dailyPuzzle } from './puzzles.js';
 import { validDailyDate } from '../games/daily-calendar.js';
 import { scoreName, SubmissionError } from '../games/submission.js';
 
-export const CAMPAIGN = 'signals-completions-v1';
+export const CAMPAIGN = 'signals-completions-v2';
 export const DAILY_CAMPAIGN = DAILY_VERSION;
 export const MAX_SUBMISSION_BYTES = 64_000;
 export const MAX_REPLAY_MOVES = 1_000;

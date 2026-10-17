@@ -32,8 +32,13 @@ import '../../styles/quantum-signals.css';
             {GATES.map(gate => <button class="button ghost" type="button" data-choice={gate} aria-label={gateLabel(gate)}></button>)}
             <button class="button ghost" id="erase-gate" type="button" aria-keyshortcuts="Delete" disabled>Erase</button>
           </div>
-          <div class="game-scroll signal-scroll signal-flow-scroll" id="flow-scroll" role="region" aria-label="Joint-state paths. Scroll to explore the states and circuit columns." tabindex="0">
-            <svg id="signal-flow" role="img" aria-label="Quantum state paths through the circuit, with the target at the right"></svg>
+          <div class="game-scroll signal-scroll signal-flow-panel" id="flow-panel" role="region" aria-label="Joint-state paths and target. Scroll vertically to explore the states." tabindex="0">
+            <div class="signal-flow-layout">
+              <div class="signal-flow-scroll" id="flow-scroll" role="region" aria-label="Quantum state paths. Scroll horizontally to explore the circuit columns." tabindex="0">
+                <svg id="signal-flow" role="img" aria-label="Quantum state paths through the circuit"></svg>
+              </div>
+              <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
+            </div>
           </div>
           <GameRoundControls resultLabel="Results" />
           <div class="custom-controls" id="custom-controls" hidden>

@@ -1,7 +1,7 @@
 import * as gifenc from 'gifenc';
 import { applyPlacement, controlWire, simulate, validatePuzzle } from '../lib/quantum-signals/engine.js';
 import { CIRCUIT_COLORS as colors, drawGate } from '../lib/games/circuit-graphics.js';
-import { PHASE_COLORS, PHASE_PATH_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, alignTarget, targetRadius } from '../lib/quantum-signals/state-visuals.js';
+import { PHASE_COLORS, PHASE_PATH_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, alignTarget, targetRadius, grayBasis, basisRow } from '../lib/quantum-signals/state-visuals.js';
 import { flowTrace } from '../lib/quantum-signals/flow.js';
 import { installReplayEncoder } from '../lib/games/replay-gif.js';
 
@@ -48,12 +48,14 @@ function drawFlow(ctx, puzzle, placements, top, { imageOnly = false } = {}) {
   const { snapshots, columns, cancellations } = flowTrace(puzzle, placements);
   const step = imageOnly ? 740 / puzzle.columns.length : Math.min(88, 740 / puzzle.columns.length);
   const left = (WIDTH - step * puzzle.columns.length) / 2;
-  const right = left + puzzle.columns.length * step, targetX = right + 54, y = basis => top + basis * (imageOnly ? 38 : 28);
+  const right = left + puzzle.columns.length * step, targetX = right + 54;
+  const rowHeight = imageOnly ? 38 : 28, y = basis => top + basisRow(basis) * rowHeight;
   ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = colors.text;
   if (!imageOnly) {
     ctx.fillText('Output', right, top - 28); ctx.fillText('Target', targetX, top - 28);
   }
-  for (let basis = 0; basis < snapshots[0].length; basis++) {
+  for (let row = 0; row < snapshots[0].length; row++) {
+    const basis = grayBasis(row);
     ctx.fillText(basis.toString(2).padStart(puzzle.wires, '0'), left - 28, y(basis));
     ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(left, y(basis)); ctx.lineTo(right, y(basis)); ctx.stroke();
@@ -61,7 +63,7 @@ function drawFlow(ctx, puzzle, placements, top, { imageOnly = false } = {}) {
   if (!imageOnly) {
     ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(right + 26, top - 44);
-    ctx.lineTo(right + 26, y(snapshots[0].length - 1) + 16); ctx.stroke();
+    ctx.lineTo(right + 26, top + (snapshots[0].length - 1) * rowHeight + 16); ctx.stroke();
   }
   columns.forEach((edges, column) => {
     const start = left + column * step, end = start + step;

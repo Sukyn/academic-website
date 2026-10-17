@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -55,27 +55,10 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
   try {
     await writeFile(new URL('package.json', compiledRoot), '{"type":"module"}\n');
     await mkdir(new URL('api/', compiledRoot), { recursive: true });
-    await mkdir(new URL('src/lib/quantum-golf/', compiledRoot), { recursive: true });
-    await mkdir(new URL('src/lib/circuit-reduction/', compiledRoot), { recursive: true });
-    await mkdir(new URL('src/lib/quantum-signals/', compiledRoot), { recursive: true });
-    await mkdir(new URL('src/lib/graph-states/', compiledRoot), { recursive: true });
-    await mkdir(new URL('src/lib/games/', compiledRoot), { recursive: true });
+    // Keep data assets alongside their modules, without a second dependency list.
+    await cp(websiteFile('src/lib/'), new URL('src/lib/', compiledRoot), { recursive: true });
     await writeFile(new URL('api/leaderboard.js', compiledRoot), await compileApiFixture('api/leaderboard.ts', { neonReplacement, absoluteImports: false }));
     await writeFile(new URL('api/daily.js', compiledRoot), await compileApiFixture('api/daily.ts', { absoluteImports: false }));
-    for (const name of ['leaderboard.js', 'quantum.js', 'campaign.json', 'daily.js', 'solver.js']) {
-      await writeFile(new URL(`src/lib/quantum-golf/${name}`, compiledRoot),
-        await readFile(websiteFile(`src/lib/quantum-golf/${name}`)));
-    }
-    for (const path of ['games/server.js', 'games/daily-calendar.js', 'games/submission.js', 'games/random.js',
-      'quantum-signals/engine.js', 'quantum-signals/puzzles.js', 'quantum-signals/completions.js',
-      'graph-states/engine.js', 'graph-states/puzzles.js', 'graph-states/leaderboard.js',
-      'circuit-reduction/leaderboard.js',
-      'circuit-reduction/engine.js', 'circuit-reduction/puzzles.js',
-      'circuit-reduction/generator.js', 'circuit-reduction/generated-catalogue.js',
-      'circuit-reduction/paper-missions.js', 'circuit-reduction/paper-certificates.js',
-      'circuit-reduction/stored-puzzles.js']) {
-      await writeFile(new URL(`src/lib/${path}`, compiledRoot), await readFile(websiteFile(`src/lib/${path}`)));
-    }
     // Keep the API's relative imports intact to verify the deployed package.
     const { default: compiled } = await import(new URL('api/leaderboard.js', compiledRoot));
     const response = await compiled.fetch(new Request(`${endpoint}?level=unknown`));

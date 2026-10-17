@@ -201,11 +201,17 @@ try {
       }
       assert.equal(await page.locator('#check-daily-puzzles').isEnabled(), true, 'Other daily puzzles never require score registration');
       if (game === 'quantum-signals') {
-        const inView = await page.locator('#flow-scroll').evaluate(region => [...region.querySelectorAll('.signal-flow-target')].every(dot => {
-          const target = dot.getBoundingClientRect(), box = region.getBoundingClientRect();
-          return target.left >= box.left && target.right <= box.right;
-        }));
-        assert.ok(inView, 'The completed Signals view follows its output and targets');
+        const target = await page.locator('#signal-target').evaluate(region => {
+          const dots = [...region.querySelectorAll('.signal-flow-target')];
+          const box = region.getBoundingClientRect(), panel = document.getElementById('flow-panel').getBoundingClientRect();
+          return { outsideScroll: !document.getElementById('flow-scroll').contains(region), width: box.width,
+            count: dots.length, inView: box.left >= panel.left && box.right <= panel.right && dots.every(dot => {
+              const bounds = dot.getBoundingClientRect(); return bounds.left >= box.left && bounds.right <= box.right;
+            }) };
+        });
+        assert.ok(target.outsideScroll, 'Signals targets stay outside the horizontal scroller');
+        assert.ok(Math.abs(target.width - 52) <= 1, 'The fixed target stays compact');
+        assert.ok(target.count > 0 && target.inView, 'The completed Signals target dots remain horizontally visible');
       }
       if (!index) await shareReplay(page, activate, profile);
       await dialogFits(page, 'win-dialog');

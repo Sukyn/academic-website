@@ -197,6 +197,18 @@ test('Custom holes get deterministic internal IDs and remain independent of the 
   assert.deepEqual(source, before);
 });
 
+test('Playable circuits reject imposed gates in or after the editable suffix', () => {
+  for (const input of [
+    { wires: 1, columns: [[hole('a', [0])], [fixed('H', 0)]], target: [1, 0] },
+    { wires: 2, columns: [[hole('a', [0]), fixed('X', 1)]], target: [0, 1, 0, 0] },
+  ]) {
+    assert.doesNotThrow(() => validatePuzzle(input), 'Structural simulation still accepts arbitrary gate sequences');
+    assert.ok(solvePuzzle(input, { limit: 1 }).length, 'The rejected layout has a reachable target');
+    assert.throws(() => validatePlayablePuzzle(input), RangeError);
+    assert.throws(() => validateCustomPuzzle(puzzleData(input)), RangeError);
+  }
+});
+
 test('Custom targets use sparse signed binary labels and reject unreachable states', () => {
   const base = LEVELS[7], human = puzzleData(base);
   const puzzle = validateCustomPuzzle(human);
@@ -284,7 +296,7 @@ test('Reachability search respects its solution limit and gate choice order', ()
   for (const limit of [0, -1, 4097, 1.5]) assert.throws(() => solvePuzzle(puzzle, { limit }), RangeError);
 });
 
-test('All tutorial puzzles are reachable, and later lessons exercise interference and entanglement', () => {
+test('All campaign puzzles are reachable, and later lessons exercise interference and entanglement', () => {
   assert.equal(LEVELS.length, 12);
   assert.equal(new Set(LEVELS.map(puzzle => puzzle.title)).size, LEVELS.length);
   for (const [index, puzzle] of LEVELS.entries()) {
@@ -303,6 +315,27 @@ test('All tutorial puzzles are reachable, and later lessons exercise interferenc
   }
   assert.equal(LEVELS[10].wires, 3);
   assert.ok(stateEqual(LEVELS[7].target, [Math.SQRT1_2, 0, 0, -Math.SQRT1_2]));
+});
+
+test('Campaign, random and daily circuits leave the entire editable suffix free of fixed gates', () => {
+  const samples = [...LEVELS];
+  for (let difficulty = 1; difficulty <= 3; difficulty++) for (let seed = 0; seed < 64; seed++) {
+    samples.push(generatePuzzle(`suffix-${seed}`, difficulty));
+  }
+  for (let day = 15; day <= 31; day++) samples.push(dailyPuzzle(`2026-10-${day}`));
+  for (const puzzle of samples) {
+    const firstHole = puzzle.columns.findIndex(column => column.some(entry => entry.id));
+    assert.ok(firstHole >= 0);
+    assert.ok(puzzle.columns.slice(0, firstHole).flat().every(entry => entry.gate), 'Preparation is entirely fixed');
+    assert.ok(puzzle.columns.slice(firstHole).flat().every(entry => entry.id), 'No fixed gate shares or follows a hole column');
+    assert.ok(puzzle.columns.length <= 16);
+    assert.ok(getHoles(puzzle).length <= 6);
+    assert.equal(simulate(puzzle).solved, false, 'Leaving the editable circuit untouched does not win');
+    const filling = solvePuzzle(puzzle, { limit: 1 })[0];
+    assert.ok(filling, 'Every generated target is reachable');
+    assert.equal(simulate(puzzle, filling).solved, true);
+    assert.ok(stateEqual(reference(puzzle, filling), puzzle.target), 'Independent gate matrices confirm the solution');
+  }
 });
 
 test('Random puzzles are bounded, deterministic, solvable and require changing the empty circuit', () => {
@@ -331,9 +364,9 @@ test('Daily seeds use validated civil dates, stay reproducible and cannot leak m
   assert.equal(first.date, DAILY_START);
   assert.deepEqual(Object.keys(first), ['wires', 'columns', 'target', 'date']);
   assert.equal(Object.hasOwn(first, 'optimalMoves'), false);
-  assert.equal(DAILY_VERSION, 'quantum-signals-daily-v4');
+  assert.equal(DAILY_VERSION, 'quantum-signals-daily-v5');
   assert.deepEqual(first.target, generatePuzzle(`${DAILY_VERSION}:${DAILY_START}`, 3).target);
-  first.columns[0][0].gate = 'X';
+  first.columns[0][0].gate = first.columns[0][0].gate === 'X' ? 'H' : 'X';
   assert.notDeepEqual(first, dailyPuzzle(DAILY_START));
   assert.throws(() => dailyPuzzle('2026-02-30'), RangeError);
   assert.throws(() => dailyPuzzle('2026-10-14'), RangeError);

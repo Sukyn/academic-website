@@ -3,7 +3,7 @@ import { dateTimestamp } from '../games/daily-calendar.js';
 import { seededRandom } from '../games/random.js';
 
 export const DAILY_START = '2026-10-15';
-export const DAILY_VERSION = 'quantum-signals-daily-v4';
+export const DAILY_VERSION = 'quantum-signals-daily-v5';
 const single = (id, wire, choices = ['I', 'H', 'X', 'Z']) => ({ id, wires: [wire], choices });
 const pair = (id, first, second) => ({ id, wires: [first, second], choices: ['I', 'CX', 'XC', 'CZ'] });
 const fixed = (gate, ...wires) => ({ gate, wires });
@@ -26,7 +26,7 @@ const lessons = [
   ['Recombine the beam', 1,
     [[fixed('H', 0)], [single('a', 0)]], { a: 'H' }],
   ['Interference', 1,
-    [[fixed('H', 0)], [single('a', 0, ['I', 'X', 'Z'])], [fixed('H', 0)]], { a: 'Z' }],
+    [[fixed('H', 0)], [single('a', 0, ['I', 'X', 'Z'])], [single('b', 0)]], { a: 'Z', b: 'H' }],
   ['Flip both bits', 2,
     [[single('a', 0, ['I', 'X']), single('b', 1, ['I', 'X'])]], { a: 'X', b: 'X' }],
   ['Bell pair', 2,
@@ -40,8 +40,8 @@ const lessons = [
   ['Three-qubit correlation', 3,
     [[single('a', 0)], [pair('b', 0, 1)], [pair('c', 1, 2)]], { a: 'H', b: 'CX', c: 'CX' }],
   ['Interference network', 3,
-    [[single('a', 0)], [pair('b', 0, 1)], [fixed('H', 2)], [pair('c', 1, 2)],
-      [single('d', 1)], [single('e', 2)], [fixed('CX', 0, 2)]],
+    [[fixed('H', 2)], [fixed('CX', 2, 0)], [single('a', 0)], [pair('b', 0, 1)],
+      [pair('c', 1, 2)], [single('d', 1)], [single('e', 2)]],
     { a: 'H', b: 'CX', c: 'CZ', d: 'H', e: 'Z' }],
 ];
 
@@ -51,23 +51,24 @@ export function generatePuzzle(seed, difficulty = 2) {
   if ((typeof seed !== 'string' && !Number.isSafeInteger(seed)) || String(seed).length > 100 ||
       !Number.isInteger(difficulty) || difficulty < 1 || difficulty > 3) throw new RangeError('Choose a seed and a difficulty from 1 to 3.');
   const random = seededRandom(seed), wires = difficulty;
-  const columns = difficulty === 1 ? [
-    [single('a', 0)], [fixed('H', 0)], [single('b', 0)], [fixed('Z', 0)], [single('c', 0)], [fixed('H', 0)],
+  const preparation = [[fixed('H', 0)]];
+  if (difficulty >= 2) preparation.push([fixed('CX', 0, 1)]);
+  if (difficulty === 3) preparation.push([fixed('H', 2)], [fixed('CZ', 1, 2)]);
+  if (random() < .5) preparation.unshift([fixed('X', wires - 1)]);
+  const holesByColumn = difficulty === 1 ? [
+    [single('a', 0)], [single('b', 0)], [single('c', 0)],
   ] : difficulty === 2 ? [
-    [fixed('H', 0)], [single('a', 0)], [pair('b', 0, 1)], [single('c', 1)],
-    [fixed('H', 0)], [pair('d', 1, 0)], [fixed('H', 1)],
+    [single('a', 0)], [pair('b', 0, 1)], [single('c', 1)], [pair('d', 1, 0)],
   ] : [
-    [fixed('H', 0)], [single('a', 1)], [pair('b', 0, 1)], [single('c', 2)],
-    [pair('d', 1, 2)], [fixed('H', 1)], [single('e', 0)], [pair('f', 2, 0)], [fixed('H', 2)],
+    [single('a', 1)], [pair('b', 0, 1)], [single('c', 2)],
+    [pair('d', 1, 2)], [single('e', 0)], [pair('f', 2, 0)],
   ];
-  const holes = columns.flat().filter(entry => entry.id);
+  const columns = [...preparation, ...holesByColumn];
+  const holes = holesByColumn.flat();
   const singles = holes.filter(hole => hole.wires.length === 1);
   const identity = random() < .5 ? singles[Math.floor(random() * singles.length)] : null;
-  // In real Clifford circuits, an extra H flips the parity of log2(populated
-  // basis states). Other hole choices only permute or change signs, so cannot compensate.
-  if (identity) for (const hole of singles) {
-    hole.choices = hole === identity ? ['I', 'H'] : hole.choices.filter(gate => gate !== 'H');
-  }
+  // Some generated fillings leave a hole empty. Its full palette stays available:
+  // another valid circuit may use that space differently.
   const puzzle = puzzleFromSolution(wires, columns, {});
   for (let attempt = 0; attempt < 32; attempt++) {
     const solution = Object.fromEntries(holes.map(hole => [hole.id, hole === identity ? 'I' : hole.choices[Math.floor(random() * hole.choices.length)]]));

@@ -5,6 +5,14 @@ export const phaseColor = amplitude => amplitude < 0 ? PHASE_COLORS.negative : P
 export const phasePathColor = amplitude => amplitude < 0 ? PHASE_PATH_COLORS.negative : PHASE_PATH_COLORS.positive;
 export const targetRadius = amplitude => Math.min(6, 16 * Math.abs(amplitude));
 
+// Layout only: amplitudes keep their binary basis index in the simulator and JSON.
+export const grayBasis = row => row ^ (row >>> 1);
+export function basisRow(basis) {
+  let row = basis;
+  for (let shifted = basis >>> 1; shifted; shifted >>>= 1) row ^= shifted;
+  return row;
+}
+
 // Compare relative phase in the output's reference frame. One global sign may
 // change; flipping individual outcomes would hide a physically different state.
 export function alignTarget(target, output) {

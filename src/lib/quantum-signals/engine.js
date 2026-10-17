@@ -184,6 +184,11 @@ export function puzzleData(input) {
 
 function validateReachable(input, custom = false) {
   const puzzle = readPuzzle(input, custom);
+  let editable = false;
+  for (const column of puzzle.columns) {
+    if (column.some(entry => entry.id)) editable = true;
+    if (editable && column.some(entry => !entry.id)) throw new RangeError('Place fixed gates before the holes.');
+  }
   if (!findSolutions(puzzle, 1).length) throw new RangeError('This target cannot be reached with the offered gates.');
   return puzzle;
 }

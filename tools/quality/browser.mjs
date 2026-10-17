@@ -277,7 +277,7 @@ try {
       await page.locator('#score-status').filter({ hasText: 'Scores temporarily unavailable.' }).waitFor();
       assert.equal(await page.locator('#submit-score').isEnabled(), true, 'A failed save permits retry');
       await page.locator('#close-win').click();
-      const board = page.locator(game === 'quantum-golf' ? '#move-count' : '#circuit-board');
+      const board = page.locator(game === 'quantum-golf' ? '#sequence' : '#circuit-board');
       const previousBoard = await board.innerHTML();
       await page.locator('#mode-daily').click();
       await page.locator('#daily-status').filter({ hasText: 'Daily puzzle unavailable. Try again.' }).waitFor();

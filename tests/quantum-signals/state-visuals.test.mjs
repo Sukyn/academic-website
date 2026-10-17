@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { alignTarget } from '../../src/lib/quantum-signals/state-visuals.js';
+import { alignTarget, grayBasis, basisRow } from '../../src/lib/quantum-signals/state-visuals.js';
 import { stateEqual } from '../../src/lib/quantum-signals/engine.js';
+
+test('Gray layout changes one bit between adjacent rows and maps back to the original basis', () => {
+  assert.deepEqual(Array.from({ length: 8 }, (_, row) => grayBasis(row)), [0, 1, 3, 2, 6, 7, 5, 4]);
+  for (let wires = 1; wires <= 4; wires++) {
+    const order = Array.from({ length: 2 ** wires }, (_, row) => grayBasis(row));
+    assert.deepEqual([...order].sort((a, b) => a - b), Array.from({ length: 2 ** wires }, (_, basis) => basis));
+    order.forEach((basis, row) => {
+      assert.equal(basisRow(basis), row);
+      if (row) {
+        const changed = basis ^ order[row - 1];
+        assert.equal(changed & (changed - 1), 0, 'Exactly one wire bit changes');
+      }
+    });
+  }
+});
 
 test('Goal markers align equivalent states while preserving the output trace phase', () => {
   const target = [Math.SQRT1_2, 0, 0, -Math.SQRT1_2];

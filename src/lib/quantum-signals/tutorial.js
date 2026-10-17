@@ -1,20 +1,21 @@
 import { simulate } from './engine.js';
-import { LEVELS } from './puzzles.js';
 
 export const TUTORIAL_STEPS = [
-  { hole: 'a', gate: 'H', text: 'Use H to split 000 into 000 and 100 with equal probabilities.' },
-  { hole: 'b', gate: 'CX', text: 'CNOT flips its target bit when its control bit is 1. Here, 100 becomes 110.' },
-  { hole: 'c', gate: 'CZ', text: 'CZ swaps black (+) and white (−) dots where both linked bits are 1.' },
-  { hole: 'd', gate: 'H', text: 'Here H splits each incoming path in two. A 1 on its wire gives the branches opposite phases.' },
-  { hole: 'f', gate: 'H', text: 'Use H here to recombine paths that differ on its wire’s bit. Watch where white and dark paths meet.' },
+  { hole: 'a', gate: 'H', text: 'H on the first wire splits each incoming path into two that differ in the first bit.' },
+  { hole: 'b', gate: 'CX', text: 'CNOT flips the second bit when the first bit is 1.' },
+  { hole: 'c', gate: 'CZ', bits: [0, 1], text: 'CZ acts on the first two wires: look at the highlighted first two bits. It flips the phase on labels starting with 11.' },
+  { hole: 'd', gate: 'H', text: 'H on the second wire splits each path. An incoming 1 on that wire gives the two branches opposite phases.' },
+  { hole: 'f', gate: 'H', text: 'Use H again on the second wire to recombine paths. Watch where white and dark paths meet.' },
   { target: '.signal-flow-cancellation', text: 'The walls mark where white and dark paths cancel. No signal continues from them to the next gate.' },
-  { hole: 'e', gate: 'Z', text: 'Z swaps black (+) and white (−) dots when its wire’s bit is 1. Use it to match the target.' },
+  { hole: 'e', gate: 'Z', text: 'Z on the third wire swaps black (+) and white (−) dots when the third bit is 1. Match the target.' },
 ];
 
-const lesson = LEVELS.at(-1);
-const phaseColumn = lesson.columns.find(column => column.some(entry => entry.id === 'e'));
-const circuit = { wires: lesson.wires,
-  columns: [...lesson.columns.filter(column => column !== phaseColumn), [{ id: 'f', wires: [2], choices: ['I', 'H'] }], phaseColumn],
-  target: lesson.target };
+const single = (id, wire) => ({ id, wires: [wire], choices: ['I', 'H', 'X', 'Z'] });
+const pair = id => ({ id, wires: [0, 1], choices: ['I', 'CX', 'XC', 'CZ'] });
+const circuit = { wires: 3, columns: [
+  [{ gate: 'H', wires: [2] }],
+  [single('a', 0)], [pair('b')], [pair('c')],
+  [single('d', 1)], [single('f', 1)], [single('e', 2)],
+], target: [1, 0, 0, 0, 0, 0, 0, 0] };
 const solution = Object.fromEntries(TUTORIAL_STEPS.filter(step => step.hole).map(({ hole, gate }) => [hole, gate]));
 export const TUTORIAL_PUZZLE = { ...circuit, target: simulate(circuit, solution).state };
