@@ -9,6 +9,9 @@ import GameDialogs from '../../components/games/GameDialogs.astro';
 import GameJsonActions from '../../components/games/GameJsonActions.astro';
 import GameRoundControls from '../../components/games/GameRoundControls.astro';
 import GameReviewControls from '../../components/games/GameReviewControls.astro';
+import GameHoleControls from '../../components/games/GameHoleControls.astro';
+import GameAutofocus from '../../components/games/GameAutofocus.astro';
+import CircuitCategoryMenu from '../../components/games/CircuitCategoryMenu.astro';
 import { LEVELS } from '../../lib/quantum-signals/puzzles.js';
 import { GATES } from '../../lib/quantum-signals/engine.js';
 import { gateLabel } from '../../lib/quantum-signals/rendering.js';
@@ -19,9 +22,8 @@ import '../../styles/quantum-signals.css';
   <GameShell>
     <a class="back" href="/games/">← Games</a>
     <h1>Quantum signals</h1>
-    <a class="back" href="/games/quantum-signals/advanced/">Advanced circuits: SWAP and controls →</a>
     <div class="game-layout">
-      <GameModeMenu />
+      <GameModeMenu><CircuitCategoryMenu kind="signals" /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
         <GameTutorial />
@@ -31,8 +33,7 @@ import '../../styles/quantum-signals.css';
           </div>
           <div class="signal-palette" role="group" aria-label="Gate choices for the selected hole">
             {GATES.map(gate => <button class="button ghost" type="button" data-choice={gate} aria-label={gateLabel(gate)}></button>)}
-            <button class="button ghost" id="erase-gate" type="button" aria-keyshortcuts="Delete" disabled>Erase</button>
-            <button class="button ghost" id="autofocus" type="button" aria-pressed="false">Autofocus</button>
+            <GameHoleControls />
           </div>
           <div class="game-scroll signal-scroll signal-flow-panel" id="flow-panel" role="region" aria-label="Joint-state paths and target. Scroll vertically to explore the states." tabindex="0">
             <div class="signal-flow-layout">
@@ -52,6 +53,7 @@ import '../../styles/quantum-signals.css';
           <details class="advanced-features" id="advanced-features">
             <summary>Advanced</summary>
             <div class="advanced-panel">
+              <GameAutofocus />
               <div class="replay-actions" id="replay-actions">
                 <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
                 <button class="button ghost" id="share-replay" type="button" hidden>Share your replay</button>

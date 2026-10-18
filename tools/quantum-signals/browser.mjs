@@ -86,6 +86,9 @@ async function pageFor(options, { blockedStorage = false, api = fixture, now = p
   assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true', 'Tutorial is the default mode');
   assert.equal(await page.locator('#tutorial-panel').isVisible(), true);
   assert.equal(await page.locator('#autofocus').getAttribute('aria-pressed'), 'false', 'Automatic gate navigation is off on a new page');
+  assert.equal(await page.locator('#autofocus').evaluate(button => button.closest('#advanced-features') !== null), true,
+    'Autofocus belongs to the collapsed Advanced controls');
+  assert.equal(await page.locator('#autofocus').isVisible(), false);
   assert.equal(await page.locator('#circuit-editor-controls').evaluate(node => node.hidden), true, 'The tutorial hides custom editing controls');
   assert.equal(await page.locator('#leaderboard-section').isVisible(), false, 'The tutorial has no completion list');
   assert.equal(pageCompletions, 0, 'Opening the tutorial never requests a completion list');
@@ -531,7 +534,12 @@ async function horizontalNavigation(page) {
 
 async function autofocus(page, enabled) {
   const button = page.locator('#autofocus');
-  if (await button.getAttribute('aria-pressed') !== String(enabled)) await activate(page, button);
+  if (await button.getAttribute('aria-pressed') !== String(enabled)) {
+    if (!await page.locator('#advanced-features').evaluate(details => details.open)) {
+      await activate(page, page.locator('#advanced-features > summary'));
+    }
+    await activate(page, button);
+  }
   assert.equal(await button.getAttribute('aria-pressed'), String(enabled));
 }
 

@@ -37,7 +37,7 @@ function surface(context) {
 test('Advanced circuit targets, controls and empty cells retain separate selectable roles', context => {
   const { board } = surface(context);
   const circuit = { wires: 3, columns: [[{ gate: 'Z', wires: [2], controls: [0, 1] }],
-    [{ gate: 'SWAP', wires: [0, 2] }], []] };
+    [{ gate: 'SWAP', wires: [1, 2] }], []] };
   renderCircuit(board, circuit, { selectedCells: new Set(['2:0']),
     fixedColumns: 2, holes: [{ wires: [1], choices: ['I', 'H'] }] });
   const cells = board.querySelectorAll('.categorical-cell');
@@ -53,7 +53,8 @@ test('Advanced circuit targets, controls and empty cells retain separate selecta
   assert.match(control.attrs['aria-label'], /control for Z/);
   const swaps = cells.filter(cell => cell.dataset.column === '1' && cell.dataset.role === 'target');
   assert.equal(swaps.length, 2);
-  assert.ok(swaps.every(cell => cell.children[0].children[0].attrs.d === 'M13 13L31 31M13 31L31 13'));
+  assert.ok(swaps.every(cell => cell.children.length === 0), 'A swap has crossed wires instead of endpoint glyphs');
+  assert.equal(board.querySelectorAll('.categorical-swap-path').length, 2);
   const hole = cells.find(cell => cell.dataset.cell === '1:2');
   assert.equal(hole.dataset.hole, '0'); assert.equal(hole.dataset.filled, 'false');
   assert.ok(hole.children.some(child => child.className === 'categorical-hole'));
@@ -63,7 +64,7 @@ test('Advanced circuit targets, controls and empty cells retain separate selecta
 test('Advanced palette icons keep controlled targets and swap crosses inside their view box', context => {
   surface(context);
   for (const operation of [{ gate: 'H', wires: [0], controls: [1, 2, 3] },
-    { gate: 'SWAP', wires: [0, 2], controls: [1] }]) {
+    { gate: 'SWAP', wires: [1, 2], controls: [0] }]) {
     const icon = operationIcon(operation);
     for (const child of icon.children.filter(child => child.tag === 'svg')) {
       assert.ok(Number(child.attrs.y) >= 0);
@@ -72,6 +73,63 @@ test('Advanced palette icons keep controlled targets and swap crosses inside the
     assert.match(operationLabel(operation), /controlled by wire/);
   }
   assert.equal(operationLabel({ gate: 'I' }), 'Identity');
+});
+
+test('Adjacent swaps replace the straight wire spans and keep cell hit areas unchanged', context => {
+  const { board } = surface(context);
+  renderCircuit(board, { wires: 2, columns: [
+    [{ gate: 'SWAP', wires: [0, 1] }], [{ gate: 'SWAP', wires: [0, 1] }],
+  ] }, { selectedCells: ['0:0', '1:0'] });
+  const wires = board.querySelectorAll('.categorical-wire');
+  assert.deepEqual(wires.map(wire => wire.attrs.d), [
+    'M16 52H48M224 52H232', 'M16 140H48M224 140H232',
+  ], 'Neither swapped row has a horizontal segment beneath either crossing');
+  const paths = board.querySelectorAll('.categorical-swap-path');
+  assert.equal(paths.length, 4);
+  assert.ok(paths[0].attrs.d.startsWith('M48 52 ')); assert.ok(paths[0].attrs.d.endsWith('136 140'));
+  assert.ok(paths[1].attrs.d.startsWith('M48 140 ')); assert.ok(paths[1].attrs.d.endsWith('136 52'));
+  assert.equal(board.querySelectorAll('.categorical-link').length, 0, 'An ordinary swap has no vertical gate connector');
+  const cells = board.querySelectorAll('.categorical-cell');
+  assert.equal(cells.length, 4);
+  assert.ok(cells.every(cell => cell.style.width === '88px' && cell.style.height === '88px'));
+  assert.equal(cells.filter(cell => cell.attrs['aria-pressed'] === 'true').length, 2);
+});
+
+test('Adjacent controlled swaps preserve the straight control row and link to the crossing midpoint', context => {
+  const { board } = surface(context);
+  const circuit = { wires: 3, columns: [[{ gate: 'SWAP', wires: [1, 2], controls: [0] }]] };
+  renderCircuit(board, circuit);
+  const wires = board.querySelectorAll('.categorical-wire');
+  assert.deepEqual(wires.map(wire => wire.attrs.d), [
+    'M16 52H144', 'M16 140H48M136 140H144', 'M16 228H48M136 228H144',
+  ]);
+  const paths = board.querySelectorAll('.categorical-swap-path');
+  assert.equal(paths.length, 2);
+  assert.ok(paths[0].attrs.d.startsWith('M48 140 ')); assert.ok(paths[0].attrs.d.endsWith('136 228'));
+  assert.ok(paths[1].attrs.d.startsWith('M48 228 ')); assert.ok(paths[1].attrs.d.endsWith('136 140'));
+  const link = board.querySelectorAll('.categorical-link')[0];
+  assert.equal(link.attrs.y1, '52'); assert.equal(link.attrs.y2, '184');
+  assert.ok(paths.every(path => path.attrs.d.includes('92 184')), 'The wires cross midway between adjacent targets');
+  const control = board.querySelectorAll('.categorical-cell').find(cell => cell.dataset.role === 'control');
+  assert.equal(control.dataset.cell, '0:0'); assert.equal(control.children.length, 1);
+  assert.match(control.attrs['aria-label'], /SWAP on wires 2, 3, controlled by wire 1/);
+  const original = structuredClone(circuit);
+  renderCircuit(board, circuit, { interactive: false });
+  assert.deepEqual(circuit, original, 'Rule miniatures do not alter the circuit');
+  assert.ok(board.querySelectorAll('.categorical-cell').every(cell => cell.tag === 'div'));
+  assert.equal(board.querySelectorAll('.categorical-swap-path').length, 2);
+});
+
+test('Palette and editor SWAP icons show crossing wires without paired cross symbols', context => {
+  surface(context);
+  for (const controls of [[], [0], [0, 3]]) {
+    const operation = { gate: 'SWAP', wires: controls.length ? [1, 2] : [0, 1], controls };
+    const icon = operationIcon(operation);
+    assert.equal(icon.querySelectorAll('.categorical-swap-path').length, 2);
+    assert.equal(icon.children.filter(child => child.tag === 'svg').length, 0, 'No endpoint cross glyph is nested in the icon');
+    assert.equal(icon.children.filter(child => child.tag === 'circle').length, controls.length);
+    assert.equal(icon.querySelectorAll('.categorical-link').length, Number(Boolean(controls.length)));
+  }
 });
 
 test('Empty controlled holes show their known context without counting as filled gates', context => {

@@ -52,6 +52,30 @@ test('bibliography formatting keeps organisations, suffixes, nested titles, and 
   assert.equal(pubs[3].year, undefined);
 });
 
+test('BibTeX citations ignore commented braces while preserving percent signs in field values', () => {
+  const source = `@article{commented,
+  title="A 100% title",
+  % } This closing brace and quote " are a comment.
+  year={2026},
+  % { An unmatched opening brace is also a comment.
+  note={Literal 100% field text},
+  doi={10.1234/example}
+}`;
+  const [publication] = parseBibtexToPubs(source);
+  assert.equal(publication.title, 'A 100% title');
+  assert.equal(publication.note, 'Literal 100% field text');
+  assert.equal(publication.year, 2026);
+  assert.equal(publication.citation, source);
+  assert.deepEqual(parseBibtexToPubs(publication.citation), [publication]);
+});
+
+test('unsupported parenthesized BibTeX entries fail clearly before citation extraction', () => {
+  for (const title of ['{A}', '"A ) B"', '{A ) B}']) {
+    const source = `@article(parenthesized, title=${title}, year={2026})`;
+    assert.throws(() => parseBibtexToPubs(source), /Invalid publication BibTeX/);
+  }
+});
+
 test('malformed and trailing-comment bibliography inputs terminate and report clear errors', () => {
   // Keep the dependency's historic end-of-comment infinite-loop regression bounded.
   const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `

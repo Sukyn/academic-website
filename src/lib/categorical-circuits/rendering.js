@@ -6,6 +6,7 @@ const CELL_SIZE = 88, ROW_SIZE = 88;
 const LEFT = 48, TOP = 8;
 const cellKey = (wire, column) => wire + ':' + column;
 const wireList = wires => wires.map(wire => wire + 1).join(', ');
+const WIRE_COLOR = '#f5f5f2';
 
 export function operationLabel(operation) {
   if (!operation || operation.gate === 'I') return 'Identity';
@@ -15,12 +16,22 @@ export function operationLabel(operation) {
     (operation.controls.length === 1 ? ' ' : 's ') + wireList(operation.controls) : '');
 }
 
-function swapGlyph() {
-  const svg = svgNode('svg', { viewBox: '0 0 44 44', width: 44, height: 44,
-    'aria-hidden': true, class: 'gate-glyph' });
-  svg.appendChild(svgNode('path', { d: 'M13 13L31 31M13 31L31 13',
-    fill: 'none', stroke: CIRCUIT_COLORS.text, 'stroke-width': 2.8, 'stroke-linecap': 'round' }));
-  return svg;
+function crossedWires(svg, left, right, upper, lower, crossing) {
+  const middle = (left + right) / 2, width = right - left;
+  for (const [from, to] of [[upper, lower], [lower, upper]]) {
+    const slope = (to - from) * .18;
+    svg.appendChild(svgNode('path', { class: 'categorical-swap-path', fill: 'none',
+      stroke: WIRE_COLOR, 'stroke-width': 1.8, 'stroke-linecap': 'round',
+      d: `M${left} ${from} C${left + width * .24} ${from} ${middle - width * .12} ${crossing - slope} ${middle} ${crossing}` +
+        ` C${middle + width * .12} ${crossing + slope} ${right - width * .24} ${to} ${right} ${to}` }));
+  }
+}
+
+function controlLink(svg, x, targets, controls, attrs = {}) {
+  if (!controls.length) return;
+  const points = [...targets, ...controls];
+  svg.appendChild(svgNode('line', { x1: x, x2: x, y1: Math.min(...points), y2: Math.max(...points),
+    stroke: CIRCUIT_COLORS.z, 'stroke-width': 2, class: 'categorical-link', ...attrs }));
 }
 
 // A palette shows the same endpoints as the board, compressed to one icon.
@@ -33,6 +44,20 @@ export function operationIcon(operation) {
   }
   if (!operation.controls?.length && operation.wires.length === 1) return gateGlyph(operation.gate);
   const rows = [...new Set(touchedWires(operation))].sort((a, b) => a - b);
+  if (operation.gate === 'SWAP') {
+    const y = wire => 7 + rows.indexOf(wire) * 30 / (rows.length - 1);
+    const targets = operation.wires.map(y).sort((a, b) => a - b);
+    const crossing = (targets[0] + targets[1]) / 2;
+    const controls = (operation.controls ?? []).map(y);
+    const svg = svgNode('svg', { viewBox: '0 0 44 44', width: 44, height: 44,
+      'aria-hidden': true, class: 'gate-glyph' });
+    for (const position of controls) svg.appendChild(svgNode('line', { x1: 4, x2: 40,
+      y1: position, y2: position, stroke: WIRE_COLOR, 'stroke-width': 1.2, 'stroke-opacity': .6 }));
+    controlLink(svg, 22, [crossing], controls);
+    crossedWires(svg, 4, 40, ...targets, crossing);
+    for (const position of controls) svg.appendChild(svgNode('circle', { cx: 22, cy: position, r: 2.8, fill: CIRCUIT_COLORS.z }));
+    return svg;
+  }
   const y = wire => 11 + rows.indexOf(wire) * 22 / Math.max(1, rows.length - 1);
   const size = rows.length > 2 ? 14 : 22;
   const svg = svgNode('svg', { viewBox: '0 0 44 44', width: 44, height: 44,
@@ -43,7 +68,7 @@ export function operationIcon(operation) {
     if (operation.controls?.includes(wire)) {
       svg.appendChild(svgNode('circle', { cx: 22, cy: y(wire), r: 4.5, fill: CIRCUIT_COLORS.z }));
     } else {
-      const glyph = operation.gate === 'SWAP' ? swapGlyph() : gateGlyph(operation.gate);
+      const glyph = gateGlyph(operation.gate);
       for (const [name, value] of Object.entries({ x: 22 - size / 2, y: y(wire) - size / 2, width: size, height: size })) {
         glyph.setAttribute(name, String(value));
       }
@@ -57,10 +82,9 @@ export function operationIcon(operation) {
 // carry their role separately from targets, even when both endpoints are dots.
 export function renderCircuit(container, circuit, {
   selectedCells = [], holes = [], fixedColumns = circuit.columns.length - holes.length,
-  locked = false, interactive = true,
+  locked = false, interactive = true, width = LEFT + Math.max(1, circuit.columns.length) * CELL_SIZE + 24,
 } = {}) {
   const selected = selectedCells instanceof Set ? selectedCells : new Set(selectedCells);
-  const width = LEFT + Math.max(1, circuit.columns.length) * CELL_SIZE + 24;
   const height = TOP * 2 + circuit.wires * ROW_SIZE;
   container.classList.add('categorical-board');
   Object.assign(container.style, { position: 'relative', width: width + 'px', height: height + 'px' });
@@ -70,16 +94,25 @@ export function renderCircuit(container, circuit, {
   Object.assign(svg.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
   const centerX = column => LEFT + (column + .5) * CELL_SIZE;
   const centerY = wire => TOP + (wire + .5) * ROW_SIZE;
+  const wireEnd = LEFT + Math.max(1, circuit.columns.length) * CELL_SIZE + 8;
+  const swaps = [];
+  circuit.columns.forEach((entries, column) => entries.forEach(operation => {
+    if (operation.gate === 'SWAP') swaps.push({ operation, column });
+  }));
   for (let wire = 0; wire < circuit.wires; wire++) {
-    svg.appendChild(svgNode('line', { x1: 16, x2: width - 16, y1: centerY(wire), y2: centerY(wire),
-      stroke: '#f5f5f2', 'stroke-width': 1.8, class: 'categorical-wire' }));
+    let end = 16, path = '';
+    for (const { operation, column } of swaps) if (operation.wires.includes(wire)) {
+      const left = LEFT + column * CELL_SIZE;
+      if (left > end) path += `M${end} ${centerY(wire)}H${left}`;
+      end = left + CELL_SIZE;
+    }
+    if (end < wireEnd) path += `M${end} ${centerY(wire)}H${wireEnd}`;
+    svg.appendChild(svgNode('path', { d: path, fill: 'none', 'data-wire': wire,
+      stroke: WIRE_COLOR, 'stroke-width': 1.8, class: 'categorical-wire' }));
   }
   const roles = new Map();
   circuit.columns.forEach((entries, column) => entries.forEach(operation => {
-    const touched = touchedWires(operation), first = Math.min(...touched), last = Math.max(...touched);
-    if (first !== last) svg.appendChild(svgNode('line', { x1: centerX(column), x2: centerX(column),
-      y1: centerY(first), y2: centerY(last), stroke: CIRCUIT_COLORS.z,
-      'stroke-width': 2, class: 'categorical-link' }));
+    if (operation.gate !== 'SWAP') controlLink(svg, centerX(column), operation.wires.map(centerY), (operation.controls ?? []).map(centerY));
     operation.wires.forEach(wire => roles.set(cellKey(wire, column), { operation, control: false }));
     (operation.controls ?? []).forEach(wire => {
       const key = cellKey(wire, column), role = roles.get(key);
@@ -87,6 +120,12 @@ export function renderCircuit(container, circuit, {
       else roles.set(key, { operation, operations: [operation], control: true });
     });
   }));
+  for (const { operation, column } of swaps) {
+    const targets = operation.wires.map(centerY).sort((a, b) => a - b);
+    const crossing = (targets[0] + targets[1]) / 2;
+    controlLink(svg, centerX(column), [crossing], (operation.controls ?? []).map(centerY));
+    crossedWires(svg, LEFT + column * CELL_SIZE, LEFT + (column + 1) * CELL_SIZE, ...targets, crossing);
+  }
   const holeCells = new Map();
   holes.forEach((hole, index) => {
     const column = hole.column ?? fixedColumns + index;
@@ -134,8 +173,8 @@ export function renderCircuit(container, circuit, {
       cell.type = 'button'; cell.disabled = locked;
       cell.setAttribute('aria-pressed', String(selected.has(key)));
     }
-    if (role) {
-      const glyph = role.control ? gateGlyph('Z') : role.operation.gate === 'SWAP' ? swapGlyph() : gateGlyph(role.operation.gate);
+    if (role && (role.control || role.operation.gate !== 'SWAP')) {
+      const glyph = role.control ? gateGlyph('Z') : gateGlyph(role.operation.gate);
       glyph.classList.add('categorical-endpoint');
       Object.assign(glyph.style, { position: 'relative', width: '44px', height: '44px', pointerEvents: 'none' });
       if (role.placeholder) glyph.style.opacity = '.45';
@@ -149,10 +188,6 @@ export function renderCircuit(container, circuit, {
 export function renderAdvancedFlow(svg, targetSvg, circuit, target, { profile = 'controlled', selectedColumn } = {}) {
   // Keep the target reference stable across edits; the shared renderer caches its
   // markers independently from the evolving state and its overall phase.
-  const puzzle = { ...circuit, target };
-  if (Number.isInteger(selectedColumn) && puzzle.columns[selectedColumn]) {
-    puzzle.columns = puzzle.columns.map((column, index) => index === selectedColumn ? [...column, { id: 'selected' }] : column);
-  }
-  renderFlow(svg, targetSvg, puzzle, {}, Number.isInteger(selectedColumn) ? 'selected' : undefined,
-    { trace: flowTrace(circuit, profile) });
+  renderFlow(svg, targetSvg, { ...circuit, target }, {}, undefined,
+    { trace: flowTrace(circuit, profile), selectedColumn });
 }

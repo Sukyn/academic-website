@@ -1,6 +1,6 @@
 import { seededRandom } from '../games/random.js';
 import { stateEqual as signalsStateEqual } from '../quantum-signals/engine.js';
-import { validateCircuit, validateOperation, simulate, applyOperation, applyMove, isSolved, MAX_COLUMNS } from './engine.js';
+import { validateCircuit, validateOperation, holeOperation, simulate, applyOperation, applyMove, isSolved, MAX_COLUMNS, MAX_OPERATIONS } from './engine.js';
 
 const op = (gate, wires, controls = []) => ({ gate, wires, ...(controls.length ? { controls } : {}) });
 const move = (rule, column, wires, controls = []) => ({ rule, column, wires, ...(controls.length ? { controls } : {}) });
@@ -52,27 +52,31 @@ const simplificationLevels = profile => [
   ]),
 ];
 
-function signalPuzzle(wires, columns, holes, solution) {
+function signalPuzzle(wires, columns, holes, solution, profile = 'controlled') {
   const initial = { wires, columns, holes, target: [1, ...Array(2 ** wires - 1).fill(0)] };
-  return { ...initial, target: simulate(fillSignals(initial, solution)), solution };
+  return { ...initial, target: simulate(fillSignals(initial, solution, profile), undefined, profile), solution };
 }
 const hole = (wires, choices, controls = []) => ({ wires, choices, ...(controls.length ? { controls } : {}) });
-const single = (wire, controls = [], profile = 'controlled') => hole([wire], profile === 'prop' && controls.length ? ['I', 'X', 'Z'] : ['I', 'H', 'X', 'Z'], controls);
+const single = (wire, controls = []) => hole([wire], ['I', 'H', 'X', 'Z'], controls);
 const crossing = (first, second, controls = []) => hole([first, second], ['I', 'SWAP'], controls);
+const paired = (first, second) => hole([first, second], ['I', 'CX', 'XC', 'CZ',
+  ...(Math.abs(first - second) === 1 ? ['SWAP'] : [])]);
 
 function signalLevels(profile) {
+  const puzzle = (...args) => signalPuzzle(...args, profile);
   return [
-    ['Move the excitation', signalPuzzle(2, [[op('X', [0])]], [crossing(0, 1)], ['SWAP'])],
-    ['Move a superposition', signalPuzzle(2, [[op('H', [0])]], [crossing(0, 1), single(0)], ['SWAP', 'X'])],
-    ['Move a correlation', signalPuzzle(3, [[op('H', [0])], [op('X', [1], [0])]],
+    ['Move the excitation', puzzle(2, [[op('X', [0])]], [crossing(0, 1)], ['SWAP'])],
+    ['Move a superposition', puzzle(2, [[op('H', [0])]], [crossing(0, 1), single(0)], ['SWAP', 'X'])],
+    ['Move a correlation', puzzle(3, [[op('H', [0])], [op('X', [1], [0])]],
       [crossing(1, 2), single(0)], ['SWAP', 'Z'])],
-    ['Return to one path', signalPuzzle(3, [[op('H', [0])], [op('X', [1], [0])], [op('SWAP', [1, 2])]],
-      [crossing(1, 2), single(1, [0], profile), single(0)], ['SWAP', 'X', 'H'])],
+    ['Return to one path', puzzle(3, [[op('H', [0])], [op('X', [1], [0])], [op('SWAP', [1, 2])]],
+      [crossing(1, 2), profile === 'prop' ? paired(0, 1) : single(1, [0]), single(0)],
+      ['SWAP', profile === 'prop' ? 'CX' : 'X', 'H'])],
     ...(profile === 'controlled' ? [
-      ['Unequal branches', signalPuzzle(2, [[op('H', [0])]], [single(1, [0])], ['H'])],
-      ['Two control bits', signalPuzzle(3, [[op('H', [0]), op('H', [1])]], [single(2, [0, 1])], ['X'])],
-      ['Choose which crossing', signalPuzzle(3, [[op('H', [0])], [op('X', [1])]], [crossing(1, 2, [0]), single(2)], ['SWAP', 'Z'])],
-      ['A controlled interference', signalPuzzle(3, [[op('H', [0])], [op('H', [1], [0])]],
+      ['Unequal branches', puzzle(2, [[op('H', [0])]], [single(1, [0])], ['H'])],
+      ['Two control bits', puzzle(3, [[op('H', [0]), op('H', [1])]], [single(2, [0, 1])], ['X'])],
+      ['Choose which crossing', puzzle(3, [[op('H', [0])], [op('X', [1])]], [crossing(1, 2, [0]), single(2)], ['SWAP', 'Z'])],
+      ['A controlled interference', puzzle(3, [[op('H', [0])], [op('H', [1], [0])]],
         [crossing(1, 2, [0]), single(2, [0]), single(1)], ['SWAP', 'H', 'X'])],
     ] : []),
   ];
@@ -90,10 +94,10 @@ export function getTutorial(profile, game = 'simplification') {
   if (game !== 'simplification' && game !== 'signals') throw new RangeError('Choose a categorical circuit game.');
   if (game === 'signals') {
     const puzzle = profile === 'controlled' ? signalPuzzle(3, [[op('H', [0])], [op('X', [1])]],
-      [crossing(1, 2), single(2, [0])], ['SWAP', 'H']) : signalPuzzle(2, [[op('H', [0])]],
-      [crossing(0, 1), single(0)], ['SWAP', 'X']);
+      [crossing(1, 2), single(2, [0])], ['SWAP', 'H'], profile) : signalPuzzle(2, [[op('H', [0])]],
+      [crossing(0, 1), single(0)], ['SWAP', 'X'], profile);
     return { ...puzzle, steps: [
-      { text: 'A crossing exchanges two wires. Choose SWAP to move the lit paths.', hole: 0, gate: 'SWAP' },
+      { text: 'A crossing exchanges neighbouring wires. Choose SWAP to move the lit paths.', hole: 0, gate: 'SWAP' },
       { text: profile === 'controlled' ? 'A control applies this gate only on paths where its bit is 1. Choose H on that branch.' : 'Choose X to flip the first bit. Match the output paths to the target.', hole: 1, gate: profile === 'controlled' ? 'H' : 'X' },
     ] };
   }
@@ -116,10 +120,14 @@ export function randomIdentity(profile, { seed, difficulty = 2 } = {}) {
   if ((typeof seed !== 'string' && !Number.isSafeInteger(seed)) || String(seed).length > 100 || !Number.isInteger(difficulty) || difficulty < 1 || difficulty > 3) throw new RangeError('Choose a seed and difficulty 1–3.');
   const random = seededRandom(seed), wires = difficulty === 1 ? 2 : profile === 'controlled' && difficulty === 3 ? 4 : 3;
   const labels = Array.from({ length: wires }, (_, index) => index);
-  for (let index = labels.length - 1; index > 0; index--) { const other = Math.floor(random() * (index + 1)); [labels[index], labels[other]] = [labels[other], labels[index]]; }
+  // Reflect the wires without breaking adjacency in crossing and braid rules.
+  if (random() < .5) labels.reverse();
   const controlled = profile === 'controlled' && difficulty > 1;
   const controls = controlled ? [labels[0]] : [], targets = controlled ? labels.slice(1) : labels;
-  const factories = [() => naturality(['H', 'X', 'Z'][Math.floor(random() * 3)], controls, targets.slice(0, 2), wires)];
+  const factories = [() => {
+    const start = Math.floor(random() * (targets.length - 1));
+    return naturality(['H', 'X', 'Z'][Math.floor(random() * 3)], controls, targets.slice(start, start + 2), wires);
+  }];
   if (targets.length > 2) factories.push(() => braid(targets.slice(0, 3), controls, wires));
   if (profile === 'controlled' && difficulty === 3) factories.push(() => basis(labels.slice(0, 2), labels[2], wires));
   const blocks = Array.from({ length: difficulty + 1 }, () => factories[Math.floor(random() * factories.length)]());
@@ -131,10 +139,18 @@ export function validateSignals(input, profile = 'controlled') {
   if (!object(input) || !Array.isArray(input.holes) || input.holes.length < 1 || input.holes.length > 6 ||
       !Array.isArray(input.columns) || input.columns.length + input.holes.length > MAX_COLUMNS) throw new RangeError('Use a fixed circuit followed by 1–6 holes.');
   const circuit = validateCircuit({ wires: input.wires, columns: input.columns.length ? input.columns : [[]] }, profile);
+  if (circuit.columns.reduce((count, column) => count + column.length, 0) + input.holes.length > MAX_OPERATIONS) {
+    throw new RangeError(`Use at most ${MAX_OPERATIONS} gates, including the holes.`);
+  }
   const holes = Array.from(input.holes, entry => {
-    if (!object(entry) || !Array.isArray(entry.choices) || entry.choices.length < 2 || entry.choices.length > 4 || new Set(entry.choices).size !== entry.choices.length) throw new RangeError('Offer 2–4 distinct gates per hole.');
-    for (const gate of entry.choices) if (gate !== 'I') validateOperation({ gate, wires: entry.wires, controls: entry.controls }, input.wires, profile);
-    if (!entry.choices.includes('I')) validateOperation({ gate: entry.choices[0], wires: entry.wires, controls: entry.controls }, input.wires, profile);
+    const maximum = profile === 'prop' ? 5 : 4;
+    if (!object(entry) || !Array.isArray(entry.choices) || entry.choices.length < 2 || entry.choices.length > maximum || new Set(entry.choices).size !== entry.choices.length) throw new RangeError(`Offer 2–${maximum} distinct gates per hole.`);
+    if (!Array.isArray(entry.wires) || ![1, 2].includes(entry.wires.length)) throw new RangeError('Choose one or two target wires per hole.');
+    if (profile === 'prop' && Object.hasOwn(entry, 'controls')) throw new RangeError('PROP holes use complete gates, without a fixed control.');
+    if (entry.controls !== undefined && !Array.isArray(entry.controls)) throw new RangeError('Choose the control wires as an array.');
+    const choices = profile === 'prop' && entry.wires.length === 2 ? ['I', 'CX', 'XC', 'CZ', 'SWAP'] : ['I', 'H', 'X', 'Z', 'SWAP'];
+    if (entry.choices.some(gate => !choices.includes(gate))) throw new RangeError('Choose gates matching the target wires and circuit language.');
+    for (const gate of entry.choices) if (gate !== 'I') validateOperation(holeOperation(entry, gate), input.wires, profile);
     return { wires: [...entry.wires], ...(entry.controls?.length ? { controls: [...entry.controls] } : {}), choices: [...entry.choices] };
   });
   const reference = input.targetCircuit === undefined ? undefined : validateCircuit(input.targetCircuit, profile);
@@ -148,8 +164,7 @@ export function validateSignals(input, profile = 'controlled') {
     ...(reference ? { targetCircuit: reference } : {}) };
 }
 
-export function fillSignals(input, placements = [], profile = 'controlled') {
-  const puzzle = validateSignals(input, profile);
+function filledCircuit(puzzle, placements, profile) {
   if (!Array.isArray(placements) || placements.length > puzzle.holes.length) throw new RangeError('Choose a gate for each hole.');
   for (let index = 0; index < placements.length; index++) {
     if (Object.hasOwn(placements, index) && placements[index] !== undefined && !puzzle.holes[index].choices.includes(placements[index])) {
@@ -158,14 +173,19 @@ export function fillSignals(input, placements = [], profile = 'controlled') {
   }
   const columns = puzzle.holes.map((entry, index) => {
     const gate = Object.hasOwn(placements, index) ? placements[index] ?? 'I' : 'I';
-    return gate === 'I' ? [] : [op(gate, entry.wires, entry.controls)];
+    const operation = holeOperation(entry, gate);
+    return operation ? [operation] : [];
   });
   return validateCircuit({ wires: puzzle.wires, columns: [...puzzle.columns, ...columns] }, profile);
 }
 
+export function fillSignals(input, placements = [], profile = 'controlled') {
+  return filledCircuit(validateSignals(input, profile), placements, profile);
+}
+
 export const signalsSolved = (puzzle, placements = [], profile = 'controlled') => {
   const normalized = validateSignals(puzzle, profile);
-  const circuit = fillSignals(normalized, placements, profile);
+  const circuit = filledCircuit(normalized, placements, profile);
   const complete = normalized.holes.every((hole, index) => hole.choices.includes('I') ||
     (Object.hasOwn(placements, index) && hole.choices.includes(placements[index])));
   return complete && signalsStateEqual(simulate(circuit), normalized.target);
@@ -183,7 +203,8 @@ export function solveSignals(input, { profile = 'controlled', limit = 1 } = {}) 
     const entry = puzzle.holes[index];
     for (const gate of entry.choices) {
       const next = [...state];
-      if (gate !== 'I') applyOperation(next, op(gate, entry.wires, entry.controls), puzzle.wires);
+      const operation = holeOperation(entry, gate);
+      if (operation) applyOperation(next, operation, puzzle.wires);
       placements[index] = gate; visit(index + 1, next);
       if (solutions.length >= limit) return;
     }
@@ -208,15 +229,16 @@ export function generateSignals(profile, { seed, difficulty = 2 } = {}) {
   const random = seededRandom(seed), wires = difficulty === 1 ? 2 : difficulty === 2 ? 3 : 4;
   const columns = [[op('H', [0])], [op('X', [1])]];
   if (difficulty > 1) columns.push([op('X', [2], [0])]);
-  const holes = [crossing(0, wires - 1), single(0), single(1, profile === 'controlled' ? [wires > 2 ? wires - 1 : 0] : [], profile)];
-  if (difficulty > 1) holes.push(crossing(1, 2, profile === 'controlled' ? [0] : []));
-  if (difficulty > 2) holes.push(single(3, profile === 'controlled' ? [0, 1] : [], profile));
+  const firstCrossing = Math.floor(random() * (wires - 1));
+  const holes = [crossing(firstCrossing, firstCrossing + 1), single(0), profile === 'prop' ? paired(0, 1) : single(1, [wires > 2 ? wires - 1 : 0])];
+  if (difficulty > 1) holes.push(profile === 'prop' ? paired(1, 2) : crossing(1, 2, [0]));
+  if (difficulty > 2) holes.push(single(3, profile === 'controlled' ? [0, 1] : []));
   for (let attempt = 0; attempt < 24; attempt++) {
     const solution = holes.map(entry => entry.choices[Math.floor(random() * entry.choices.length)]);
-    const puzzle = signalPuzzle(wires, columns, holes, solution);
+    const puzzle = signalPuzzle(wires, columns, holes, solution, profile);
     if (!signalsSolved(puzzle, [], profile)) return puzzle;
   }
-  return signalPuzzle(wires, columns, holes, holes.map((_, index) => index ? 'I' : 'SWAP'));
+  return signalPuzzle(wires, columns, holes, holes.map((_, index) => index ? 'I' : 'SWAP'), profile);
 }
 
 export function verifySolution(circuit, solution, profile = 'controlled') {

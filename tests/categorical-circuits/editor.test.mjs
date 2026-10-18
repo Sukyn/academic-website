@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCircuitEditor } from '../../src/lib/categorical-circuits/editor.js';
+import { simulate } from '../../src/lib/categorical-circuits/engine.js';
 import { getLevels, signalsSolved, signalsData } from '../../src/lib/categorical-circuits/puzzles.js';
 
 function editorSurface(mode = 'controlled') {
@@ -32,6 +33,12 @@ test('Advanced Signals editor preserves unequal targets through opening, edits a
   assert.strictEqual(surface.model.target, goal, 'The target is fixed until explicitly captured');
   const result = editor.puzzle();
   assert.deepEqual(result.target, puzzle.target);
+  const independent = editor.puzzle(), frozen = structuredClone(independent);
+  independent.columns[0][0].gate = 'X';
+  independent.holes[0].wires[0] = 0;
+  independent.targetCircuit.columns[0][0].gate = 'Z';
+  independent.target[0] = 99;
+  assert.deepEqual(editor.puzzle(), frozen, 'Normalization isolates every returned circuit, hole, reference and target from the editor');
   const exported = signalsData(result);
   assert.ok(exported.targetCircuit);
   assert.equal(Object.hasOwn(exported, 'target'), false);
@@ -67,8 +74,12 @@ test('Controlled H and SWAP are linked in a second step and unfinished links can
   assert.throws(() => editor.handleCell(2, 1), /same column/);
   editor.handleCell(0, 0);
   assert.deepEqual(editor.circuit().columns[0][0], { gate: 'H', wires: [1], controls: [0] });
-  editor.setTool('SWAP'); editor.handleCell(0, 1); editor.handleCell(2, 1);
-  assert.deepEqual(editor.circuit().columns[1][0], { gate: 'SWAP', wires: [0, 2] });
+  editor.setTool('SWAP'); editor.handleCell(0, 1);
+  const before = editor.circuit();
+  assert.throws(() => editor.handleCell(2, 1), /consecutive/);
+  assert.deepEqual(editor.circuit(), before, 'An invalid link preserves the draft and pending first endpoint');
+  editor.handleCell(1, 1);
+  assert.deepEqual(editor.circuit().columns[1][0], { gate: 'SWAP', wires: [0, 1] });
   editor.setTool('hole'); editor.handleCell(0, 1); surface.capture();
   assert.deepEqual(editor.puzzle().holes[0].choices, ['I', 'SWAP']);
   editor.setTool('erase'); editor.handleCell(0, 1);
@@ -93,13 +104,13 @@ test('PROP editor rejects controlled H, occupied links and destructive dimension
   assert.throws(() => editor.handleCell(-1, 0), /circuit cell/);
 });
 
-test('Holes can acquire controls without floating-point target data and stay limited to six', () => {
-  const surface = editorSurface('prop'), { editor } = surface;
+test('Controlled holes can acquire controls without floating-point target data and stay limited to six', () => {
+  const surface = editorSurface(), { editor } = surface;
   editor.open();
   editor.setTool('X'); editor.handleCell(1, 3);
   editor.setTool('hole'); editor.handleCell(1, 3);
   editor.setTool('control'); editor.handleCell(1, 3); editor.handleCell(0, 3);
-  assert.deepEqual(surface.model.holes[0].choices, ['I', 'X', 'Z']);
+  assert.deepEqual(surface.model.holes[0].choices, ['I', 'H', 'X', 'Z']);
   surface.capture();
   assert.deepEqual(editor.puzzle().holes[0].controls, [0]);
   for (let index = 0; index < 5; index++) {
@@ -111,4 +122,67 @@ test('Holes can acquire controls without floating-point target data and stay lim
   surface.dimensions(3, editor.circuit().columns.length + 1);
   editor.setTool('hole');
   assert.throws(() => editor.handleCell(2, surface.model.fixedColumns - 1), /six holes/);
+});
+
+test('PROP fixed controlled gates become whole paired holes with exact witness operations', () => {
+  for (const [gate, target, control, witness] of [['X', 1, 0, 'CX'], ['X', 0, 2, 'XC'], ['Z', 0, 2, 'CZ']]) {
+    const surface = editorSurface('prop'), { editor } = surface;
+    editor.open();
+    editor.setTool(gate); editor.handleCell(target, 3);
+    editor.setTool('control'); editor.handleCell(target, 3); editor.handleCell(control, 3);
+    const original = editor.circuit();
+    surface.capture();
+    editor.setTool('hole'); editor.handleCell(control, 3);
+    const hole = surface.model.holes[0];
+    assert.deepEqual(hole, { wires: [target, control].sort((a, b) => a - b), choices: ['I', 'CX', 'XC', 'CZ'] });
+    assert.equal(Object.hasOwn(hole, 'controls'), false);
+    for (let basis = 0; basis < 8; basis++) {
+      const initial = Array.from({ length: 8 }, (_, index) => Number(index === basis));
+      assert.deepEqual(simulate(editor.circuit(), initial, 'prop'), simulate(original, initial, 'prop'),
+        `${witness} preserves every basis amplitude and its sign`);
+    }
+    assert.equal(signalsSolved(editor.puzzle(), [witness], 'prop'), true);
+    assert.deepEqual(editor.circuit().columns[3][0], gate === 'Z' ?
+      { gate: 'Z', wires: [2], controls: [0] } : { gate, wires: [target], controls: [control] });
+  }
+});
+
+test('PROP holes reject control constructors and paired witnesses remain whole gates when edited', () => {
+  const surface = editorSurface('prop'), { editor } = surface;
+  editor.open();
+  editor.setTool('X'); editor.handleCell(1, 3);
+  editor.setTool('control'); editor.handleCell(1, 3); editor.handleCell(0, 3);
+  editor.setTool('hole'); editor.handleCell(1, 3);
+  const before = editor.circuit(), hole = structuredClone(surface.model.holes[0]);
+  editor.setTool('control');
+  assert.throws(() => editor.handleCell(1, 3), /complete gate/);
+  assert.deepEqual(editor.circuit(), before);
+  assert.deepEqual(surface.model.holes[0], hole);
+  editor.setTool('X'); editor.handleCell(0, 3);
+  assert.deepEqual(editor.circuit().columns[3][0], { gate: 'X', wires: [0], controls: [1] });
+  editor.setTool('Z'); editor.handleCell(0, 3);
+  assert.deepEqual(editor.circuit().columns[3][0], { gate: 'Z', wires: [1], controls: [0] });
+  editor.setTool('H');
+  assert.throws(() => editor.handleCell(1, 3), /gate offered by this hole/);
+  assert.deepEqual(surface.model.holes[0], hole);
+  editor.setTool('erase'); editor.handleCell(0, 3);
+  assert.equal(surface.model.holes.length, 0, 'Either endpoint erases the complete paired hole');
+});
+
+test('selecting editor cells does not copy the editable draft or expose it to callers', context => {
+  const originalClone = globalThis.structuredClone;
+  let draftCopies = 0;
+  context.mock.method(globalThis, 'structuredClone', value => {
+    if (Array.isArray(value?.columns) && Array.isArray(value?.holes)) draftCopies++;
+    return originalClone(value);
+  });
+  const surface = editorSurface(), { editor } = surface;
+  editor.open(); editor.setTool('H'); editor.handleCell(0, 0);
+  editor.setTool('select');
+  const before = draftCopies;
+  editor.handleCell(0, 0); editor.handleCell(1, 1);
+  assert.equal(draftCopies, before, 'Read-only selections need no editable-draft clone');
+  assert.deepEqual([...surface.model.selectedCells], ['1:1']);
+  surface.model.circuit.columns[0][0].gate = 'X';
+  assert.equal(editor.circuit().columns[0][0].gate, 'H', 'Returned render data remains isolated');
 });

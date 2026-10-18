@@ -1,6 +1,6 @@
 ---
-interface Props { resultLabel?: string }
-const { resultLabel = 'Scores' } = Astro.props;
+interface Props { resultLabel?: string; results?: boolean }
+const { resultLabel = 'Scores', results = true } = Astro.props;
 ---
 
 <div class="round-controls">
@@ -8,5 +8,5 @@ const { resultLabel = 'Scores' } = Astro.props;
   <button class="button ghost" id="undo" type="button" aria-keyshortcuts="Control+Z Meta+Z Backspace" disabled>Undo</button>
   <button class="button ghost" id="restart" type="button" aria-keyshortcuts="R">Reset</button>
   <slot />
-  <button class="button ghost" id="show-results" type="button" hidden>{resultLabel}</button>
+  {results && <button class="button ghost" id="show-results" type="button" hidden>{resultLabel}</button>}
 </div>

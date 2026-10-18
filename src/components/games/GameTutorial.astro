@@ -1,7 +1,12 @@
-<section class="game-tutorial" id="tutorial-panel" aria-labelledby="tutorial-heading" hidden>
+---
+interface Props { intro?: string }
+const { intro } = Astro.props;
+---
+
+<section class="game-tutorial" id="tutorial-panel" aria-labelledby="tutorial-heading" hidden={!intro}>
   <div aria-live="polite" aria-atomic="true">
-    <p id="tutorial-heading"></p>
-    <p id="tutorial-text"></p>
+    <p id="tutorial-heading">{intro && 'Guided example'}</p>
+    <p id="tutorial-text">{intro}</p>
   </div>
   <div class="tutorial-actions">
     <button class="button ghost" id="tutorial-start" type="button">Start tutorial</button>

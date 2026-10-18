@@ -26,9 +26,10 @@ function pickVenue(tags: Record<string, string>) {
   );
 }
 
-function findClosingDelimiter(source: string, start: number, open: string, close: string) {
+function findClosingDelimiter(source: string, start: number, open: string, close: string, entry = false) {
   let depth = 0;
   let escaped = false;
+  let quoted = false;
 
   for (let index = start; index < source.length; index += 1) {
     const char = source[index];
@@ -41,6 +42,16 @@ function findClosingDelimiter(source: string, start: number, open: string, close
     if (char === "\\") {
       escaped = true;
       continue;
+    }
+
+    if (entry && depth === 1) {
+      if (char === '"') quoted = !quoted;
+      if (char === "%" && !quoted) {
+        const newline = source.indexOf("\n", index);
+        if (newline === -1) return -1;
+        index = newline;
+        continue;
+      }
     }
 
     if (char === open) depth += 1;
@@ -122,7 +133,7 @@ function extractRawEntries(source: string) {
     if (commaIndex === -1) break;
 
     const citationKey = source.slice(bodyStart + 1, commaIndex).trim();
-    const endIndex = findClosingDelimiter(source, bodyStart, openChar, closeChar);
+    const endIndex = findClosingDelimiter(source, bodyStart, openChar, closeChar, true);
 
     if (citationKey && endIndex !== -1) {
       entries.set(citationKey, source.slice(atIndex, endIndex + 1).trim());

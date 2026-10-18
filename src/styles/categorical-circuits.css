@@ -1,4 +1,3 @@
-.categorical-game .categorical-profile,
 .categorical-game .categorical-actions,
 .categorical-game .categorical-editor-tools {
   display: flex;
@@ -8,10 +7,9 @@
   font-family: var(--font-ui);
   font-size: .9rem;
 }
-.categorical-game .categorical-profile { margin-block: .8rem; }
-.categorical-game .categorical-profile select { flex: 0 1 15rem; min-height: 2.75rem; }
 .categorical-game .categorical-scroll { padding-block: .45rem; border-radius: 4px; }
 .categorical-game .categorical-board { margin-inline: auto; user-select: none; -webkit-touch-callout: none; }
+.categorical-game #categorical-board:empty { min-height: 192px; }
 .categorical-game .categorical-cell { appearance: none; border-radius: 5px; cursor: pointer; touch-action: manipulation; }
 .categorical-game .categorical-cell:disabled { opacity: 1; cursor: default; }
 .categorical-game .categorical-cell.is-selected,
@@ -25,10 +23,11 @@
 .categorical-game .categorical-rule-mini { flex: none; margin: 0; zoom: .2; pointer-events: none; }
 .categorical-game .categorical-rule-mini .categorical-endpoint { width: 88px !important; height: 88px !important; }
 .categorical-game .categorical-rule-mini .categorical-link { stroke-width: 6px; }
+.categorical-game .categorical-rule-mini .categorical-swap-path { stroke-width: 5px; }
 .categorical-game .categorical-rule-list .button:disabled { opacity: .35; }
 .categorical-game .categorical-expand { display: flex; align-items: center; gap: .4rem; min-height: 2.75rem; width: fit-content; margin-top: .4rem; font: .85rem var(--font-ui); }
 .categorical-game input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent); }
-.categorical-game .categorical-gate-palette { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; margin-top: .8rem; }
+.categorical-game .categorical-gate-palette { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; }
 .categorical-game .categorical-gate-palette .button { display: grid; place-items: center; min-width: 3rem; min-height: 3rem; padding: .25rem; }
 .categorical-game .categorical-gate-palette .gate-glyph { width: 40px; height: 40px; }
 .categorical-game .categorical-custom,
@@ -48,8 +47,6 @@
   .categorical-game .mode-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
-  .categorical-game .categorical-profile { align-items: stretch; }
-  .categorical-game .categorical-profile select { flex: 1 1 100%; }
   .categorical-game .categorical-custom,
   .categorical-game .categorical-editor { padding: .6rem; }
 }

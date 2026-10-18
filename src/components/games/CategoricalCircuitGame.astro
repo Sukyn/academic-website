@@ -6,6 +6,12 @@ import GameTutorial from './GameTutorial.astro';
 import GameJsonActions from './GameJsonActions.astro';
 import GamePuzzleJsonDialog from './GamePuzzleJsonDialog.astro';
 import GameReviewControls from './GameReviewControls.astro';
+import GameRoundControls from './GameRoundControls.astro';
+import GameRulesDialog from './GameRulesDialog.astro';
+import GameWinDialog from './GameWinDialog.astro';
+import GameHoleControls from './GameHoleControls.astro';
+import GameAutofocus from './GameAutofocus.astro';
+import CircuitCategoryMenu from './CircuitCategoryMenu.astro';
 import '../../styles/quantum-signals.css';
 import '../../styles/categorical-circuits.css';
 
@@ -31,24 +37,20 @@ const tools = [
     <a class="back" href={original}>← {title}</a>
     <h1>{title} · Advanced</h1>
     <div class="game-layout">
-      <GameModeMenu daily={false} />
+      <GameModeMenu daily={false}><CircuitCategoryMenu kind={kind} advanced /></GameModeMenu>
       <div class="game-content">
-        <GameToolbar levels={[]} />
-        <div class="categorical-profile">
-          <label for="category-profile">Circuit language</label>
-          <select id="category-profile">
-            <option value="prop">PROP</option>
-            <option value="controlled">Controlled PROP</option>
-          </select>
-        </div>
-        <GameTutorial />
+        <GameToolbar levels={[]} daily={false} />
+        <GameTutorial intro={signals ? 'Fill the holes to match the target paths.' : 'Reach the identity using swaps and circuit equations.'} />
         <section aria-label={`${title}, advanced circuits`}>
           <p id="move-count" class="categorical-count" role="status" hidden={signals}>0 moves</p>
           <div class="game-scroll categorical-scroll" id="categorical-scroll" role="region" aria-label="Circuit board. Scroll horizontally to explore longer circuits." tabindex="0">
             <div id="categorical-board" role="group" aria-label="Quantum circuit"></div>
           </div>
           <div id="rule-list" class="categorical-rule-list" role="group" aria-label="Circuit rewrite rules" hidden={signals}></div>
-          <div id="gate-palette" class="categorical-gate-palette" role="group" aria-label="Gate choices for the selected hole" hidden={!signals}></div>
+          <div class="signal-palette" hidden={!signals}>
+            <div id="gate-palette" class="categorical-gate-palette" role="group" aria-label="Gate choices for the selected hole"></div>
+            {signals && <GameHoleControls />}
+          </div>
           <div class="game-scroll signal-scroll signal-flow-panel" id="flow-panel" role="region" aria-label="Joint-state paths and target. Scroll vertically to explore the states." tabindex="0" hidden={!signals}>
             <div class="signal-flow-layout">
               <div class="signal-flow-scroll" id="flow-scroll" role="region" aria-label="Quantum state paths. Scroll horizontally to explore circuit columns." tabindex="0">
@@ -57,15 +59,14 @@ const tools = [
               <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
             </div>
           </div>
-          <div class="round-controls">
-            <button class="button ghost" id="undo" type="button" aria-keyshortcuts="Control+Z Meta+Z">Undo</button>
-            <button class="button ghost" id="restart" type="button">Restart</button>
+          <GameRoundControls results={false}>
             <button class="button ghost" id="tidy" type="button">Tidy</button>
             <button class="button ghost" id="add-space" type="button">Add column</button>
-          </div>
+          </GameRoundControls>
           <details class="advanced-features" id="advanced-features">
             <summary>Advanced</summary>
             <div class="advanced-panel">
+              {signals && <GameAutofocus />}
               <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
             </div>
           </details>
@@ -120,36 +121,31 @@ const tools = [
       </div>
     </div>
 
-    <dialog class="game-dialog rules-dialog" id="rules-dialog" aria-labelledby="rules-title">
-      <button class="close-dialog" id="close-rules" type="button" aria-label="Close rules">×</button>
-      <h2 id="rules-title">Rules</h2>
+    <GameRulesDialog>
       {signals ? (
-        <p>Select a hole, then choose a gate to match the target state, including its relative phases. The paths show how amplitudes combine; the target remains on the right.</p>
+        <p>Fill the holes to match the target, including relative phases. The paths show amplitudes splitting and combining.</p>
       ) : (
-        <p>Reduce the circuit to empty wires. In PROP, select the whole gate window, including linked endpoints. In controlled PROP, select its target window; shared controls form the rule's context. Choose a matching equation. Tidy removes empty columns; adding space is free.</p>
+        <p>Reach empty wires: the identity. Select a gate block, then an equation. Include linked endpoints in PROP. In Controlled PROP, select the targets and leave shared controls unselected. Add column makes room; Tidy removes empty columns. Both are free.</p>
       )}
-      <p>A <strong>PRO</strong> combines circuits in sequence and in parallel. A <strong>PROP</strong> also includes wire permutations, shown here as SWAP gates. The <strong>controlled PROP</strong> profile adds controls on H, SWAP and further controls. This game uses a finite real-gate fragment.</p>
+      <p><strong>PRO</strong> is the standard game. <strong>PROP</strong> adds wire crossings. <strong>Controlled PROP</strong> lets you use equations under shared controls.</p>
       {signals ? (
-        <p>In the editor, choose a tool and a circuit cell. SWAP uses two target wires; controls and targets must be distinct. Erase removes an operation. Capture the output to set the target, then turn selected gates into holes.</p>
+        <p>Editor: place gates, set the output as target, then replace gates with holes. Click neighbouring wires for a swap. Keep controls and targets on different wires.</p>
       ) : (
-        <p>In the editor, apply equations in reverse to build an identity. Enable Expand to introduce cancelling gates, and choose any shared control wires under Control context.</p>
+        <p>Editor: start from empty wires. Enable Expand and apply equations in reverse. Choose shared controls under Control context.</p>
       )}
       <p class="categorical-references">
         Background:
         <a href="https://arxiv.org/abs/2508.21756" target="_blank" rel="noopener noreferrer">Delorme and Perdrix, control as a constructor</a>;
         <a href="https://doi.org/10.4230/LIPIcs.MFCS.2026.6" target="_blank" rel="noopener noreferrer">Blake, polycontrolled PROPs (MFCS 2026)</a>.
       </p>
-    </dialog>
+    </GameRulesDialog>
     <GamePuzzleJsonDialog />
-    <dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
-      <button class="close-dialog" id="close-win" type="button" aria-label="Close result">×</button>
-      <h2 id="win-title">Circuit complete</h2>
-      <p id="win-summary" role="status"></p>
+    <GameWinDialog title="Circuit complete" closeLabel="Close result">
       <div class="categorical-actions">
         <button class="button ghost" id="try-again" type="button">Try again</button>
         <button class="button" id="result-next" type="button">Next level</button>
       </div>
-    </dialog>
+    </GameWinDialog>
   </GameShell>
 </div>
 

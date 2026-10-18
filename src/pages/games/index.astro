@@ -27,15 +27,6 @@ const events = [...stemOutreach].sort((left, right) => right.date.localeCompare(
     <span class="daily-round-arrow" aria-hidden="true">→</span>
   </a>
 
-  <section class="advanced-games" aria-labelledby="advanced-circuits">
-    <h2 id="advanced-circuits">Advanced circuits</h2>
-    <p>Explore wire crossings and explicit controls in a finite real-gate fragment.</p>
-    <ul>
-      <li><a href="/games/circuit-reduction/advanced/">Circuit simplification · Advanced</a></li>
-      <li><a href="/games/quantum-signals/advanced/">Quantum signals · Advanced</a></li>
-    </ul>
-  </section>
-
   <section class="prose events" aria-labelledby="other-events">
     <h2 id="other-events">Other events</h2>
     {events.length === 0 ? (
@@ -74,10 +65,6 @@ const events = [...stemOutreach].sort((left, right) => right.date.localeCompare(
   .daily-round-link strong { display: block; font-size: 1.15rem; }
   .daily-round-link small { display: block; color: var(--color-muted); }
   .daily-round-arrow { margin-left: auto; font-size: 1.5rem; }
-  .advanced-games { max-width: 42rem; margin: 1.8rem auto 0; font-family: var(--font-ui); }
-  .advanced-games h2 { font-size: 1.4rem; }
-  .advanced-games p { margin: .5rem 0; color: var(--color-muted); }
-  .advanced-games ul { margin-bottom: 0; }
   h2 { margin: 0; font-size: 1.75rem; }
   .events { max-width: 48rem; margin-top: 3rem; }
   .outreach-list { list-style: none; padding: 0; margin: 1.25rem 0 0; }

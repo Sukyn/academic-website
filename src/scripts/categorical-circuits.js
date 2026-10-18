@@ -1,24 +1,30 @@
-import { RULES, validateCircuit, getLegalMoves, applyMove, isSolved, isIdentity, selectionCells } from '../lib/categorical-circuits/engine.js';
+import { RULES, validateCircuit, getLegalMoves, applyMove, isSolved, isIdentity, selectionCells, holeOperation } from '../lib/categorical-circuits/engine.js';
 import { getLevels, getTutorial, randomIdentity, generateSignals, validateSignals, fillSignals, signalsSolved, signalsData, solveSignals } from '../lib/categorical-circuits/puzzles.js';
 import { renderCircuit, renderAdvancedFlow, operationIcon, operationLabel } from '../lib/categorical-circuits/rendering.js';
 import { createCircuitEditor } from '../lib/categorical-circuits/editor.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
-import { ignoresGameShortcut } from '../lib/games/controls.js';
+import { createCircuitViewport } from '../lib/games/circuit-viewport.js';
+import { createPuzzleResult } from '../lib/games/puzzle-result.js';
+import { bindGameDialogs, updateModeMenu, handleRoundShortcut, handleGateShortcut, directionalControl, rectangleCells } from '../lib/games/controls.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { pinFlowLabels, highlightFlowBits } from '../lib/quantum-signals/rendering.js';
+import { pinFlowLabels, highlightFlowBits, highlightFlowColumn, signalBoardWidth } from '../lib/quantum-signals/rendering.js';
+import { animateFlow, flowElements } from '../lib/quantum-signals/animation.js';
 
 const root = document.querySelector('[data-categorical-game]');
 const get = id => document.getElementById(id);
 const on = (id, action) => get(id).addEventListener('click', () => attempt(action));
 const kind = root.dataset.kind, signals = kind === 'signals';
-let profile = 'prop', mode = 'tutorial', levelIndex = 0, levels, puzzle, circuit, placements = [];
-let editing = false, editorModel, history = [], snapshots = [], selectedHole = 0, guide, winTimer, shots = 0;
-let selected = new Set(), available = [], drag, suppressClick = false, context = new Set();
+const profile = new URLSearchParams(location.search).get('profile') === 'controlled' ? 'controlled' : 'prop';
+let mode = 'tutorial', levelIndex = 0, levels, puzzle, circuit, placements = [];
+let editing = false, editorModel, states = [], selectedHole = 0, guide, winTimer, shots = 0;
+let selected = new Set(), selectionAnchor = null, available = [], drag, suppressClick = false, context = new Set();
+let autofocus = false, flowAnimation = null;
 const steps = [], ruleButtons = new Map();
-const snapshot = () => ({ circuit, placements: [...placements], shots });
-const won = () => signals ? signalsSolved(puzzle, placements, profile) : isSolved(circuit);
+const snapshot = () => signals ? { placements } : { circuit, shots };
+const evaluate = createPuzzleResult((puzzle, placements) => signalsSolved(puzzle, placements, profile));
+const won = () => signals ? evaluate(puzzle, placements) : isSolved(circuit);
 
 function attempt(action) {
   try { action(); get('status').textContent = ''; }
@@ -26,10 +32,34 @@ function attempt(action) {
 }
 
 const review = createStepReplay({
-  length: () => history.length, canReview: () => mode !== 'tutorial' && !editing && history.length > 0,
+  length: () => states.length - 1, canReview: () => mode !== 'tutorial' && !editing && states.length > 1,
   onEnter() { clearTimeout(winTimer); get('win-dialog').close(); selected.clear(); },
-  onChange: () => render(), interval: 700,
+  onChange: () => { render(); if (signals) viewport.follow(holeButton(visibleHole()), review.step === states.length - 1 && won()); },
 });
+const holeButton = index => get('categorical-board').querySelector(`[data-hole="${index}"]`);
+const viewport = signals ? createCircuitViewport(get('categorical-scroll'), get('flow-scroll'), left => pinFlowLabels(get('signal-flow'), left)) : null;
+
+function visibleHole() {
+  if (review.step === null) return selectedHole;
+  if (review.step === 0) return 0;
+  const before = states[review.step - 1].placements, after = states[review.step].placements;
+  const changed = puzzle.holes.findIndex((_, index) => before[index] !== after[index] ||
+    Object.hasOwn(before, index) !== Object.hasOwn(after, index));
+  return changed < 0 ? 0 : changed;
+}
+
+function selectHole(index, focus = false) {
+  if (index === selectedHole || mode === 'tutorial' || editing || review.step !== null) return;
+  selectedHole = index; render({ board: false }); viewport.follow(holeButton(index));
+  if (focus) holeButton(index)?.focus({ preventScroll: true });
+}
+
+function navigateHole(key) {
+  const current = holeButton(selectedHole);
+  const candidates = puzzle.holes.map((_, index) => holeButton(index));
+  const next = directionalControl(current, candidates, key);
+  if (next) selectHole(Number(next.dataset.hole), true);
+}
 
 const editor = signals ? createCircuitEditor({ get, profile: () => profile,
   onChange(model) { editorModel = model; if (editing) render(); } }) : null;
@@ -59,42 +89,55 @@ function load(next, nextMode = mode) {
   editing = false; editor?.close(); editorModel = undefined;
   mode = nextMode; puzzle = next;
   if (!signals) circuit = validateCircuit(next.circuit, profile);
-  placements = []; history = []; shots = 0; snapshots = [snapshot()]; selected.clear(); context.clear(); selectedHole = 0;
+  placements = []; shots = 0; states = [snapshot()]; selected.clear(); selectionAnchor = null; context.clear(); selectedHole = 0;
   render();
 }
 
-function remember() {
-  if (history.length >= 1000) throw new RangeError('Restart before adding more moves.');
-  history.push(snapshot());
+function checkMoveLimit() {
+  if (states.length > 1000) throw new RangeError('Undo or reset before adding more moves.');
 }
 
-function afterMove() {
-  snapshots.push(snapshot()); selected.clear(); render();
+function afterMove(column) {
+  states.push(snapshot()); selected.clear(); selectionAnchor = null; render({ animateFrom: column });
+  if (signals && autofocus) viewport.follow(holeButton(selectedHole), won());
   clearTimeout(winTimer);
-  if (!editing && mode !== 'tutorial' && won()) {
+  const current = states.at(-1), finished = flowAnimation?.finished;
+  const offerResult = () => {
+    if (states.at(-1) !== current || editing || mode === 'tutorial' || !won()) return;
     winTimer = setTimeout(() => {
-      if (editing || review.step !== null || !won()) return;
+      if (states.at(-1) !== current || review.step !== null) return;
       get('win-summary').textContent = signals ? 'The output matches the target.' : 'Identity reached.';
       get('result-next').hidden = mode === 'campaign' && levelIndex === levels.length - 1;
       get('result-next').textContent = mode === 'campaign' ? 'Next level' : 'New puzzle';
       get('win-dialog').showModal();
     }, 500);
-  }
+  };
+  if (finished) finished.then(completed => { if (completed) offerResult(); }); else offerResult();
+  return finished;
 }
 
 function playMove(move) {
   if (review.step !== null || (mode === 'tutorial' && !guide.executing)) return;
   const next = applyMove(circuit, move, { profile });
-  remember(); circuit = next;
-  if (move.rule !== 'tidy' && move.rule !== 'insert-column') shots++;
+  if (move.rule === 'tidy' && next.columns.length === circuit.columns.length) return;
+  checkMoveLimit(); circuit = next;
+  if (!['tidy', 'insert-column', 'remove-column'].includes(move.rule)) shots++;
   afterMove();
 }
 
 function place(gate) {
   if (editing || review.step !== null || (mode === 'tutorial' && !guide.executing)) return;
   const hole = puzzle.holes[selectedHole];
-  if (!hole?.choices.includes(gate)) return;
-  remember(); placements = [...placements]; placements[selectedHole] = gate; afterMove();
+  if (!hole || (gate !== null && !hole.choices.includes(gate)) ||
+    (Object.hasOwn(placements, selectedHole) ? placements[selectedHole] : null) === gate) return;
+  checkMoveLimit(); placements = placements.slice();
+  if (gate === null) delete placements[selectedHole]; else placements[selectedHole] = gate;
+  const column = puzzle.columns.length + selectedHole;
+  if (autofocus && gate !== null) {
+    const next = puzzle.holes.findIndex((_, index) => !Object.hasOwn(placements, index));
+    if (next >= 0) selectedHole = next;
+  }
+  return afterMove(column);
 }
 
 function reset() { if (editing) return; load(puzzle); }
@@ -132,15 +175,21 @@ function makeRuleButtons() {
   }
 }
 
-function renderSelection() {
-  if (signals || editing && editor) return;
+function markSelection(activeCells) {
   for (const cell of get('categorical-board').querySelectorAll('[data-cell]')) {
-    const active = selected.has(cell.dataset.cell);
+    const active = activeCells.has(cell.dataset.cell);
     cell.classList.toggle('is-selected', active); cell.setAttribute('aria-pressed', String(active));
   }
+}
+
+function renderSelection() {
+  if (signals || editing && editor) return;
+  markSelection(selected);
   available = selected.size ? getLegalMoves(circuit, { profile, selection: selected }) : [];
-  if (editing) available = available.filter(move => Boolean(move.reverse) === get('reverse-rule').checked &&
-    JSON.stringify(move.controls ?? []) === JSON.stringify([...context].sort((a, b) => a - b)));
+  if (editing) {
+    const controls = JSON.stringify([...context].sort((a, b) => a - b));
+    available = available.filter(move => Boolean(move.reverse) === get('reverse-rule').checked && JSON.stringify(move.controls ?? []) === controls);
+  }
   for (const input of get('editor-context').querySelectorAll('input')) {
     input.checked = context.has(Number(input.value));
     input.disabled = Number(input.value) >= circuit.wires;
@@ -148,34 +197,51 @@ function renderSelection() {
   for (const [id, button] of ruleButtons) button.disabled = review.step !== null || !available.some(move => move.rule === id);
 }
 
-function render() {
+function render({ board = true, animateFrom } = {}) {
   if (!puzzle) return;
-  const reviewed = review.step === null ? null : snapshots[review.step];
+  const focused = document.activeElement?.closest('#categorical-board [data-hole], #gate-palette [data-choice]');
+  const reviewed = review.step === null ? null : states[review.step];
   const activePlacements = reviewed?.placements ?? placements;
-  const shown = editing && editor ? editorModel?.circuit : signals ? fillSignals(puzzle, activePlacements, profile) : reviewed?.circuit ?? circuit;
-  if (!shown) return;
-  const holes = editing && editor ? editorModel.holes : signals ? puzzle.holes : [];
+  const activeHole = signals ? visibleHole() : 0;
   const activeCells = editing && editor ? editorModel.selectedCells : signals ?
-    puzzle.holes[selectedHole].wires.map(wire => wire + ':' + (puzzle.columns.length + selectedHole)) : selected;
-  renderCircuit(get('categorical-board'), shown, { selectedCells: activeCells,
-    holes, fixedColumns: editing && editor ? editorModel.fixedColumns : signals ? puzzle.columns.length : shown.columns.length,
-    locked: review.step !== null });
+    new Set(puzzle.holes[activeHole].wires.map(wire => wire + ':' + (puzzle.columns.length + activeHole))) : selected;
+  let previousFlow;
+  if (board) {
+    flowAnimation?.cancel(); flowAnimation = null;
+    const shown = editing && editor ? editorModel?.circuit : signals ? fillSignals(puzzle, activePlacements, profile) : reviewed?.circuit ?? circuit;
+    if (!shown) return;
+    const holes = editing && editor ? editorModel.holes : signals ? puzzle.holes : [];
+    previousFlow = signals && animateFrom !== undefined ? flowElements(get('signal-flow')) : null;
+    renderCircuit(get('categorical-board'), shown, { selectedCells: activeCells,
+      holes, fixedColumns: editing && editor ? editorModel.fixedColumns : signals ? puzzle.columns.length : shown.columns.length,
+      locked: review.step !== null, width: signals ? signalBoardWidth(shown.columns.length) : undefined });
+    if (signals) renderAdvancedFlow(get('signal-flow'), get('signal-target'), shown, editing ? editorModel.target : puzzle.target,
+      { profile, selectedColumn: editing ? undefined : puzzle.columns.length + activeHole });
+  } else {
+    markSelection(activeCells);
+    if (signals) highlightFlowColumn(get('signal-flow'), puzzle.columns.length + activeHole);
+  }
   if (signals) {
-    const target = editing ? editorModel.target : puzzle.target;
-    renderAdvancedFlow(get('signal-flow'), get('signal-target'), shown, target, { profile,
-      selectedColumn: editing ? undefined : puzzle.columns.length + selectedHole });
-    const hole = !editing && puzzle.holes[selectedHole];
+    const hole = !editing && puzzle.holes[activeHole];
     highlightFlowBits(get('signal-flow'), hole?.controls ?? []);
-    get('gate-palette').replaceChildren(...(hole ? hole.choices.map(gate => {
-      const operation = { gate, wires: hole.wires, controls: hole.controls };
+    get('gate-palette').replaceChildren(...(hole ? hole.choices.map((gate, index) => {
+      const operation = holeOperation(hole, gate);
       const button = document.createElement('button'); button.type = 'button'; button.className = 'button ghost';
       button.dataset.choice = gate; button.setAttribute('aria-label', operationLabel(operation));
-      button.setAttribute('aria-pressed', String((placements[selectedHole] ?? 'I') === gate));
+      button.setAttribute('aria-pressed', String(activePlacements[activeHole] === gate));
+      button.setAttribute('aria-keyshortcuts', String(index + 1) + (gate.length === 1 ? ' ' + gate : ''));
       button.disabled = review.step !== null;
       button.appendChild(operationIcon(operation)); return button;
     }) : []));
+    get('erase-gate').hidden = editing || !Object.hasOwn(activePlacements, activeHole);
+    get('erase-gate').disabled = review.step !== null || !Object.hasOwn(placements, selectedHole);
+    get('autofocus').hidden = editing;
+    get('autofocus').disabled = review.step !== null;
+    get('autofocus').setAttribute('aria-pressed', String(autofocus));
+    if (focused?.dataset.choice) (get('gate-palette').querySelector(`[data-choice="${focused.dataset.choice}"]`) ?? holeButton(activeHole))?.focus({ preventScroll: true });
+    else if (focused?.dataset.hole !== undefined) holeButton(activeHole)?.focus({ preventScroll: true });
   } else renderSelection();
-  for (const name of ['tutorial', 'campaign', 'random']) get('mode-' + name).setAttribute('aria-pressed', String(mode === name));
+  updateModeMenu(get, mode);
   get('campaign-controls').hidden = mode !== 'campaign'; get('level').value = String(levelIndex + 1);
   const count = reviewed?.shots ?? shots;
   get('move-count').textContent = `${count} ${count === 1 ? 'move' : 'moves'}`;
@@ -186,28 +252,32 @@ function render() {
   get('edit-circuit').hidden = get('new-circuit').hidden = mode !== 'random' || editing;
   get('play-custom').hidden = !editing;
   get('reverse-rule').closest('label').hidden = signals || !editing;
-  get('undo').disabled = history.length === 0 || editing && signals;
+  get('undo').disabled = states.length <= 1 || editing && signals;
   get('restart').disabled = editing;
   get('tidy').hidden = get('add-space').hidden = signals;
   get('tidy').disabled = get('add-space').disabled = review.step !== null;
-  get('replay').hidden = mode === 'tutorial' || editing || !history.length;
+  get('replay').hidden = mode === 'tutorial' || editing || states.length <= 1;
   get('replay').disabled = review.playing;
   get('review-controls').hidden = review.step === null;
-  get('review-note').textContent = review.step === null ? '' : `Step ${review.step} / ${history.length}`;
+  get('review-note').textContent = review.step === null ? '' : `Step ${review.step} / ${states.length - 1}`;
   json.update({ visible: mode === 'random', canShare: !editing || signals || !isSolved(circuit) });
   guide?.render();
+  if (previousFlow) {
+    const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom);
+    job.finished.then(() => { if (flowAnimation === job) { flowAnimation = null; guide?.render(); } });
+  }
 }
 
 function startEditor(fresh) {
   if (signals) editor.open(fresh ? undefined : puzzle);
   guide.leave(); review.clear(); clearTimeout(winTimer); get('win-dialog').close();
-  editing = true; mode = 'random'; history = []; shots = 0; selected.clear(); context.clear();
+  editing = true; mode = 'random'; shots = 0; selected.clear(); selectionAnchor = null; context.clear();
   if (!signals) {
     circuit = fresh ? { wires: 3, columns: Array.from({ length: 6 }, () => []) } : validateCircuit(puzzle.circuit, profile);
     get('reverse-rule').checked = true;
     get('editor-wires').value = String(circuit.wires); get('editor-columns').value = String(circuit.columns.length);
   }
-  snapshots = [snapshot()];
+  states = [snapshot()];
   render();
 }
 
@@ -221,15 +291,16 @@ function setupTutorial() {
       else selected = new Set(step.move.rule === 'tidy' ? [] : selectionCells(step.move, { profile }));
       render();
     },
-    action() { if (signals) place(step.gate); else playMove(step.move); },
+    action() { return signals ? place(step.gate) : playMove(step.move); },
   })));
   guide.enter();
 }
 
 guide = createTutorial({ get, steps,
-  controls: '#categorical-board button, #rule-list button, #gate-palette button, #undo, #restart, #tidy, #add-space',
+  controls: '#categorical-board button, #rule-list button, #gate-palette button, #erase-gate, #autofocus, #undo, #restart, #tidy, #add-space',
+  isBlocked: () => Boolean(flowAnimation),
   renderText: (node, text) => renderCircuitInstruction(node, text),
-  intro: signals ? 'Fill the holes to match the target paths.' : 'Reach the identity using swaps and circuit equations.',
+  intro: get('tutorial-text').textContent,
   onReset() { load(getTutorial(profile, kind), 'tutorial'); },
 });
 
@@ -237,23 +308,20 @@ makeRuleButtons(); populateLevels();
 on('mode-tutorial', setupTutorial); on('mode-campaign', () => selectLevel(levelIndex)); on('mode-random', newPuzzle);
 on('previous-level', () => selectLevel(levelIndex - 1)); on('next-level', () => selectLevel(levelIndex + 1));
 get('level').addEventListener('change', () => attempt(() => selectLevel(Number(get('level').value) - 1)));
-get('category-profile').addEventListener('change', () => attempt(() => {
-  guide.leave(); profile = get('category-profile').value; levelIndex = 0; populateLevels(); setupTutorial();
-}));
 on('new-puzzle', newPuzzle); on('restart', reset);
 on('undo', () => {
-  if (mode === 'tutorial' || editing && signals || !history.length) return;
+  if (mode === 'tutorial' || editing && signals || states.length <= 1) return;
   clearTimeout(winTimer); review.clear(); get('win-dialog').close();
-  const previous = history.pop(); circuit = previous.circuit; placements = previous.placements; shots = previous.shots; snapshots.pop(); selected.clear(); render();
+  states.pop(); const previous = states.at(-1);
+  if (signals) placements = previous.placements; else { circuit = previous.circuit; shots = previous.shots; }
+  selected.clear(); selectionAnchor = null; render();
 });
 on('tidy', () => playMove({ rule: 'tidy' }));
 on('add-space', () => playMove({ rule: 'insert-column', column: selected.size ? Math.min(...[...selected].map(key => Number(key.split(':')[1]))) : circuit.columns.length }));
 on('edit-circuit', () => startEditor(false)); on('new-circuit', () => startEditor(true));
 on('play-custom', () => {
   if (signals) {
-    const next = editor.puzzle();
-    if (!solveSignals(next, { profile }).length) throw new RangeError('The target cannot be reached with these holes.');
-    load(next, 'random');
+    load(editor.puzzle(), 'random');
   } else {
     if (isSolved(circuit)) throw new RangeError('Apply a rule to build a nonempty identity circuit.');
     load({ circuit }, 'random');
@@ -266,7 +334,7 @@ for (const id of ['editor-wires', 'editor-columns']) if (!signals) get(id).addEv
     throw new RangeError('Start from scratch before changing the circuit dimensions.');
   }
   circuit = { wires: Number(get('editor-wires').value), columns: Array.from({ length: Number(get('editor-columns').value) }, () => []) };
-  history = []; shots = 0; snapshots = [snapshot()]; selected.clear(); context.clear(); render();
+  shots = 0; states = [snapshot()]; selected.clear(); selectionAnchor = null; context.clear(); render();
 }));
 get('reverse-rule').addEventListener('change', renderSelection);
 
@@ -294,24 +362,28 @@ get('categorical-board').addEventListener('click', event => attempt(() => {
   const cell = event.target.closest('[data-cell]');
   if (!cell || mode === 'tutorial' || review.step !== null) return;
   if (editing && editor) { editor.handleCell(Number(cell.dataset.wire), Number(cell.dataset.column)); return; }
-  if (signals) { if (cell.dataset.hole !== undefined) { selectedHole = Number(cell.dataset.hole); render(); } return; }
-  if (suppressClick) { suppressClick = false; return; }
-  if (selected.has(cell.dataset.cell)) selected.delete(cell.dataset.cell); else selected.add(cell.dataset.cell);
+  if (signals) { if (cell.dataset.hole !== undefined) selectHole(Number(cell.dataset.hole)); return; }
+  if (suppressClick && event.detail !== 0) { suppressClick = false; return; }
+  suppressClick = false;
+  if (event.shiftKey && selectionAnchor) selected = rectangleCells(selectionAnchor, cell.dataset.cell);
+  else {
+    selectionAnchor = cell.dataset.cell;
+    if (selected.has(cell.dataset.cell)) selected.delete(cell.dataset.cell); else selected.add(cell.dataset.cell);
+  }
   renderSelection();
 }));
 get('categorical-board').addEventListener('pointerdown', event => {
   const cell = event.target.closest('[data-cell]');
   if (signals || mode === 'tutorial' || review.step !== null || !cell || event.button !== 0 || event.pointerType === 'touch') return;
-  drag = { wire: Number(cell.dataset.wire), column: Number(cell.dataset.column), moved: false };
+  drag = { anchor: event.shiftKey && selectionAnchor ? selectionAnchor : cell.dataset.cell,
+    x: event.clientX, y: event.clientY, moved: false };
 });
 get('categorical-board').addEventListener('pointerover', event => {
   const cell = event.target.closest('[data-cell]');
   if (!drag || !cell || !(event.buttons & 1)) return;
-  const wire = Number(cell.dataset.wire), column = Number(cell.dataset.column);
-  if (wire === drag.wire && column === drag.column && !drag.moved) return;
-  drag.moved = true; selected.clear();
-  for (let y = Math.min(wire, drag.wire); y <= Math.max(wire, drag.wire); y++)
-    for (let x = Math.min(column, drag.column); x <= Math.max(column, drag.column); x++) selected.add(y + ':' + x);
+  if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
+  drag.moved = true; selectionAnchor = drag.anchor;
+  selected = rectangleCells(drag.anchor, cell.dataset.cell);
   renderSelection();
 });
 window.addEventListener('pointerup', event => {
@@ -319,28 +391,53 @@ window.addEventListener('pointerup', event => {
   drag = null;
 });
 window.addEventListener('pointercancel', () => { drag = null; suppressClick = false; });
+window.addEventListener('blur', () => { drag = null; suppressClick = false; });
 get('categorical-board').addEventListener('contextmenu', event => {
   const cell = event.target.closest('[data-cell]');
-  if (!cell || editing || mode === 'tutorial') return;
+  if (!cell || editing || mode === 'tutorial' || review.step !== null) return;
   event.preventDefault();
-  if (signals && cell.dataset.hole !== undefined) attempt(() => { selectedHole = Number(cell.dataset.hole); place('I'); });
-  else { selected.clear(); renderSelection(); }
+  if (signals && cell.dataset.hole !== undefined) attempt(() => { selectHole(Number(cell.dataset.hole)); place(null); });
+  else if (!signals && !circuit.columns[Number(cell.dataset.column)].length) attempt(() => playMove({ rule: 'remove-column', column: Number(cell.dataset.column) }));
+  else { selected.clear(); selectionAnchor = null; renderSelection(); }
 });
 get('gate-palette').addEventListener('click', event => {
   const choice = event.target.closest('[data-choice]'); if (choice) attempt(() => place(choice.dataset.choice));
 });
-if (signals) get('flow-scroll').addEventListener('scroll', () => pinFlowLabels(get('signal-flow'), get('flow-scroll').scrollLeft), { passive: true });
-on('replay', review.play); on('resume-round', () => { review.clear(); render(); });
-on('show-rules', () => get('rules-dialog').showModal()); on('close-rules', () => get('rules-dialog').close());
-on('close-win', () => get('win-dialog').close()); on('try-again', reset);
+if (signals) {
+  get('categorical-board').addEventListener('focusin', event => {
+    const hole = event.target.closest('[data-hole]');
+    if (hole) selectHole(Number(hole.dataset.hole));
+  });
+  on('erase-gate', () => place(null));
+  on('autofocus', () => { if (mode !== 'tutorial' && !editing && review.step === null) { autofocus = !autofocus; render({ board: false }); } });
+}
+on('replay', review.play); on('resume-round', () => {
+  review.clear(); render();
+  if (signals) viewport.follow(holeButton(selectedHole), won());
+});
+bindGameDialogs(get);
+on('try-again', reset);
 on('result-next', () => mode === 'campaign' ? selectLevel(levelIndex + 1) : newPuzzle());
 document.addEventListener('keydown', event => {
-  if (mode === 'tutorial' || editing || ignoresGameShortcut(event)) return;
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); get('undo').click(); }
-  else if (signals && /^[ihxz]$/i.test(event.key)) attempt(() => place(event.key.toUpperCase()));
-  else if (!signals && event.key === 'Enter' && available.length === 1) { event.preventDefault(); attempt(() => playMove(available[0])); }
-  else if (event.key === 'Escape') { selected.clear(); renderSelection(); }
+  if (handleRoundShortcut(event, { blocked: mode === 'tutorial' || signals && editing,
+    undo: () => get('undo').click(), reset })) return;
+  const inGame = event.target.closest('#categorical-board, #gate-palette, #erase-gate, #autofocus') || event.target === get('categorical-scroll');
+  if (signals) {
+    handleGateShortcut(event, { blocked: !inGame || review.step !== null,
+      choices: puzzle.holes[selectedHole].choices, place: gate => attempt(() => place(gate)),
+      erase: () => attempt(() => place(null)), navigate: navigateHole });
+  } else if (review.step === null) {
+    const cell = event.target.closest('[data-cell]');
+    if (event.key === 'Enter' && inGame && available.length === 1) {
+      event.preventDefault(); attempt(() => playMove(available[0]));
+      if (cell) get('categorical-board').querySelector(`[data-cell="${cell.dataset.cell}"]`)?.focus();
+    } else if (event.key === 'Delete' && cell && !circuit.columns[Number(cell.dataset.column)].length) {
+      event.preventDefault(); attempt(() => playMove({ rule: 'remove-column', column: Number(cell.dataset.column) }));
+    } else if (event.key === 'Escape') {
+      selected.clear(); selectionAnchor = null; drag = null; renderSelection();
+    }
+  }
 });
-window.addEventListener('pagehide', () => { clearTimeout(winTimer); review.clear(); json.close(); guide.leave(); });
+window.addEventListener('pagehide', () => { clearTimeout(winTimer); flowAnimation?.cancel(); review.clear(); json.close(); guide.leave(); drag = null; });
 window.addEventListener('pageshow', event => { if (event.persisted) { if (mode === 'tutorial') setupTutorial(); else render(); } });
 setupTutorial();

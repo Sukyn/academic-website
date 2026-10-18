@@ -39,6 +39,57 @@ async function accessibility(page, label) {
   return { passedRules: report.passes.length, violations };
 }
 
+async function printContrast(page, pathname) {
+  await page.emulateMedia({ media: 'print' });
+  try {
+    const print = await page.evaluate(() => {
+      const visible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+      const luminance = color => {
+        const [red, green, blue] = color.match(/[\d.]+/g).slice(0, 3).map(value => {
+          const channel = Number(value) / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+      };
+      const groups = {
+        headings: 'main h1, main h2, main h3', paragraphs: 'main p',
+        muted: 'main .muted, main .pub-meta, main .highlights p', links: 'main a[href]',
+      };
+      const contrast = Object.fromEntries(Object.entries(groups).map(([name, selector]) => [name,
+        [...document.querySelectorAll(selector)].filter(visible).map(element => ({
+          text: element.textContent.trim().slice(0, 70),
+          ratio: 1.05 / (luminance(getComputedStyle(element).color) + 0.05),
+        })),
+      ]));
+      const surfaces = [...document.querySelectorAll('body, .site-header, .site-footer, .disambiguation, .pill, .cite-trigger, .talk-link-button')]
+        .filter(visible).map(element => {
+          const style = getComputedStyle(element);
+          return { selector: element.className || element.tagName.toLowerCase(),
+            color: style.backgroundColor, image: style.backgroundImage };
+        });
+      return { contrast, surfaces, decorations: [...document.querySelectorAll('#zx-wallpaper, .footer-ocean')]
+        .map(element => ({ selector: element.id || element.className, display: getComputedStyle(element).display })) };
+    });
+    for (const [group, samples] of Object.entries(print.contrast)) {
+      assert.ok(samples.length > 0, `${pathname}: actual print ${group} are checked`);
+      for (const { text, ratio } of samples) assert.ok(ratio >= 4.5,
+        `${pathname}: print ${group} contrast ${ratio.toFixed(2)} for ${JSON.stringify(text)}`);
+    }
+    for (const surface of print.surfaces) {
+      assert.ok(['rgb(255, 255, 255)', 'rgba(0, 0, 0, 0)'].includes(surface.color),
+        `${pathname}: print ${surface.selector} has a white or transparent background`);
+      assert.equal(surface.image, 'none', `${pathname}: print ${surface.selector} has no dark background image`);
+    }
+    for (const decoration of print.decorations) assert.equal(decoration.display, 'none',
+      `${pathname}: print hides ${decoration.selector}`);
+    return { textSamples: Object.fromEntries(Object.entries(print.contrast).map(([name, samples]) => [name, samples.length])),
+      minimumContrast: Math.min(...Object.values(print.contrast).flat().map(sample => sample.ratio)),
+      surfaces: print.surfaces.length };
+  } finally {
+    await page.emulateMedia({ media: 'screen' });
+  }
+}
+
 try {
   for (const [profile, options] of resilienceOnly ? [] : [
     ['desktop', { viewport: { width: 1440, height: 1000 } }],
@@ -162,7 +213,9 @@ try {
           domElements: document.querySelectorAll('*').length,
           scriptElements: document.querySelectorAll('script').length,
         }));
-        results.push({ profile, pathname, ...audit, ...metrics, resources });
+        const print = profile === 'desktop' && ['', 'publications/'].includes(pathname)
+          ? await printContrast(page, pathname) : undefined;
+        results.push({ profile, pathname, ...audit, ...metrics, resources, ...(print ? { print } : {}) });
         if (pathname === '' || pathname === 'offers/' || pathname === 'circuits/' || archive) {
           // Viewport captures keep long documents affordable on low-memory hosts.
           await page.evaluate(() => scrollTo(0, 0));

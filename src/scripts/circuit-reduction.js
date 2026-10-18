@@ -12,7 +12,7 @@ import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
-import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
+import { bindGameDialogs, handleRoundShortcut, rectangleCells, updateModeMenu } from '../lib/games/controls.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../lib/circuit-reduction/tutorial.js';
@@ -27,7 +27,7 @@ let mode = 'campaign', level = LEVELS[0], campaignLevel = level, editing = false
 let circuit = level.circuit, sequence = [], states = [circuit];
 let boardLocked, animation;
 function cancelAnimation() { const current = animation; animation = null; current?.cancel(); }
-const selection = new Set();
+let selection = new Set();
 let searchWorker, guide;
 const tutorialLocked = () => guide?.active && !guide.executing;
 let touchPress, selectionDrag, selectionAnchor = null, suppressBoardClick = false;
@@ -133,13 +133,7 @@ function updateSelection() {
   update({ board: false });
 }
 function selectRectangle(start, end) {
-  const [firstRow, firstColumn] = start.split(':').map(Number), [lastRow, lastColumn] = end.split(':').map(Number);
-  const top = Math.min(firstRow, lastRow), bottom = Math.max(firstRow, lastRow);
-  const left = Math.min(firstColumn, lastColumn), right = Math.max(firstColumn, lastColumn);
-  selection.clear();
-  for (let row = top; row <= bottom; row++) {
-    for (let column = left; column <= right; column++) selection.add(`${row}:${column}`);
-  }
+  selection = rectangleCells(start, end);
   updateSelection();
 }
 
@@ -430,11 +424,7 @@ onClick('share-score', () => share(get('share-score'))); onClick('share-result',
 bindGameDialogs(get);
 get('score-form').addEventListener('submit', scores.submit);
 document.addEventListener('keydown', event => {
-  if (tutorialLocked() || ignoresGameShortcut(event)) return;
-  if (event.ctrlKey || event.metaKey) {
-    if (!event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); get('undo').click(); }
-    return;
-  }
+  if (handleRoundShortcut(event, { blocked: tutorialLocked(), undo: () => get('undo').click(), reset })) return;
   if (event.key === 'Enter' && !animation && !daily.loading && review.step === null && (editing || !isSolved(circuit))) {
     const cell = event.target.closest('button[data-cell]');
     if (cell?.parentElement === get('circuit-board') || event.target === get('circuit-scroll')) {
@@ -448,7 +438,6 @@ document.addEventListener('keydown', event => {
       }
     }
   }
-  if (event.key === 'Backspace') { event.preventDefault(); get('undo').click(); }
   if (event.key === 'Delete' && !animation && !daily.loading && review.step === null) {
     const cell = event.target.closest('button[data-cell]');
     if (cell?.dataset.gate === '.') {
@@ -457,7 +446,6 @@ document.addEventListener('keydown', event => {
       [...get('circuit-board').querySelectorAll('[data-cell]')].find(button => button.dataset.cell === `${row}:${Math.min(column, circuit[0].length - 1)}`)?.focus({ preventScroll: true });
     }
   }
-  if (event.key.toLowerCase() === 'r') { event.preventDefault(); reset(); }
   if (event.key === 'Escape' && !daily.loading && review.step === null && (selection.size || selectionDrag || selectionAnchor)) {
     if (selectionDrag) suppressBoardClick = true;
     clearSelection(); updateSelection();

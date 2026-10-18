@@ -1,0 +1,11 @@
+---
+interface Props { title?: string; closeLabel?: string }
+const { title = 'GG', closeLabel = 'Close popup' } = Astro.props;
+---
+
+<dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
+  <button class="close-dialog" id="close-win" type="button" aria-label={closeLabel}>×</button>
+  <h2 id="win-title">{title}</h2>
+  <p id="win-summary" role="status"></p>
+  <slot />
+</dialog>

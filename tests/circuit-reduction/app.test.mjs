@@ -24,6 +24,7 @@ async function gameMarkup() {
     .replace('<GamePuzzleJsonDialog />', await component('GamePuzzleJsonDialog'))
     .replace('<slot name="rules" />', dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '')
     .replace('<slot name="result-actions" />', ''));
+  html = await expandGameControls(html, component);
   html = html.replace(/\{RULES\.map\(rule => <button[^\n]+/g,
     RULES.map(rule => `<button type="button" data-rule="${rule.id}" aria-label="${rule.title}" disabled>${rule.title}</button>`).join(''));
   return html.replace(/^---[\s\S]*?---/, '').replace(/<(?:style|script)\b[\s\S]*?<\/(?:style|script)>/g, '');

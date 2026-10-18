@@ -4,12 +4,25 @@ export { RULES } from './rules.js';
 
 export const MAX_WIRES = 4;
 export const MAX_COLUMNS = 48;
+export const MAX_OPERATIONS = 96;
 export const GATES = Object.freeze(['H', 'X', 'Z', 'SWAP']);
 const EPSILON = 1e-9;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const same = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
 const sorted = values => [...values].sort((a, b) => a - b);
 export const touchedWires = operation => [...operation.wires, ...(operation.controls ?? [])];
+
+/** Whole paired gates use the same ordered-wire convention as standard Signals. */
+export function holeOperation(hole, choice) {
+  if (choice === 'I') return null;
+  if (['CX', 'XC', 'CZ'].includes(choice)) {
+    const reversed = choice === 'XC';
+    return { gate: choice === 'CZ' ? 'Z' : 'X', wires: [hole.wires[reversed ? 0 : 1]],
+      controls: [hole.wires[reversed ? 1 : 0]] };
+  }
+  return { gate: choice, wires: choice === 'SWAP' ? sorted(hole.wires) : [...hole.wires],
+    ...(hole.controls?.length ? { controls: sorted(hole.controls) } : {}) };
+}
 
 export function validateOperation(operation, wires, profile = 'controlled') {
   if (!object(operation) || !GATES.includes(operation.gate) || !Array.isArray(operation.wires) ||
@@ -18,6 +31,9 @@ export function validateOperation(operation, wires, profile = 'controlled') {
   const used = touchedWires(operation);
   if (used.some(wire => !Number.isInteger(wire) || wire < 0 || wire >= wires) || new Set(used).size !== used.length) {
     throw new RangeError('Targets and controls need distinct available wires.');
+  }
+  if (operation.gate === 'SWAP' && Math.abs(operation.wires[0] - operation.wires[1]) !== 1) {
+    throw new RangeError('SWAP needs two consecutive wires.');
   }
   if (profile !== 'prop' && profile !== 'controlled') throw new RangeError('Choose PROP or controlled PROP.');
   if (profile === 'prop' && (operation.controls?.length ?? 0) &&
@@ -44,7 +60,7 @@ export function validateCircuit(input, profile = 'controlled') {
           operation.controls?.some(wire => targets.has(wire))) throw new RangeError('Operations in one column need disjoint targets.');
       operation.wires.forEach(wire => targets.add(wire));
       operation.controls?.forEach(wire => controls.add(wire));
-      if (++count > 96) throw new RangeError('Use at most 96 gates.');
+      if (++count > MAX_OPERATIONS) throw new RangeError(`Use at most ${MAX_OPERATIONS} gates.`);
       return operation;
     });
   });
@@ -82,12 +98,13 @@ export function isIdentity(input, profile = 'controlled') {
 export const isSolved = circuit => circuit.columns.every(column => column.length === 0);
 
 function mapOperation(operation, wires, controls) {
-  return { gate: operation.gate, wires: operation.wires.map(wire => wires[wire]),
+  const targets = operation.wires.map(wire => wires[wire]);
+  return { gate: operation.gate, wires: operation.gate === 'SWAP' ? sorted(targets) : targets,
     controls: sorted([...controls, ...(operation.controls ?? []).map(wire => wires[wire])]) };
 }
+// Both the circuit and mapped pattern have normalized target/control ordering.
 const equalOperation = (a, b) => a.gate === b.gate &&
-  same(a.gate === 'SWAP' ? sorted(a.wires) : a.wires, b.gate === 'SWAP' ? sorted(b.wires) : b.wires) &&
-  same(sorted(a.controls ?? []), sorted(b.controls ?? []));
+  same(a.wires, b.wires) && same(a.controls ?? [], b.controls ?? []);
 
 function rewrite(input, move, profile) {
   const rule = object(move) && getRule(move.rule);
@@ -126,13 +143,20 @@ function rewrite(input, move, profile) {
 }
 
 export function applyMove(input, move, { profile = 'controlled' } = {}) {
+  if (move?.rule === 'tidy') return tidy(input, profile);
   const circuit = validateCircuit(input, profile);
-  if (move?.rule === 'tidy') return tidy(circuit, profile);
   if (move?.rule === 'insert-column') {
     const count = move.count ?? 1;
     if (!Number.isInteger(move.column) || move.column < 0 || move.column > circuit.columns.length ||
         !Number.isInteger(count) || count < 1 || count + circuit.columns.length > MAX_COLUMNS) throw new RangeError('Choose a column and an available space count.');
     return { wires: circuit.wires, columns: [...circuit.columns.slice(0, move.column), ...Array.from({ length: count }, () => []), ...circuit.columns.slice(move.column)] };
+  }
+  if (move?.rule === 'remove-column') {
+    if (!Number.isInteger(move.column) || move.column < 0 || move.column >= circuit.columns.length || circuit.columns[move.column].length) {
+      throw new RangeError('Only a completely empty column can be removed.');
+    }
+    if (circuit.columns.length === 1) throw new RangeError('Keep at least one column.');
+    return { wires: circuit.wires, columns: circuit.columns.filter((_, column) => column !== move.column) };
   }
   return rewrite(circuit, move, profile);
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../../src/lib/games/controls.js';
+import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, ignoresGameShortcut,
+  rectangleCells, updateModeMenu } from '../../src/lib/games/controls.js';
 
 for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect disabled controls and backdrop boundaries (${extraDialogs.length ? 'with guide' : 'default'})`, () => {
   const nodes = new Map();
@@ -89,4 +90,104 @@ test('shared shortcut guard protects editing and dialogs without swallowing game
   assert.equal(ignoresGameShortcut(event({}, { isContentEditable: true })), true);
   for (const flag of ['ctrlKey', 'metaKey', 'shiftKey']) assert.equal(ignoresGameShortcut(event({ [flag]: true })), false);
   modal = {}; assert.equal(ignoresGameShortcut(event()), true);
+});
+
+const keyEvent = (key, extra = {}, target = {}) => ({ key, target: { tagName: 'BUTTON', ...target }, ...extra,
+  prevented: 0, preventDefault() { this.prevented++; this.defaultPrevented = true; } });
+
+test('round shortcuts preserve native editing, modifiers, undo and reset before gate dispatch', context => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  let modal = null;
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { querySelector: () => modal } });
+  context.after(() => {
+    if (original) Object.defineProperty(globalThis, 'document', original);
+    else delete globalThis.document;
+  });
+  const actions = [], round = { undo: () => actions.push('undo'), reset: () => actions.push('reset') };
+  for (const event of [keyEvent('Backspace'), keyEvent('z', { ctrlKey: true }), keyEvent('Z', { metaKey: true })]) {
+    assert.equal(handleRoundShortcut(event, round), true);
+    assert.equal(actions.pop(), 'undo'); assert.equal(event.prevented, 1);
+  }
+  for (const key of ['r', 'R']) {
+    const event = keyEvent(key);
+    assert.equal(handleRoundShortcut(event, round), true);
+    assert.equal(actions.pop(), 'reset'); assert.equal(event.prevented, 1);
+  }
+  for (const event of [keyEvent('z', { ctrlKey: true, shiftKey: true }), keyEvent('H', { ctrlKey: true }),
+    keyEvent('r', { metaKey: true }), keyEvent('r', { altKey: true }), keyEvent('r', { repeat: true }),
+    keyEvent('Backspace', { defaultPrevented: true })]) {
+    assert.equal(handleRoundShortcut(event, round), true);
+    assert.equal(event.prevented, 0); assert.deepEqual(actions, []);
+  }
+  for (const target of [{ tagName: 'INPUT' }, { tagName: 'TEXTAREA' }, { tagName: 'SELECT' }, { isContentEditable: true }]) {
+    for (const key of ['r', 'H', 'Backspace']) {
+      const event = keyEvent(key, {}, target);
+      assert.equal(handleRoundShortcut(event, round), true);
+      assert.equal(event.prevented, 0); assert.deepEqual(actions, []);
+    }
+  }
+  modal = {};
+  assert.equal(handleRoundShortcut(keyEvent('H'), round), true);
+  modal = null;
+  assert.equal(handleRoundShortcut(keyEvent('H'), { ...round, blocked: true }), true);
+  const reviewEvent = keyEvent('H');
+  assert.equal(handleRoundShortcut(reviewEvent, round), false);
+  assert.equal(handleGateShortcut(reviewEvent, { choices: ['H'], place: () => actions.push('H'), blocked: true }), false);
+  assert.equal(reviewEvent.prevented, 0); assert.deepEqual(actions, [], 'Review blocks gate edits without consuming their keys');
+  assert.equal(handleRoundShortcut(keyEvent('Backspace'), round), true);
+  assert.equal(actions.pop(), 'undo', 'Undo remains available to leave replay review');
+});
+
+test('gate shortcuts use the visible palette order and preserve erase and directional navigation', () => {
+  const actions = [], settings = { choices: ['I', 'H', 'X', 'Z'], place: gate => actions.push(gate),
+    erase: () => actions.push('erase'), navigate: key => actions.push(key) };
+  for (const [event, expected] of [
+    [keyEvent('h'), 'H'], [keyEvent('Z', { shiftKey: true }), 'Z'], [keyEvent('1'), 'I'],
+    [keyEvent('@', { code: 'Digit2', shiftKey: true }), 'H'], [keyEvent('4', { code: 'Numpad4' }), 'Z'],
+    [keyEvent('Delete'), 'erase'], ...['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].map(key => [keyEvent(key), key]),
+  ]) {
+    assert.equal(handleGateShortcut(event, settings), true);
+    assert.equal(actions.pop(), expected); assert.equal(event.prevented, 1);
+  }
+  const missing = keyEvent('4');
+  assert.equal(handleGateShortcut(missing, { ...settings, choices: ['I', 'SWAP'] }), false);
+  assert.equal(missing.prevented, 0);
+  const swap = keyEvent('2');
+  assert.equal(handleGateShortcut(swap, { ...settings, choices: ['I', 'SWAP'] }), true);
+  assert.equal(actions.pop(), 'SWAP', 'New gates use the same numeric palette shortcuts');
+  for (const event of [keyEvent('5'), keyEvent('(', { code: 'Digit5' })]) {
+    assert.equal(handleGateShortcut(event, { ...settings, choices: ['I', 'CX', 'XC', 'CZ', 'SWAP'] }), true);
+    assert.equal(actions.pop(), 'SWAP', 'Every whole-gate choice has its advertised numeric shortcut');
+  }
+  const unavailable = keyEvent('9');
+  assert.equal(handleGateShortcut(unavailable, settings), false); assert.equal(unavailable.prevented, 0);
+  for (const key of ['Q', 'Enter', 'Escape']) {
+    const event = keyEvent(key);
+    assert.equal(handleGateShortcut(event, settings), false); assert.equal(event.prevented, 0);
+  }
+  assert.deepEqual(actions, []);
+});
+
+test('directional controls keep row alignment, forward distance and stable ties without selecting the origin', () => {
+  const control = (left, top, width = 20, height = 20) => ({ getBoundingClientRect: () => ({ left, top, width, height }) });
+  const origin = control(100, 100), right = control(200, 100), farther = control(300, 100), nearDiagonal = control(125, 110);
+  const left = control(40, 100), up = control(100, 0), down = control(100, 300);
+  const candidates = [origin, nearDiagonal, farther, right, left, up, down];
+  assert.equal(directionalControl(origin, candidates, 'ArrowRight'), right);
+  assert.equal(directionalControl(origin, candidates, 'ArrowLeft'), left);
+  assert.equal(directionalControl(origin, candidates, 'ArrowUp'), up);
+  assert.equal(directionalControl(origin, candidates, 'ArrowDown'), down);
+  const firstTie = control(200, 100), secondTie = control(200, 100);
+  assert.equal(directionalControl(origin, [firstTie, secondTie], 'ArrowRight'), firstTie);
+  assert.equal(directionalControl(origin, [origin, control(101, 100)], 'ArrowRight'), null, 'The one-pixel threshold ignores overlapping controls');
+  assert.equal(directionalControl(null, candidates, 'ArrowRight'), null);
+  assert.equal(directionalControl(origin, candidates, 'Enter'), null);
+});
+
+test('rectangle selections share the same inclusive row and column order in either drag direction', () => {
+  const expected = ['1:2', '1:3', '1:4', '2:2', '2:3', '2:4'];
+  assert.deepEqual([...rectangleCells('1:2', '2:4')], expected);
+  assert.deepEqual([...rectangleCells('2:4', '1:2')], expected);
+  assert.deepEqual([...rectangleCells('1:4', '2:2')], expected);
+  assert.deepEqual([...rectangleCells('0:0', '0:0')], ['0:0']);
 });

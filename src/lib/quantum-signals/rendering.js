@@ -5,7 +5,8 @@ import { PHASE_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, canonicalT
 
 const SLOT = 88, ROW = 88, LEFT = 92, TOP = 46;
 const renderedTargets = new WeakMap();
-const boardWidth = puzzle => LEFT + puzzle.columns.length * SLOT + 64;
+export const signalBoardWidth = columns => LEFT + columns * SLOT + 64;
+const boardWidth = puzzle => signalBoardWidth(puzzle.columns.length);
 export const flowColumnX = boundary => LEFT + (boundary - .5) * SLOT;
 const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
 
@@ -67,6 +68,10 @@ export function renderBoard(board, puzzle, placements, { selected, locked = fals
 
 export function highlightFlow(svg, puzzle, selected) {
   const column = selected ? puzzle.columns.findIndex(entries => entries.some(entry => entry.id === selected)) : -1;
+  highlightFlowColumn(svg, column);
+}
+
+export function highlightFlowColumn(svg, column) {
   const marker = svg.querySelector('.signal-flow-selection');
   if (!marker || column < 0) return;
   marker.setAttribute('x', String(flowColumnX(column))); marker.dataset.column = String(column);
@@ -82,7 +87,7 @@ export function highlightFlowBits(svg, wires = []) {
   }
 }
 
-export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace } = {}) {
+export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace, selectedColumn } = {}) {
   const { snapshots, columns, cancellations } = trace ?? flowTrace(puzzle, placements), output = snapshots.at(-1);
   const target = canonicalTarget(puzzle.target), count = output.length;
   const width = boardWidth(puzzle) - 52, height = count * 34 + 62;
@@ -102,7 +107,7 @@ export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace
   description.textContent += cancellations.flatMap((bases, column) => bases.length ?
     ['. Opposite phases cancel after column ' + (column + 1) + ' at ' + bases.map(basis => basis.toString(2).padStart(puzzle.wires, '0')).join(', ')] : []).join('');
   fragment.appendChild(description);
-  const selectedColumn = selected ? puzzle.columns.findIndex(column => column.some(entry => entry.id === selected)) : -1;
+  selectedColumn ??= selected ? puzzle.columns.findIndex(column => column.some(entry => entry.id === selected)) : -1;
   if (selectedColumn >= 0) fragment.appendChild(svgNode('rect', { class: 'signal-flow-selection', 'data-column': selectedColumn,
     x: x(selectedColumn), y: 28, width: SLOT, height: height - 42, rx: 6 }));
   for (const [label, position] of [['Input', x(0)], ['Output', x(columns.length)]]) {

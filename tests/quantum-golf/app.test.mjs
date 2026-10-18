@@ -154,6 +154,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   html = html.replace(dialogs[0], (await component('GameDialogs'))
     .replace('<GamePuzzleJsonDialog />', await component('GamePuzzleJsonDialog'))
     .replace('<slot name="rules" />', rules).replace('<slot name="result-actions" />', actions));
+  html = await expandGameControls(html, component);
   const advancedMarkup = html.match(/(<details\b[^>]*\bid="advanced-features"[^>]*>)([\s\S]*?)<\/details>/);
   assert.ok(advancedMarkup, 'Advanced controls use a native disclosure');
   assert.doesNotMatch(advancedMarkup[1], /\sopen(?:[\s=>])/, 'Advanced controls start collapsed');

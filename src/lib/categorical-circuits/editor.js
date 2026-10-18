@@ -1,9 +1,8 @@
-import { touchedWires, validateCircuit, validateOperation, simulate } from './engine.js';
+import { holeOperation, touchedWires, validateCircuit, validateOperation, simulate } from './engine.js';
 import { fillSignals, signalsSolved, solveSignals, validateSignals } from './puzzles.js';
 
 const clone = value => structuredClone(value);
-const choicesFor = (entry, profile) => entry.wires.length === 2 ? ['I', 'SWAP'] :
-  profile === 'prop' && entry.controls?.length ? ['I', 'X', 'Z'] : ['I', 'H', 'X', 'Z'];
+const choicesFor = entry => entry.wires.length === 2 ? ['I', 'SWAP'] : ['I', 'H', 'X', 'Z'];
 const bounded = (value, maximum) => Number.isInteger(value) && value >= 1 && value <= maximum;
 const toolNames = new Set(['select', 'H', 'X', 'Z', 'SWAP', 'control', 'hole', 'erase']);
 
@@ -14,8 +13,10 @@ export function createCircuitEditor({ get, profile, onChange }) {
   const currentProfile = () => typeof profile === 'function' ? profile() : profile ?? 'controlled';
   const element = id => get?.(id);
   const fullCircuit = model => ({ wires: model.wires, columns: [...model.columns,
-    ...model.holes.map(hole => hole.witness === 'I' ? [] : [{ gate: hole.witness, wires: hole.wires,
-      ...(hole.controls?.length ? { controls: hole.controls } : {}) }]) ] });
+    ...model.holes.map(hole => {
+      const operation = holeOperation(hole, hole.witness);
+      return operation ? [operation] : [];
+    }) ] });
 
   function checked(model) {
     if (!bounded(model.wires, 4) || model.columns.length + model.holes.length < 1 ||
@@ -24,8 +25,10 @@ export function createCircuitEditor({ get, profile, onChange }) {
     }
     validateCircuit(fullCircuit(model), currentProfile());
     for (const hole of model.holes) {
-      for (const gate of hole.choices) if (gate !== 'I') validateOperation({ gate, wires: hole.wires,
-        controls: hole.controls }, model.wires, currentProfile());
+      for (const choice of hole.choices) {
+        const operation = holeOperation(hole, choice);
+        if (operation) validateOperation(operation, model.wires, currentProfile());
+      }
       if (!hole.choices.includes(hole.witness)) throw new RangeError('Choose a gate offered by this hole.');
     }
     return model;
@@ -46,7 +49,8 @@ export function createCircuitEditor({ get, profile, onChange }) {
       button.setAttribute('aria-pressed', String(button.dataset.editorTool === tool));
     }
     const summary = element('editor-summary');
-    if (summary) summary.textContent = pending ? 'Choose another wire in the same column.' : '';
+    if (summary) summary.textContent = pending ? pending.tool === 'SWAP' ?
+      'Choose a neighbouring wire in the same column.' : 'Choose another wire in the same column.' : '';
     const state = model(); onChange?.(state); return state;
   }
 
@@ -69,7 +73,7 @@ export function createCircuitEditor({ get, profile, onChange }) {
       if (!witness) throw new RangeError('This puzzle has no reachable target.');
       next = { wires: puzzle.wires, columns: clone(puzzle.columns),
         holes: puzzle.holes.map((hole, index) => ({ ...clone(hole), witness: witness[index] ?? 'I' })) };
-      nextReference = input.targetCircuit ? validateCircuit(input.targetCircuit, mode) : fillSignals(puzzle, witness, mode);
+      nextReference = puzzle.targetCircuit ?? fillSignals(puzzle, witness, mode);
     } else {
       next = { wires: 3, columns: [[], [], [], []], holes: [] };
       nextReference = fullCircuit(next);
@@ -91,8 +95,8 @@ export function createCircuitEditor({ get, profile, onChange }) {
     next.columns = Array.from({ length: fixed }, (_, index) => next.columns[index] ?? []);
     checked(next);
     const resizedReference = { ...reference, wires };
-    validateCircuit(resizedReference, currentProfile());
-    draft = next; reference = resizedReference; target = simulate(reference, undefined, currentProfile());
+    const nextTarget = simulate(resizedReference, undefined, currentProfile());
+    draft = next; reference = resizedReference; target = nextTarget;
     pending = selected = null; return render();
   }
 
@@ -106,12 +110,13 @@ export function createCircuitEditor({ get, profile, onChange }) {
     if (!Number.isInteger(wire) || wire < 0 || wire >= draft.wires || !Number.isInteger(column) ||
         column < 0 || column >= draft.columns.length + draft.holes.length) throw new RangeError('Choose a circuit cell.');
     selected = { wire, column };
+    if (tool === 'select') return render();
     const next = clone(draft), holeIndex = column - next.columns.length;
     const hole = holeIndex >= 0 ? next.holes[holeIndex] : null;
     const entries = hole ? null : next.columns[column];
-    const operation = hole ? { gate: hole.witness, wires: hole.wires, controls: hole.controls } :
-      entries.find(entry => entry.wires.includes(wire));
-    if (tool === 'select') return render();
+    const operation = hole ? holeOperation(hole, hole.witness) ?? { gate: 'I', wires: hole.wires, controls: hole.controls } :
+      entries.find(entry => entry.wires.includes(wire) ||
+        (tool === 'hole' && currentProfile() === 'prop' && entry.controls?.includes(wire)));
     if (tool === 'hole') {
       if (hole) return render();
       if (next.holes.length >= 6) throw new RangeError('Use at most six holes.');
@@ -120,9 +125,17 @@ export function createCircuitEditor({ get, profile, onChange }) {
       }
       if (entries.length > Number(Boolean(operation))) throw new RangeError('Use one gate in a hole column.');
       const entry = operation ?? { gate: 'I', wires: [wire] };
-      const descriptor = { wires: [...entry.wires], ...(entry.controls?.length ? { controls: [...entry.controls] } : {}) };
+      let descriptor, witness = entry.gate;
+      if (currentProfile() === 'prop' && entry.controls?.length) {
+        const wires = [...entry.wires, ...entry.controls].sort((a, b) => a - b);
+        descriptor = { wires, choices: ['I', 'CX', 'XC', 'CZ'] };
+        witness = entry.gate === 'Z' ? 'CZ' : entry.wires[0] === wires[1] ? 'CX' : 'XC';
+      } else {
+        descriptor = { wires: [...entry.wires], ...(entry.controls?.length ? { controls: [...entry.controls] } : {}) };
+        descriptor.choices = choicesFor(descriptor);
+      }
       next.columns = next.columns.slice(0, column);
-      next.holes.unshift({ ...descriptor, choices: choicesFor(descriptor, currentProfile()), witness: entry.gate });
+      next.holes.unshift({ ...descriptor, witness });
       selected.column = column;
       return commit(next);
     }
@@ -136,6 +149,9 @@ export function createCircuitEditor({ get, profile, onChange }) {
       return commit(next);
     }
     if (tool === 'control' || tool === 'SWAP') {
+      if (tool === 'control' && hole && currentProfile() === 'prop') {
+        throw new RangeError('Create the complete gate before turning it into a PROP hole.');
+      }
       if (!pending) {
         if (tool === 'control' && (!operation || !operation.wires.includes(wire) ||
             (!hole && operation.gate === 'I'))) throw new RangeError('Choose a gate target, then its control wire.');
@@ -143,13 +159,14 @@ export function createCircuitEditor({ get, profile, onChange }) {
         pending = { wire, column, tool }; return render();
       }
       if (column !== pending.column || wire === pending.wire) throw new RangeError('Choose another wire in the same column.');
+      if (tool === 'SWAP' && Math.abs(pending.wire - wire) !== 1) throw new RangeError('SWAP needs two consecutive wires.');
       const sourceHole = pending.column >= next.columns.length ? next.holes[pending.column - next.columns.length] : null;
       const sourceEntries = sourceHole ? null : next.columns[pending.column];
       const source = sourceHole ?? sourceEntries.find(entry => entry.wires.includes(pending.wire));
       if (tool === 'control') {
         const controls = source.controls ?? [];
         source.controls = controls.includes(wire) ? controls.filter(control => control !== wire) : [...controls, wire];
-        if (sourceHole) sourceHole.choices = choicesFor(sourceHole, currentProfile());
+        if (sourceHole) sourceHole.choices = choicesFor(sourceHole);
       } else {
         const swap = { gate: 'SWAP', wires: [pending.wire, wire] };
         if (sourceHole) {
@@ -159,8 +176,10 @@ export function createCircuitEditor({ get, profile, onChange }) {
       return commit(next);
     }
     if (hole) {
-      if (!hole.wires.includes(wire) || !hole.choices.includes(tool)) throw new RangeError('Choose a gate offered by this hole.');
-      hole.witness = tool;
+      const choice = currentProfile() === 'prop' && hole.wires.length === 2 ?
+        tool === 'X' ? wire === hole.wires[0] ? 'XC' : 'CX' : tool === 'Z' ? 'CZ' : tool : tool;
+      if (!hole.wires.includes(wire) || !hole.choices.includes(choice)) throw new RangeError('Choose a gate offered by this hole.');
+      hole.witness = choice;
     } else {
       if (!operation && entries.some(entry => touchedWires(entry).includes(wire))) throw new RangeError('Choose the gate target to replace it.');
       next.columns[column] = [...entries.filter(entry => entry !== operation), { gate: tool, wires: [wire] }];
@@ -170,13 +189,12 @@ export function createCircuitEditor({ get, profile, onChange }) {
 
   function puzzle() {
     if (!active || pending) throw new RangeError('Connect every gate before playing.');
-    const input = { wires: draft.wires, columns: clone(draft.columns),
-      holes: draft.holes.map(({ witness, ...hole }) => clone(hole)), targetCircuit: clone(reference), target: [...target] };
+    const input = { wires: draft.wires, columns: draft.columns, holes: draft.holes, targetCircuit: reference, target };
     const normalized = validateSignals(input, currentProfile());
     if (!solveSignals(normalized, { profile: currentProfile(), limit: 1 }).length) {
       throw new RangeError('The captured target cannot be reached. Capture a new target or restore the offered gates.');
     }
-    return { ...normalized, targetCircuit: clone(reference) };
+    return normalized;
   }
 
   const safely = action => {

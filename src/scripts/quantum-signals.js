@@ -8,12 +8,14 @@ import { createDailySession } from '../lib/games/daily-session.js';
 import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
+import { createCircuitViewport } from '../lib/games/circuit-viewport.js';
+import { createPuzzleResult } from '../lib/games/puzzle-result.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
-import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
+import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, updateModeMenu } from '../lib/games/controls.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'quantum-signals', get = id => document.getElementById(id);
@@ -21,16 +23,8 @@ const onClick = (id, callback) => get(id).addEventListener('click', callback);
 let mode = 'tutorial', campaignIndex = 0, puzzle = TUTORIAL_PUZZLE, placements = {}, sequence = [], states = [placements];
 let selected = getHoles(puzzle)[0].id;
 let tutorialBits = [], autofocus = false, flowAnimation = null;
-// Puzzles and placements are replaced rather than mutated. Selection, replay
-// and leaderboard updates can reuse this single current-round result.
-let evaluatedPuzzle, evaluatedPlacements, cachedWin = false;
-function isWon() {
-  if (evaluatedPuzzle !== puzzle || evaluatedPlacements !== placements) {
-    cachedWin = simulate(puzzle, placements).solved;
-    evaluatedPuzzle = puzzle; evaluatedPlacements = placements;
-  }
-  return cachedWin;
-}
+const evaluate = createPuzzleResult((puzzle, placements) => simulate(puzzle, placements).solved);
+const isWon = () => evaluate(puzzle, placements);
 const choices = [...document.querySelectorAll('[data-choice]')];
 const paletteWires = new WeakMap();
 const tutorialBlocked = () => tutorial.active && !tutorial.executing;
@@ -65,22 +59,9 @@ const review = createStepReplay({
 function closeResult() { sharing.close(); get('win-dialog').close(); }
 const holeButton = id => id ? get('signal-board').querySelector('[data-hole="' + id + '"]') : null;
 function focusSelected() { holeButton(selected)?.focus({ preventScroll: true }); }
-function scrollTogether(left) {
-  const circuit = get('signal-scroll'), flow = get('flow-scroll');
-  // Native clamping includes reserved scrollbar gutters on touch and desktop.
-  circuit.scrollLeft = left; flow.scrollLeft = circuit.scrollLeft;
-  circuit.scrollLeft = flow.scrollLeft;
-  pinFlowLabels(get('signal-flow'), flow.scrollLeft);
-}
+const viewport = createCircuitViewport(get('signal-scroll'), get('flow-scroll'), left => pinFlowLabels(get('signal-flow'), left));
 function followProgress(hole, finished) {
-  const scroll = get('signal-scroll');
-  if (finished) { scrollTogether(scroll.scrollWidth); return; }
-  const button = holeButton(hole);
-  if (!button) { scrollTogether(0); return; }
-  const bounds = scroll.getBoundingClientRect(), target = button.getBoundingClientRect();
-  const width = Math.min(scroll.clientWidth, get('flow-scroll').clientWidth);
-  // Leave the pinned basis labels clear and show both sides of the active gate.
-  scrollTogether(scroll.scrollLeft + target.left + target.width / 2 - bounds.left - scroll.clientLeft - (40 + width) / 2);
+  viewport.follow(holeButton(hole), finished);
 }
 function selectHole(id) {
   if (tutorialBlocked() || daily.loading || review.step !== null || selected === id) return;
@@ -89,17 +70,8 @@ function selectHole(id) {
   update({ board: false }); followProgress(selected, false);
 }
 function navigateHole(key) {
-  const origin = holeButton(selected)?.getBoundingClientRect();
-  if (!origin) return;
-  const horizontal = key === 'ArrowLeft' || key === 'ArrowRight', direction = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
-  const candidates = [...get('signal-board').querySelectorAll('[data-hole]')].map(button => {
-    const rect = button.getBoundingClientRect();
-    const dx = rect.left + rect.width / 2 - origin.left - origin.width / 2;
-    const dy = rect.top + rect.height / 2 - origin.top - origin.height / 2;
-    return { id: button.dataset.hole, forward: direction * (horizontal ? dx : dy), across: Math.abs(horizontal ? dy : dx) };
-  }).filter(candidate => candidate.forward > 1);
-  candidates.sort((a, b) => a.across - b.across || a.forward - b.forward);
-  if (candidates.length) { selectHole(candidates[0].id); focusSelected(); }
+  const next = directionalControl(holeButton(selected), get('signal-board').querySelectorAll('[data-hole]'), key);
+  if (next) { selectHole(next.dataset.hole); focusSelected(); }
 }
 const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => {
   const label = 'Placement ' + (index + 1) + ': ' + move.hole;
@@ -229,12 +201,6 @@ function share(source) {
 }
 
 for (const button of choices) button.addEventListener('click', () => place(button.dataset.choice));
-for (const [source, target] of [['signal-scroll', 'flow-scroll'], ['flow-scroll', 'signal-scroll']]) {
-  get(source).addEventListener('scroll', () => {
-    if (Math.abs(get(target).scrollLeft - get(source).scrollLeft) > 1) scrollTogether(get(source).scrollLeft);
-    else pinFlowLabels(get('signal-flow'), get('flow-scroll').scrollLeft);
-  }, { passive: true });
-}
 for (const type of ['click', 'focusin']) get('signal-board').addEventListener(type, event => {
   const hole = event.target.closest('[data-hole]');
   if (hole && !hole.disabled) selectHole(hole.dataset.hole);
@@ -277,23 +243,12 @@ for (const id of ['edit-circuit', 'new-circuit']) onClick(id, () => {
 bindGameDialogs(get);
 get('score-form').addEventListener('submit', completions.submit);
 document.addEventListener('keydown', event => {
-  if (tutorialBlocked() || ignoresGameShortcut(event) || event.target.closest('#custom-details')) return;
-  if (event.ctrlKey || event.metaKey) {
-    if (!event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); get('undo').click(); }
-    return;
-  }
-  if (event.key === 'Backspace') { event.preventDefault(); get('undo').click(); }
-  if (event.key.toLowerCase() === 'r') { event.preventDefault(); reset(); }
+  if (handleRoundShortcut(event, { blocked: tutorialBlocked() || Boolean(event.target.closest('#custom-details')),
+    undo: () => get('undo').click(), reset })) return;
   const inGame = event.target.closest('#signal-board, .signal-palette') || event.target === get('signal-scroll');
   if (!inGame || daily.loading || review.step !== null) return;
-  const number = /^Digit[1-4]$/.test(event.code) ? Number(event.code.at(-1)) : /^[1-4]$/.test(event.key) ? Number(event.key) : 0;
-  const available = choices.filter(button => !button.hidden);
-  const gate = number ? available[number - 1]?.dataset.choice : event.key.toUpperCase();
-  if (available.some(button => button.dataset.choice === gate)) { event.preventDefault(); place(gate); }
-  if (event.key === 'Delete') { event.preventDefault(); place(null); }
-  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
-    event.preventDefault(); navigateHole(event.key);
-  }
+  handleGateShortcut(event, { choices: choices.filter(button => !button.hidden).map(button => button.dataset.choice),
+    place, erase: () => place(null), navigate: navigateHole });
 });
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;

@@ -1,23 +1,20 @@
 ---
 import GamePuzzleJsonDialog from './GamePuzzleJsonDialog.astro';
+import GameRulesDialog from './GameRulesDialog.astro';
+import GameWinDialog from './GameWinDialog.astro';
 interface Props { gameTitle: string; unit?: string; completionOnly?: boolean }
 const { gameTitle, unit = 'Moves', completionOnly = false } = Astro.props;
 const ranked = !completionOnly;
 const shareTitle = ranked ? 'Share your score' : 'Share your replay';
 ---
 
-<dialog class="game-dialog rules-dialog" id="rules-dialog" aria-labelledby="rules-title">
-  <button class="close-dialog" id="close-rules" type="button" aria-label="Close rules">×</button>
-  <h2 id="rules-title">Rules</h2>
+<GameRulesDialog>
   <slot name="rules" />
-</dialog>
+</GameRulesDialog>
 
 <GamePuzzleJsonDialog />
 
-<dialog class="game-dialog win-dialog" id="win-dialog" aria-labelledby="win-title">
-  <button class="close-dialog" id="close-win" type="button" aria-label="Close popup">×</button>
-  <h2 id="win-title">GG</h2>
-  <p id="win-summary" role="status"></p>
+<GameWinDialog>
   {ranked && <p id="win-practice" hidden>Practice completed.</p>}
   <form class="score-form" id="score-form">
     <label for="player-name">Name or nickname</label>
@@ -52,7 +49,7 @@ const shareTitle = ranked ? 'Share your score' : 'Share your replay';
   </details>
   <p class="message" id="score-status" role="status" aria-live="polite"></p>
   <button class="button" id="check-daily-puzzles" type="button" hidden>Check other daily puzzles</button>
-</dialog>
+</GameWinDialog>
 
 <dialog class="game-dialog share-dialog" id="share-dialog" aria-labelledby="share-title">
   <button class="close-dialog" id="close-share" type="button" aria-label="Close sharing">×</button>

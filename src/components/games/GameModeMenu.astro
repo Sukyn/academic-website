@@ -18,4 +18,5 @@ const { daily = true } = Astro.props;
     </div>
   </div>}
   {daily && <p class="message" id="daily-status" role="status"></p>}
+  <slot />
 </nav>
