@@ -1,12 +1,14 @@
-import { RULES, validateCircuit, getLegalMoves, applyMove, isSolved, isIdentity, selectionCells, holeOperation } from '../lib/categorical-circuits/engine.js';
+import { RULES, validateCircuit, getLegalMoves, applyMove, isSolved, isIdentity, selectionCells, holeOperation, gateCells, moveCost } from '../lib/categorical-circuits/engine.js';
 import { getLevels, getTutorial, randomIdentity, generateSignals, validateSignals, fillSignals, signalsSolved, signalsData, solveSignals } from '../lib/categorical-circuits/puzzles.js';
-import { renderCircuit, renderAdvancedFlow, operationIcon, operationLabel } from '../lib/categorical-circuits/rendering.js';
+import { renderCircuit, renderRulePreview, renderAdvancedFlow, operationIcon, operationLabel } from '../lib/categorical-circuits/rendering.js';
 import { createCircuitEditor } from '../lib/categorical-circuits/editor.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { createCircuitViewport } from '../lib/games/circuit-viewport.js';
 import { createPuzzleResult } from '../lib/games/puzzle-result.js';
+import { createScoreboard } from '../lib/games/scoreboard.js';
+import { expandSelection, toggleSelection } from '../lib/games/circuit-selection.js';
 import { bindGameDialogs, updateModeMenu, handleRoundShortcut, handleGateShortcut, directionalControl, rectangleCells } from '../lib/games/controls.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { pinFlowLabels, highlightFlowBits, highlightFlowColumn, signalBoardWidth } from '../lib/quantum-signals/rendering.js';
@@ -16,15 +18,23 @@ const root = document.querySelector('[data-categorical-game]');
 const get = id => document.getElementById(id);
 const on = (id, action) => get(id).addEventListener('click', () => attempt(action));
 const kind = root.dataset.kind, signals = kind === 'signals';
-const profile = new URLSearchParams(location.search).get('profile') === 'controlled' ? 'controlled' : 'prop';
+const profile = get('circuit-category').value === 'controlled' ? 'controlled' : 'prop';
 let mode = 'tutorial', levelIndex = 0, levels, puzzle, circuit, placements = [];
 let editing = false, editorModel, states = [], selectedHole = 0, guide, winTimer, shots = 0;
 let selected = new Set(), selectionAnchor = null, available = [], drag, suppressClick = false, context = new Set();
 let autofocus = false, flowAnimation = null;
 const steps = [], ruleButtons = new Map();
-const snapshot = () => signals ? { placements } : { circuit, shots };
+const snapshot = move => signals ? { placements } : { circuit, shots, ...(move ? { move } : {}) };
+const linkedCells = key => gateCells(circuit, key, { profile });
 const evaluate = createPuzzleResult((puzzle, placements) => signalsSolved(puzzle, placements, profile));
 const won = () => signals ? evaluate(puzzle, placements) : isSolved(circuit);
+const scores = createScoreboard({
+  get, completionOnly: signals,
+  selector: () => mode === 'campaign' ? { game: `${signals ? 'quantum-signals' : 'circuit-reduction'}-${profile}`, level: levelIndex + 1 } : null,
+  canSubmit: () => mode === 'campaign' && !editing && review.step === null && !flowAnimation && won(),
+  sequence: () => signals ? placements.flatMap((gate, hole) => [{ hole, gate }]) : states.slice(1).map(state => state.move),
+  update: () => render({ board: false }),
+});
 
 function attempt(action) {
   try { action(); get('status').textContent = ''; }
@@ -65,7 +75,7 @@ const editor = signals ? createCircuitEditor({ get, profile: () => profile,
   onChange(model) { editorModel = model; if (editing) render(); } }) : null;
 
 const json = createCustomPuzzleJson({
-  get, game: signals ? 'quantum-signals-advanced' : 'circuit-simplification-advanced',
+  get, game: signals ? 'quantum-signals' : 'circuit-simplification',
   exportPuzzle() {
     if (signals) return signalsData(editing ? editor.puzzle() : puzzle, undefined, profile);
     return validateCircuit(editing ? circuit : puzzle.circuit, profile);
@@ -85,20 +95,21 @@ const json = createCustomPuzzleJson({
 
 function load(next, nextMode = mode) {
   clearTimeout(winTimer); review.clear(); get('win-dialog').close();
+  scores.reset();
   drag = null; suppressClick = false;
   editing = false; editor?.close(); editorModel = undefined;
   mode = nextMode; puzzle = next;
   if (!signals) circuit = validateCircuit(next.circuit, profile);
   placements = []; shots = 0; states = [snapshot()]; selected.clear(); selectionAnchor = null; context.clear(); selectedHole = 0;
-  render();
+  render(); void scores.load();
 }
 
 function checkMoveLimit() {
   if (states.length > 1000) throw new RangeError('Undo or reset before adding more moves.');
 }
 
-function afterMove(column) {
-  states.push(snapshot()); selected.clear(); selectionAnchor = null; render({ animateFrom: column });
+function afterMove(move, column) {
+  states.push(snapshot(move)); selected.clear(); selectionAnchor = null; render({ animateFrom: column });
   if (signals && autofocus) viewport.follow(holeButton(selectedHole), won());
   clearTimeout(winTimer);
   const current = states.at(-1), finished = flowAnimation?.finished;
@@ -106,10 +117,7 @@ function afterMove(column) {
     if (states.at(-1) !== current || editing || mode === 'tutorial' || !won()) return;
     winTimer = setTimeout(() => {
       if (states.at(-1) !== current || review.step !== null) return;
-      get('win-summary').textContent = signals ? 'The output matches the target.' : 'Identity reached.';
-      get('result-next').hidden = mode === 'campaign' && levelIndex === levels.length - 1;
-      get('result-next').textContent = mode === 'campaign' ? 'Next level' : 'New puzzle';
-      get('win-dialog').showModal();
+      openWin();
     }, 500);
   };
   if (finished) finished.then(completed => { if (completed) offerResult(); }); else offerResult();
@@ -121,8 +129,8 @@ function playMove(move) {
   const next = applyMove(circuit, move, { profile });
   if (move.rule === 'tidy' && next.columns.length === circuit.columns.length) return;
   checkMoveLimit(); circuit = next;
-  if (!['tidy', 'insert-column', 'remove-column'].includes(move.rule)) shots++;
-  afterMove();
+  shots += moveCost(move);
+  afterMove(move);
 }
 
 function place(gate) {
@@ -137,7 +145,14 @@ function place(gate) {
     const next = puzzle.holes.findIndex((_, index) => !Object.hasOwn(placements, index));
     if (next >= 0) selectedHole = next;
   }
-  return afterMove(column);
+  return afterMove(null, column);
+}
+
+function openWin() {
+  if (mode === 'tutorial' || editing || flowAnimation || !won() || get('win-dialog').open) return;
+  const reviewing = review.step !== null;
+  review.clear(); render({ board: reviewing }); scores.autoSubmit(); get('win-dialog').showModal();
+  get(scores.automatic ? 'close-win' : get('score-form').hidden ? 'try-again' : 'player-name').focus();
 }
 
 function reset() { if (editing) return; load(puzzle); }
@@ -164,7 +179,7 @@ function makeRuleButtons() {
     for (const [index, pattern] of [rule.left, rule.right].entries()) {
       if (index) { const arrow = document.createElement('span'); arrow.textContent = '↔'; button.appendChild(arrow); }
       const miniature = document.createElement('span'); miniature.className = 'categorical-rule-mini';
-      renderCircuit(miniature, { wires: rule.wires, columns: pattern }, { interactive: false });
+      renderRulePreview(miniature, rule.wires, pattern);
       miniature.setAttribute('aria-hidden', 'true'); button.appendChild(miniature);
     }
     button.addEventListener('click', () => attempt(() => {
@@ -246,7 +261,7 @@ function render({ board = true, animateFrom } = {}) {
   const count = reviewed?.shots ?? shots;
   get('move-count').textContent = `${count} ${count === 1 ? 'move' : 'moves'}`;
   get('previous-level').disabled = levelIndex === 0;
-  get('next-level').disabled = mode !== 'campaign' || !won() || levelIndex === levels.length - 1;
+  get('next-level').disabled = scores.submitting || mode !== 'campaign' || !won() || levelIndex === levels.length - 1;
   get('custom-controls').hidden = mode !== 'random';
   get('editor-controls').hidden = !editing;
   get('edit-circuit').hidden = get('new-circuit').hidden = mode !== 'random' || editing;
@@ -260,17 +275,36 @@ function render({ board = true, animateFrom } = {}) {
   get('replay').disabled = review.playing;
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : `Step ${review.step} / ${states.length - 1}`;
+  const complete = mode !== 'tutorial' && !editing && won();
+  const showForm = complete && mode === 'campaign' && !scores.player && !scores.automatic;
+  get('leaderboard-section').hidden = mode !== 'campaign';
+  get('show-results').hidden = !complete;
+  get('show-results').disabled = Boolean(flowAnimation);
+  get('score-form').hidden = !showForm;
+  get('win-results').hidden = !scores.player;
+  for (const id of ['player-name', 'submit-score']) get(id).disabled = scores.submitting || !showForm;
+  get('result-actions').hidden = false;
+  get('result-next').hidden = mode === 'campaign' && levelIndex === levels.length - 1;
+  get('result-next').disabled = scores.submitting;
+  get('result-next').textContent = mode === 'campaign' ? 'Next level' : 'New puzzle';
+  get('replay-result').disabled = states.length <= 1 || review.playing;
+  get('win-summary').textContent = signals ? 'The output matches the target.' : `Identity reached in ${shots} ${shots === 1 ? 'move' : 'moves'}.`;
   json.update({ visible: mode === 'random', canShare: !editing || signals || !isSolved(circuit) });
   guide?.render();
   if (previousFlow) {
     const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom);
-    job.finished.then(() => { if (flowAnimation === job) { flowAnimation = null; guide?.render(); } });
+    get('show-results').disabled = true;
+    job.finished.then(() => {
+      if (flowAnimation !== job) return;
+      flowAnimation = null; get('show-results').disabled = false; guide?.render();
+    });
   }
 }
 
 function startEditor(fresh) {
   if (signals) editor.open(fresh ? undefined : puzzle);
   guide.leave(); review.clear(); clearTimeout(winTimer); get('win-dialog').close();
+  scores.reset();
   editing = true; mode = 'random'; shots = 0; selected.clear(); selectionAnchor = null; context.clear();
   if (!signals) {
     circuit = fresh ? { wires: 3, columns: Array.from({ length: 6 }, () => []) } : validateCircuit(puzzle.circuit, profile);
@@ -290,6 +324,7 @@ function setupTutorial() {
       if (signals) selectedHole = step.hole;
       else selected = new Set(step.move.rule === 'tidy' ? [] : selectionCells(step.move, { profile }));
       render();
+      if (signals) viewport.follow(holeButton(selectedHole));
     },
     action() { return signals ? place(step.gate) : playMove(step.move); },
   })));
@@ -312,9 +347,10 @@ on('new-puzzle', newPuzzle); on('restart', reset);
 on('undo', () => {
   if (mode === 'tutorial' || editing && signals || states.length <= 1) return;
   clearTimeout(winTimer); review.clear(); get('win-dialog').close();
+  scores.reset();
   states.pop(); const previous = states.at(-1);
   if (signals) placements = previous.placements; else { circuit = previous.circuit; shots = previous.shots; }
-  selected.clear(); selectionAnchor = null; render();
+  selected.clear(); selectionAnchor = null; render(); void scores.load();
 });
 on('tidy', () => playMove({ rule: 'tidy' }));
 on('add-space', () => playMove({ rule: 'insert-column', column: selected.size ? Math.min(...[...selected].map(key => Number(key.split(':')[1]))) : circuit.columns.length }));
@@ -365,10 +401,10 @@ get('categorical-board').addEventListener('click', event => attempt(() => {
   if (signals) { if (cell.dataset.hole !== undefined) selectHole(Number(cell.dataset.hole)); return; }
   if (suppressClick && event.detail !== 0) { suppressClick = false; return; }
   suppressClick = false;
-  if (event.shiftKey && selectionAnchor) selected = rectangleCells(selectionAnchor, cell.dataset.cell);
+  if (event.shiftKey && selectionAnchor) selected = expandSelection(rectangleCells(selectionAnchor, cell.dataset.cell), linkedCells);
   else {
     selectionAnchor = cell.dataset.cell;
-    if (selected.has(cell.dataset.cell)) selected.delete(cell.dataset.cell); else selected.add(cell.dataset.cell);
+    selected = toggleSelection(selected, linkedCells(cell.dataset.cell), linkedCells);
   }
   renderSelection();
 }));
@@ -383,7 +419,7 @@ get('categorical-board').addEventListener('pointerover', event => {
   if (!drag || !cell || !(event.buttons & 1)) return;
   if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
   drag.moved = true; selectionAnchor = drag.anchor;
-  selected = rectangleCells(drag.anchor, cell.dataset.cell);
+  selected = expandSelection(rectangleCells(drag.anchor, cell.dataset.cell), linkedCells);
   renderSelection();
 });
 window.addEventListener('pointerup', event => {
@@ -411,11 +447,12 @@ if (signals) {
   on('erase-gate', () => place(null));
   on('autofocus', () => { if (mode !== 'tutorial' && !editing && review.step === null) { autofocus = !autofocus; render({ board: false }); } });
 }
-on('replay', review.play); on('resume-round', () => {
+on('replay', review.play); on('replay-result', review.play); on('show-results', openWin); on('resume-round', () => {
   review.clear(); render();
   if (signals) viewport.follow(holeButton(selectedHole), won());
 });
 bindGameDialogs(get);
+get('score-form').addEventListener('submit', scores.submit);
 on('try-again', reset);
 on('result-next', () => mode === 'campaign' ? selectLevel(levelIndex + 1) : newPuzzle());
 document.addEventListener('keydown', event => {
@@ -438,6 +475,6 @@ document.addEventListener('keydown', event => {
     }
   }
 });
-window.addEventListener('pagehide', () => { clearTimeout(winTimer); flowAnimation?.cancel(); review.clear(); json.close(); guide.leave(); drag = null; });
-window.addEventListener('pageshow', event => { if (event.persisted) { if (mode === 'tutorial') setupTutorial(); else render(); } });
+window.addEventListener('pagehide', () => { clearTimeout(winTimer); flowAnimation?.cancel(); review.clear(); scores.dispose(); json.close(); guide.leave(); drag = null; });
+window.addEventListener('pageshow', event => { if (event.persisted) { if (mode === 'tutorial') setupTutorial(); else { render(); void scores.load(); } } });
 setupTutorial();

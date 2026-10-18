@@ -28,6 +28,15 @@ const { LEVELS: GRAPH_LEVELS, DAILY_START: GRAPH_START, dailyPuzzle: graphDailyP
 const { optimalShots: graphOptimalShots, sequenceCost: graphSequenceCost, solutionForGraph: graphSequence } = await import(websiteFile('src/lib/graph-states/engine.js'));
 const { CAMPAIGN: GRAPH_CAMPAIGN, DAILY_CAMPAIGN: GRAPH_DAILY_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_GRAPH_BYTES } =
   await import(websiteFile('src/lib/graph-states/leaderboard.js'));
+const { getLevels: categoricalLevels } = await import(websiteFile('src/lib/categorical-circuits/puzzles.js'));
+const advancedCampaigns = ['prop', 'controlled'].flatMap(profile => ['simplification', 'signals'].map(kind => ({
+  profile, kind, game: `${kind === 'signals' ? 'quantum-signals' : 'circuit-reduction'}-${profile}`,
+  levels: categoricalLevels(profile, kind),
+})));
+const advancedSequence = (kind, puzzle) => kind === 'signals'
+  ? puzzle.solution.map((gate, hole) => ({ hole, gate })).filter(move => move.gate !== 'I')
+  : puzzle.solution;
+const categoricalCost = sequence => sequence.filter(move => !['tidy', 'insert-column', 'remove-column'].includes(move.rule)).length;
 
 // Replace only the database transport. The Vercel handler, score validation and
 // parameterized ranking SQL still run unchanged against real PostgreSQL.
@@ -80,6 +89,18 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
     const selectedGraph = await compiled.fetch(new Request(`${endpoint}?game=graph-states&level=unknown`));
     assert.equal(selectedGraph.status, 400);
     assert.deepEqual(await selectedGraph.json(), { error: 'Choose a campaign level from 1 to 10.' });
+    for (const { game, levels } of advancedCampaigns) {
+      const selected = await compiled.fetch(new Request(`${endpoint}?game=${game}&level=unknown`));
+      assert.equal(selected.status, 400);
+      assert.deepEqual(await selected.json(), { error: `Choose a campaign level from 1 to ${levels.length}.` },
+        'Each advanced validator and its official puzzle data resolve in the deployed ESM package');
+      assert.equal((await compiled.fetch(new Request(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game, level: 1, name: 'Ada', sequence: [] }),
+      }))).status, 400, 'Compiled advanced validators reject an unfinished level before contacting the database');
+      assert.equal((await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=${game}`))).status, 400,
+        'Advanced campaigns do not expose daily puzzles');
+    }
     const signalSubmission = await compiled.fetch(new Request(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(valid({ game: 'quantum-signals', sequence: [{ hole: 'a', gate: 'H' }] })),
@@ -868,6 +889,152 @@ test('circuit reduction shares ranking SQL while isolating campaigns, replays an
     const final = CIRCUIT_LEVELS.at(-1);
     assert.equal((await post({ ...payload, level: final.id, sequence: final.solution }, origin, address)).status, 201,
       'The shared existing table accepts every circuit campaign level');
+  } finally {
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+    delete globalThis.__quantumGolfPostgres;
+    await database.close();
+  }
+});
+
+test('advanced deeply nested replays return client errors without entering the database', async () => {
+  const previous = globalThis.__quantumGolfPostgres;
+  let queries = 0;
+  globalThis.__quantumGolfPostgres = () => { queries++; throw new Error('Invalid submissions cannot query the database.'); };
+  try {
+    for (const profile of ['prop', 'controlled']) {
+      const game = `circuit-reduction-${profile}`;
+      const raw = `{"game":"${game}","level":1,"name":"Ada","sequence":[` + '['.repeat(12_000) + 'null' + ']'.repeat(12_000) + ']}';
+      const send = (body, address = endpoint) => route.fetch(new Request(address, {
+        method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body,
+      }));
+      for (const address of [endpoint, `${endpoint}?game=${game}`]) {
+        const response = await send(raw, address);
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), { error: 'Expected a level submission.' });
+      }
+      const oversized = JSON.stringify({ game, level: 1, name: 'Ada', sequence: [], padding: 'x'.repeat(128_000) });
+      assert.equal((await send(oversized)).status, 413, 'Body-selected limits remain enforced before validation');
+      assert.equal((await send(oversized, `${endpoint}?game=${game}`)).status, 413, 'URL-selected limits remain enforced during reading');
+    }
+    assert.equal(queries, 0);
+  } finally {
+    if (previous === undefined) delete globalThis.__quantumGolfPostgres;
+    else globalThis.__quantumGolfPostgres = previous;
+  }
+});
+
+test('advanced level leaderboards verify official solutions and isolate categories without daily boards', async () => {
+  const database = new PGlite();
+  const originalUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = 'postgresql://test.invalid/advanced-games';
+  globalThis.__quantumGolfPostgres = async (strings, ...values) => {
+    const query = strings.reduce((sql, part, index) => sql + (index ? `$${index}` : '') + part, '');
+    return (await database.query(query, values)).rows.map(row => Object.fromEntries(Object.entries(row)
+      .map(([key, value]) => [key, value !== null && ['id', 'rank', 'total'].includes(key) ? String(value) : value])));
+  };
+  const list = (game, selector = 'level=1', player) => route.fetch(new Request(
+    `${endpoint}?game=${game}&${selector}${player === undefined ? '' : `&player=${player}`}`,
+  ));
+  const totalRows = async () => Number((await database.query(
+    'SELECT (SELECT COUNT(*) FROM scores) + (SELECT COUNT(*) FROM completions) AS n',
+  )).rows[0].n);
+  const firstBoards = new Map();
+  try {
+    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    for (const { game, kind, levels } of advancedCampaigns) {
+      const level = levels[0], sequence = advancedSequence(kind, level);
+      const payload = { game, level: level.id, name: 'Ada', sequence };
+      const address = `${endpoint}?game=${game}`;
+      assert.deepEqual(await (await list(game)).json(), { total: 0, entries: [], currentPlayer: null });
+      const invalid = kind === 'signals' ? [
+        [], 'SWAP', [null], [{ hole: '0', gate: sequence[0].gate }],
+        [{ hole: -1, gate: sequence[0].gate }], [{ hole: level.holes.length, gate: sequence[0].gate }],
+        [{ hole: 0, gate: 'NOPE' }], [{ hole: 0, gate: 'I' }], [sequence[0], sequence[0]],
+        [{ ...sequence[0], controls: [0] }],
+      ] : [
+        [], 'SWAP', [null], [{ rule: 'tidy' }], [{ rule: 'erase', column: 0, wires: [0, 1] }],
+        [{ ...sequence[0], wires: [999] }], [{ ...sequence[0], reverse: 'false' }],
+        [{ rule: 'insert-column', column: 0, count: 1_000_000_000 }],
+        [{ rule: 'remove-column', column: 0 }], [{ ...sequence[0], circuit: { wires: 1, columns: [[]] } }],
+      ];
+      const before = await totalRows();
+      for (const replay of invalid) {
+        assert.equal((await post({ ...payload, sequence: replay }, origin, address)).status, 400,
+          `${game} rejects malformed, incomplete or forged replays`);
+      }
+      for (const forged of [
+        { ...payload, level: 0 }, { ...payload, level: levels.length + 1 },
+        { ...payload, moves: 0 }, { ...payload, campaign: 'quantum-golf-v2-plus' },
+        { ...payload, target: [1] }, { ...payload, name: 'Ada\u202e' },
+        { ...payload, date: '2026-10-18' },
+        { game, date: '2026-10-18', name: 'Ada', sequence },
+      ]) {
+        assert.equal((await post(forged, origin, address)).status, 400,
+          'Only the official level and its verified replay determine campaign membership');
+      }
+      assert.equal((await post({ ...payload, game: game.replace(/-(prop|controlled)$/, '') }, origin, address)).status, 400,
+        'Contradictory URL and body categories cannot switch a leaderboard');
+      for (const selector of ['date=2026-10-18', 'level=1&date=2026-10-18', 'level=unknown']) {
+        assert.equal((await list(game, selector)).status, 400);
+      }
+      assert.equal((await dailyRoute.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=${game}`))).status, 400);
+      assert.equal(await totalRows(), before, 'Rejected advanced submissions never write either shared table');
+
+      if (kind === 'simplification') {
+        const padding = [{ rule: 'insert-column', column: 0 }, { rule: 'remove-column', column: 0 }, { rule: 'tidy' }];
+        const detour = [sequence[0], { ...sequence[0], reverse: true }];
+        const response = await post({ ...payload, sequence: [...padding, ...detour, ...sequence] }, origin, address);
+        assert.equal(response.status, 201);
+        const board = await response.json();
+        assert.equal(board.currentPlayer.moves, categoricalCost(sequence) + 2,
+          'Only rule applications count: tidy and space adjustments are free');
+        assert.equal(board.currentPlayer.rank, 1);
+      }
+      for (const puzzle of levels) {
+        const response = await post({ ...payload, level: puzzle.id, sequence: advancedSequence(kind, puzzle) }, origin, address);
+        assert.equal(response.status, 201, `${game}: ${puzzle.title} accepts its official witness`);
+        const board = await response.json();
+        assert.equal(board.total, 1);
+        assert.equal(board.currentPlayer.name, 'Ada');
+        if (kind === 'signals') {
+          assert.deepEqual(Object.keys(board.currentPlayer).sort(), ['completed', 'id', 'name']);
+          assert.equal(board.currentPlayer.completed, true, 'Signals leaderboards show completion without a score or rank');
+        } else {
+          assert.equal(board.currentPlayer.moves, categoricalCost(puzzle.solution));
+          assert.equal(board.currentPlayer.rank, 1);
+        }
+        if (puzzle.id === 1) firstBoards.set(game, board);
+      }
+      const first = firstBoards.get(game), id = first.currentPlayer.id;
+      assert.equal(typeof id, 'number', 'Both shared tables convert PostgreSQL bigint IDs for the client');
+      assert.deepEqual(await (await post(payload)).json(), first, 'Body-selected advanced games and retries preserve the player record');
+      assert.deepEqual(await (await list(game, 'level=1', id)).json(), first);
+      assert.equal((await list(game)).headers.get('Cache-Control'), 'public, max-age=15');
+      assert.equal((await list(game, 'level=1', id)).headers.get('Cache-Control'), 'no-store');
+      assert.equal((await (await list(game, 'level=2', id)).json()).currentPlayer, null,
+        'Player IDs are scoped to one official level');
+      const table = kind === 'signals' ? 'completions' : 'scores';
+      const saved = (await database.query(`SELECT * FROM ${table} WHERE id = $1`, [id])).rows[0];
+      assert.equal(saved.campaign, `${game}-levels-v1`);
+      assert.deepEqual(Object.keys(saved).sort(), kind === 'signals'
+        ? ['campaign', 'id', 'level', 'name'] : ['campaign', 'created_at', 'id', 'level', 'moves', 'name'],
+      'Advanced leaderboards store only the existing score or completion fields');
+    }
+    for (const { game, kind } of advancedCampaigns) {
+      const other = advancedCampaigns.find(item => item.kind === kind && item.game !== game);
+      assert.equal((await (await list(game, 'level=1', firstBoards.get(other.game).currentPlayer.id)).json()).currentPlayer, null,
+        'PROP and Controlled PROP player IDs cannot cross campaign namespaces');
+      const base = game.replace(/-(prop|controlled)$/, '');
+      assert.deepEqual(await (await list(base)).json(), { total: 0, entries: [], currentPlayer: null },
+        'Advanced levels never enter the standard campaign boards');
+      assert.equal((await (await list(base, 'level=1', firstBoards.get(game).currentPlayer.id)).json()).currentPlayer, null);
+    }
+    assert.equal((await post({ game: 'circuit-reduction', level: 1, name: 'Ada', sequence: CIRCUIT_LEVELS[0].solution })).status, 201);
+    assert.equal((await post({ game: 'quantum-signals', level: 1, name: 'Ada', sequence: signalSequence(SIGNAL_LEVELS[0]) })).status, 201);
+    for (const { game } of advancedCampaigns) {
+      assert.equal((await (await list(game)).json()).total, 1, 'Standard completions and scores cannot alter advanced ranks');
+    }
   } finally {
     if (originalUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = originalUrl;

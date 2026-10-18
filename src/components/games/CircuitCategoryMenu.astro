@@ -1,27 +1,10 @@
----
-interface Props { kind: 'simplification' | 'signals'; advanced?: boolean }
-const { kind, advanced = false } = Astro.props;
-const basic = kind === 'signals' ? '/games/quantum-signals/' : '/games/circuit-reduction/';
-const expanded = basic + 'advanced/';
----
-
 <label class="circuit-category" for="circuit-category">Category
-  <select id="circuit-category" data-circuit-category={advanced ? 'advanced' : 'basic'}>
-    <option value={basic} data-category="pro" selected={!advanced}>PRO</option>
-    <option value={expanded} data-category="prop" selected={advanced}>PROP</option>
-    <option value={expanded + '?profile=controlled'} data-category="controlled">Controlled PROP</option>
+  <select id="circuit-category">
+    <option value="pro" selected>PRO</option>
+    <option value="prop">PROP</option>
+    <option value="controlled">Controlled PROP</option>
   </select>
 </label>
-
-<script>
-  for (const select of document.querySelectorAll<HTMLSelectElement>('[data-circuit-category]')) {
-    const active = select.dataset.circuitCategory === 'basic' ? 'pro' :
-      new URLSearchParams(location.search).get('profile') === 'controlled' ? 'controlled' : 'prop';
-    const option = [...select.options].find(option => option.dataset.category === active);
-    if (option) select.value = option.value;
-    select.addEventListener('change', () => location.assign(select.value));
-  }
-</script>
 
 <style>
   .circuit-category { display: grid; grid-column: 1 / -1; gap: .35rem; margin-top: .4rem; font: .85rem var(--font-ui); color: var(--color-muted); }

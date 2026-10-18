@@ -134,6 +134,29 @@ test('controlled rewriting selects targets, consumes controls and respects their
   assert.throws(() => applyMove(readTarget, { rule: 'basis-x', column: 0, wires: [1], reverse: true }), /interrupt/);
 });
 
+test('three alternating CNOTs rewrite to a swap and back in either orientation and under shared controls', () => {
+  for (const profile of ['prop', 'controlled']) for (const reversed of [false, true]) {
+    for (const count of profile === 'prop' ? [0] : [0, 1, 2]) {
+      const wires = count + 2, targets = reversed ? [1, 0] : [0, 1];
+      const controls = Array.from({ length: count }, (_, index) => index + 2);
+      const [first, second] = targets, cx = (control, target) => [op('X', [target], [control, ...controls])];
+      const circuit = { wires, columns: [cx(first, second), cx(second, first), cx(first, second)] };
+      const original = structuredClone(circuit), move = { rule: 'swap-cnot', column: 0, wires: targets, controls };
+      const result = applyMove(circuit, move, { profile });
+      assert.deepEqual(result.columns, [[], [op('SWAP', [0, 1], controls.length ? controls : undefined)], []]);
+      assert.deepEqual(applyMove(result, { ...move, reverse: true }, { profile }), validateCircuit(circuit, profile));
+      assert.ok(getLegalMoves(circuit, { profile, selection: selectionCells(move, { profile }) })
+        .some(candidate => candidate.rule === 'swap-cnot' && !candidate.reverse));
+      const state = Array.from({ length: 2 ** wires }, (_, index) => Math.sin(index + .37));
+      close(simulate(circuit, state, profile), simulate(result, state, profile));
+      assert.deepEqual(circuit, original);
+    }
+  }
+  const remote = { wires: 3, columns: [[op('X', [2], [0])], [op('X', [0], [2])], [op('X', [2], [0])]] };
+  assert.throws(() => applyMove(remote, { rule: 'swap-cnot', column: 0, wires: [0, 2] }, { profile: 'prop' }), /consecutive/);
+  assert.equal(getLegalMoves(remote, { profile: 'prop', allowedRules: ['swap-cnot'] }).length, 0);
+});
+
 test('PROP retains full linked-gate selections and rejects new controlled generators', () => {
   const circuit = { wires: 2, columns: [[op('Z', [1], [0])], [op('Z', [1], [0])]] };
   const move = { rule: 'cancel-z', column: 0, wires: [1], controls: [0] };
@@ -190,6 +213,31 @@ test('identity validation retains global phase and flow traces agree with direct
   close(flowTrace(circuit).snapshots.at(-1), simulate(circuit));
 });
 
+test('advanced campaigns teach the features added by their category', () => {
+  for (const game of ['simplification', 'signals']) {
+    const prop = getLevels('prop', game), controlled = getLevels('controlled', game);
+    assert.ok(![...prop, ...controlled].some(level => level.title === 'Change the target basis'));
+    assert.ok(controlled.every(level => !prop.some(previous => previous.title === level.title)),
+      'Controlled PROP has its own lessons instead of repeating the PROP campaign');
+    for (const campaign of [prop, controlled]) assert.deepEqual(campaign.map(level => level.id),
+      Array.from({ length: campaign.length }, (_, index) => index + 1));
+    for (const level of controlled) {
+      if (game === 'simplification') {
+        assert.ok(level.solution.filter(move => move.rule !== 'tidy').every(move => move.controls?.length),
+          level.title + ' applies equations under shared controls');
+      } else {
+        assert.ok(level.holes.some(hole => hole.controls?.length &&
+          (hole.controls.length > 1 || hole.choices.includes('H') || hole.choices.includes('SWAP'))),
+          level.title + ' uses a constructor unavailable in PROP');
+      }
+    }
+  }
+  assert.ok(getLevels('prop').some(level => level.title === 'Three crossings'));
+  const lesson = getLevels('prop').find(level => level.title === 'Three CNOTs make a swap');
+  assert.ok(lesson.solution.some(move => move.rule === 'swap-cnot'));
+  assert.ok(getTutorial('prop').steps.some(step => step.move.rule === 'swap-cnot'));
+});
+
 test('categorical campaigns and tutorials have executable exact witnesses', () => {
   for (const profile of ['prop', 'controlled']) {
     for (const level of [...getLevels(profile), getTutorial(profile)]) {
@@ -209,7 +257,7 @@ test('categorical campaigns and tutorials have executable exact witnesses', () =
 });
 
 test('seeded categorical generators preserve witnesses, profiles and nontrivial targets', () => {
-  const signatures = new Set();
+  const signatures = new Set(), cnotPositions = new Set(), cnotOrientations = new Set();
   for (const profile of ['prop', 'controlled']) for (const difficulty of [1, 2, 3]) for (let seed = 0; seed < 20; seed++) {
     const puzzle = randomIdentity(profile, { seed, difficulty });
     assert.deepEqual(randomIdentity(profile, { seed, difficulty }), puzzle);
@@ -217,6 +265,13 @@ test('seeded categorical generators preserve witnesses, profiles and nontrivial 
     assert.equal(isIdentity(puzzle.circuit), true);
     assert.equal(verifySolution(puzzle.circuit, puzzle.solution, profile), true, profile + ' ' + difficulty + ' ' + seed);
     signatures.add(JSON.stringify(puzzle.circuit));
+    if (difficulty > 1) {
+      assert.equal(puzzle.solution.filter(move => move.rule === 'swap-cnot').length, 1,
+        'Medium and hard puzzles use the CNOT-to-SWAP equation alongside other rule families');
+      const moves = getLegalMoves(puzzle.circuit, { profile, allowedRules: ['swap-cnot'] }).filter(move => !move.reverse);
+      assert.ok(moves.length);
+      for (const move of moves) { cnotPositions.add(move.column); cnotOrientations.add(move.wires[0] < move.wires[1]); }
+    }
     const signals = generateSignals(profile, { seed, difficulty });
     assert.deepEqual(generateSignals(profile, { seed, difficulty }), signals);
     validateSignals(signals, profile);
@@ -229,14 +284,16 @@ test('seeded categorical generators preserve witnesses, profiles and nontrivial 
     }
   }
   assert.ok(signatures.size >= 70, 'generated circuit diversity: ' + signatures.size);
+  assert.ok(cnotPositions.size >= 3, 'CNOT triples appear at different positions');
+  assert.equal(cnotOrientations.size, 2, 'Both alternating CNOT orientations are generated');
 });
 
 test('categorical custom data rejects malformed choices, target vectors, profiles and resource excesses', () => {
-  const puzzle = getLevels('controlled', 'signals')[0];
+  const puzzle = getLevels('controlled', 'signals').find(level => level.title === 'Unequal branches');
   assert.throws(() => validateSignals({ ...puzzle, holes: Array(7).fill(puzzle.holes[0]) }), /1–6/);
   assert.throws(() => validateSignals({ ...puzzle, target: [Infinity, 0, 0, 0] }), /normalized/);
   assert.throws(() => validateSignals({ ...puzzle, holes: [{ wires: [0, 1], choices: ['I', 'H'] }] }), /target/);
-  assert.throws(() => fillSignals(puzzle, ['H']), /offered/);
+  assert.throws(() => fillSignals(puzzle, ['SWAP']), /offered/);
   assert.throws(() => solveSignals(puzzle, { limit: 99999 }), /4096/);
   assert.throws(() => randomIdentity('unknown', { seed: 0 }), /PROP/);
   assert.throws(() => generateSignals('prop', { seed: 0, difficulty: 4 }), /difficulty/);

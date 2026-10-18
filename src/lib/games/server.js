@@ -8,9 +8,14 @@ import { DAILY_START as GRAPH_START, dailyPuzzle as graphDaily } from '../graph-
 import { getBoard as graphBoard, validateSubmission as graphSubmission, MAX_SUBMISSION_BYTES as GRAPH_BYTES } from '../graph-states/leaderboard.js';
 import { optimalShots } from '../graph-states/engine.js';
 import { MAX_SUBMISSION_BYTES, SubmissionError } from './submission.js';
+import { createLevelLeaderboard } from '../categorical-circuits/leaderboard.js';
 
 // Games share transport; each validates its own score or completion record.
 const games = {
+  'circuit-reduction-prop': createLevelLeaderboard('simplification', 'prop'),
+  'circuit-reduction-controlled': createLevelLeaderboard('simplification', 'controlled'),
+  'quantum-signals-prop': createLevelLeaderboard('signals', 'prop'),
+  'quantum-signals-controlled': createLevelLeaderboard('signals', 'controlled'),
   'quantum-golf': {
     getBoard: golfBoard, validateSubmission: golfSubmission,
     startDate: GOLF_START, maxBytes: MAX_SUBMISSION_BYTES,

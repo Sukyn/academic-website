@@ -1,0 +1,50 @@
+---
+import GameWinDialog from './GameWinDialog.astro';
+interface Props {
+  unit?: string;
+  completionOnly?: boolean;
+  title?: string;
+  closeLabel?: string;
+  sharing?: boolean;
+  daily?: boolean;
+}
+const { unit = 'Moves', completionOnly = false, title, closeLabel, sharing = true, daily = true } = Astro.props;
+const ranked = !completionOnly;
+---
+
+<GameWinDialog title={title} closeLabel={closeLabel}>
+  {ranked && daily && <p id="win-practice" hidden>Practice completed.</p>}
+  <form class="score-form" id="score-form">
+    <label for="player-name">Name or nickname</label>
+    <input id="player-name" name="name" type="text" maxlength="48" pattern=".{1,24}" required autocomplete="nickname" autofocus />
+    <button class="button" id="submit-score" type="submit">{completionOnly ? 'Save completion' : 'Validate'}</button>
+  </form>
+  <div id="win-results" hidden>
+    {ranked && <p id="player-rank" role="status"></p>}
+    <div class="ranking" tabindex="0" role="region" aria-label={completionOnly ? 'Completed players for this result' : 'Your leaderboard position'}>
+      <table><thead><tr>{!completionOnly && <th scope="col">Rank</th>}<th scope="col">Player</th><th scope="col">{completionOnly ? 'Completed' : unit}</th></tr></thead><tbody id="result-leaderboard-body"></tbody></table>
+    </div>
+  </div>
+  <div class="result-actions" id="result-actions" hidden={ranked}>
+    <button class="button ghost" id="try-again" type="button">Try again</button>
+    <button class="button" id="result-next" type="button">Next level</button>
+    <slot name="result-actions" />
+  </div>
+  {daily && <div id="daily-result-actions" class="daily-replay-actions" hidden></div>}
+  <details class="advanced-features" id="result-advanced-features">
+    <summary>Advanced</summary>
+    <div class="replay-actions" id="result-replay-actions">
+      <button class="button ghost" id="replay-result" type="button">See the replay</button>
+      {sharing && <button class="button ghost" id="share-result" type="button" hidden>{completionOnly ? 'Share your replay' : 'Share your score'}</button>}
+    </div>
+    <form class="score-form" id="nickname-form" hidden>
+      <label for="nickname-value">Saved nickname</label>
+      <input id="nickname-value" type="text" maxlength="48" pattern=".{1,24}" required autocomplete="nickname" />
+      <button class="button ghost" id="nickname-save" type="submit">Save</button>
+      <button class="button ghost" id="nickname-forget" type="button">Forget</button>
+      <p class="message" id="nickname-status" role="status"></p>
+    </form>
+  </details>
+  <p class="message" id="score-status" role="status" aria-live="polite"></p>
+  {daily && <button class="button" id="check-daily-puzzles" type="button" hidden>Check other daily puzzles</button>}
+</GameWinDialog>

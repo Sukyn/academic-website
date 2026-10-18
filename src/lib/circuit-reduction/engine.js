@@ -1,5 +1,6 @@
 // Reversible rules from the outreach PDF, its solved missions, and the Unity game.
 // Rows are wires, columns are freely adjustable identity slots.
+import { expandSelection } from '../games/circuit-selection.js';
 export { seededRandom } from '../games/random.js';
 export const EMPTY = '.';
 // Width is a layout choice, not a limit on the paper circuit. Replay/API callers
@@ -147,6 +148,40 @@ export function validateCircuit(circuit) {
 
 function matches(circuit, pattern, row, column) {
   return pattern.every((line, y) => line.every((cell, x) => circuit[row + y]?.[column + x] === cell));
+}
+
+/** Linked endpoints are selected together; plain cells keep their own key. */
+export function gateCells(circuit, key) {
+  if (typeof key !== 'string' || !/^\d+:\d+$/.test(key)) throw new RangeError('Choose cells inside this circuit.');
+  const [row, column] = key.split(':').map(Number), symbol = circuit[row]?.[column];
+  if (symbol === undefined) throw new RangeError('Choose cells inside this circuit.');
+  const cell = row + ':' + column;
+  return symbol.endsWith('U') ? [cell, (row + 1) + ':' + column] :
+    symbol.endsWith('D') ? [cell, (row - 1) + ':' + column] : [cell];
+}
+
+/** Match rule windows together with their linked endpoints. */
+export function getSelectionMoves(circuit, selection, { allowedRules } = {}) {
+  if (!Array.isArray(selection) && !(selection instanceof Set)) throw new RangeError('Choose cells inside this circuit.');
+  const linked = key => gateCells(circuit, key), selected = expandSelection(selection, linked);
+  if (!selected.size) return [];
+  let column = Infinity, lastColumn = 0;
+  for (const cell of selected) {
+    const current = Number(cell.split(':')[1]);
+    column = Math.min(column, current); lastColumn = Math.max(lastColumn, current);
+  }
+  const width = lastColumn - column + 1;
+  if (!RULES.some(rule => rule.left[0].length === width)) return [];
+  const moves = [];
+  for (let row = 0; row < circuit.length; row++) for (let height = 1; row + height <= circuit.length; height++) {
+    const candidates = getLegalMoves(circuit, { allowedRules, window: { row, column, height, width } });
+    if (!candidates.length) continue;
+    const cells = [];
+    for (let y = row; y < row + height; y++) for (let x = column; x < column + width; x++) cells.push(y + ':' + x);
+    const window = expandSelection(cells, linked);
+    if (window.size === selected.size && [...window].every(cell => selected.has(cell))) moves.push(...candidates);
+  }
+  return moves;
 }
 
 export function getLegalMoves(circuit, { allowedRules, window } = {}) {

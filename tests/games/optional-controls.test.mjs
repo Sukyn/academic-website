@@ -16,7 +16,7 @@ function controls(ids) {
   return id => nodes.get(id) ?? null;
 }
 
-test('unranked games share mode controls without rendering daily controls', () => {
+test('games share mode controls without rendering daily controls', () => {
   const get = controls(['mode-tutorial', 'mode-campaign', 'mode-random']);
   for (const mode of ['tutorial', 'campaign', 'random']) {
     updateModeMenu(get, mode);
@@ -52,17 +52,44 @@ for (const optional of [[], ['check-daily-puzzles'], ['daily-games']]) {
   });
 }
 
-test('shared overlay fixtures retain original defaults and omit rankings for advanced games', async () => {
+test('shared result fixtures keep campaign boards while daily and sharing controls are optional', async () => {
   const component = async name => (await readFile(new URL(`../../src/components/games/${name}.astro`, import.meta.url), 'utf8'))
     .replace(/^---[\s\S]*?---/, '');
-  const defaults = await expandGameControls('<GameRulesDialog><p>Rules content</p></GameRulesDialog><GameWinDialog><button id="result-next">Next</button></GameWinDialog><GameRoundControls />', component);
+  const defaults = await expandGameControls('<GameRulesDialog><p>Rules content</p></GameRulesDialog><GameResultDialog><Fragment slot="result-actions"><button id="forwarded-action">Forwarded</button></Fragment></GameResultDialog><GameRoundControls />', component);
   assert.match(defaults, /id="rules-dialog"/); assert.match(defaults, /<p>Rules content<\/p>/);
   assert.match(defaults, /aria-label="Close popup"/); assert.match(defaults, /id="win-title">GG/);
   assert.match(defaults, /id="show-results"/); assert.match(defaults, />Scores<\/button>/);
   assert.match(defaults, /id="result-next"/);
-  const advanced = await expandGameControls('<GameWinDialog title="Circuit complete" closeLabel="Close result"><button id="try-again">Try again</button></GameWinDialog><GameRoundControls results={false}><button id="tidy">Tidy</button></GameRoundControls><GameHoleControls /><GameAutofocus />', component);
+  for (const id of ['score-form', 'share-result', 'player-name', 'check-daily-puzzles', 'daily-result-actions', 'forwarded-action']) {
+    assert.match(defaults, new RegExp(`id="${id}"`));
+  }
+  const advanced = await expandGameControls('<GameResultDialog title="Circuit complete" closeLabel="Close result" sharing={false} daily={false} /><GameRoundControls><button id="tidy">Tidy</button></GameRoundControls><GameHoleControls /><GameAutofocus />', component);
   assert.match(advanced, /id="win-title">Circuit complete/); assert.match(advanced, /aria-label="Close result"/);
-  for (const id of ['undo', 'restart', 'tidy', 'erase-gate', 'autofocus']) assert.match(advanced, new RegExp(`id="${id}"`));
-  for (const id of ['show-results', 'score-form', 'share-dialog', 'player-name', 'check-daily-puzzles']) assert.doesNotMatch(advanced, new RegExp(`id="${id}"`));
+  for (const id of ['undo', 'restart', 'tidy', 'erase-gate', 'autofocus', 'show-results', 'score-form', 'player-name',
+    'result-leaderboard-body', 'player-rank', 'nickname-form', 'replay-result']) assert.match(advanced, new RegExp(`id="${id}"`));
+  for (const id of ['share-dialog', 'share-result', 'win-practice', 'daily-result-actions', 'check-daily-puzzles']) {
+    assert.doesNotMatch(advanced, new RegExp(`id="${id}"`));
+  }
   assert.match(advanced, /id="autofocus"[^>]*aria-pressed="false"/);
+  const completed = await expandGameControls('<GameResultDialog completionOnly sharing={false} daily={false} />', component);
+  assert.match(completed, />Save completion<\/button>/); assert.match(completed, /<th scope="col">Completed<\/th>/);
+  assert.doesNotMatch(completed, /id="player-rank"|<th scope="col">Rank<\/th>/);
+  assert.match(completed, /id="result-actions"\s*>/);
+  assert.doesNotMatch(completed, /id="daily-result-actions"/);
+  const dailyCompleted = await expandGameControls('<GameResultDialog completionOnly />', component);
+  assert.match(dailyCompleted, /id="daily-result-actions"/);
+  assert.match(dailyCompleted, /id="replay-result"/);
+  assert.match(dailyCompleted, />Share your replay<\/button>/);
+  assert.doesNotMatch(dailyCompleted, /id="win-practice"|id="player-rank"|<th scope="col">Rank<\/th>/);
+});
+
+test('circuit host fixtures retain only the active PRO controls', async () => {
+  const component = async name => (await readFile(new URL(`../../src/components/games/${name}.astro`, import.meta.url), 'utf8'))
+    .replace(/^---[\s\S]*?---/, '');
+  const html = await expandGameControls('<CircuitGame kind="signals"><div id="signal-board"></div><GameRoundControls /><CategoricalCircuitGame kind="signals" slot="categorical" /></CircuitGame><template><div id="signal-board"></div></template>', component);
+  assert.match(html, /data-circuit-game="signals"/);
+  assert.match(html, /data-pro-game/);
+  assert.equal([...html.matchAll(/id="signal-board"/g)].length, 1);
+  assert.equal([...html.matchAll(/id="undo"/g)].length, 1);
+  assert.doesNotMatch(html, /<template|<CategoricalCircuitGame|data-categorical-game/);
 });

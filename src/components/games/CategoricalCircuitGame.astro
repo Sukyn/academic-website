@@ -8,18 +8,17 @@ import GamePuzzleJsonDialog from './GamePuzzleJsonDialog.astro';
 import GameReviewControls from './GameReviewControls.astro';
 import GameRoundControls from './GameRoundControls.astro';
 import GameRulesDialog from './GameRulesDialog.astro';
-import GameWinDialog from './GameWinDialog.astro';
+import GameResultDialog from './GameResultDialog.astro';
+import GameLeaderboard from './GameLeaderboard.astro';
 import GameHoleControls from './GameHoleControls.astro';
 import GameAutofocus from './GameAutofocus.astro';
 import CircuitCategoryMenu from './CircuitCategoryMenu.astro';
-import '../../styles/quantum-signals.css';
 import '../../styles/categorical-circuits.css';
 
 interface Props { kind: 'simplification' | 'signals' }
 const { kind } = Astro.props;
 const signals = kind === 'signals';
 const title = signals ? 'Quantum signals' : 'Circuit simplification';
-const original = signals ? '/games/quantum-signals/' : '/games/circuit-reduction/';
 const tools = [
   { value: 'select', label: 'Select' },
   { value: 'H', label: 'H' },
@@ -34,14 +33,14 @@ const tools = [
 
 <div id="categorical-game" class="categorical-game" data-categorical-game data-kind={kind}>
   <GameShell daily={false}>
-    <a class="back" href={original}>← {title}</a>
-    <h1>{title} · Advanced</h1>
+    <a class="back" href="/games/">← Games</a>
+    <h1>{title}</h1>
     <div class="game-layout">
-      <GameModeMenu daily={false}><CircuitCategoryMenu kind={kind} advanced /></GameModeMenu>
+      <GameModeMenu daily={false}><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={[]} daily={false} />
         <GameTutorial intro={signals ? 'Fill the holes to match the target paths.' : 'Reach the identity using swaps and circuit equations.'} />
-        <section aria-label={`${title}, advanced circuits`}>
+        <section aria-label={title}>
           <p id="move-count" class="categorical-count" role="status" hidden={signals}>0 moves</p>
           <div class="game-scroll categorical-scroll" id="categorical-scroll" role="region" aria-label="Circuit board. Scroll horizontally to explore longer circuits." tabindex="0">
             <div id="categorical-board" role="group" aria-label="Quantum circuit"></div>
@@ -59,7 +58,7 @@ const tools = [
               <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
             </div>
           </div>
-          <GameRoundControls results={false}>
+          <GameRoundControls resultLabel={signals ? 'Result' : 'Scores'}>
             <button class="button ghost" id="tidy" type="button">Tidy</button>
             <button class="button ghost" id="add-space" type="button">Add column</button>
           </GameRoundControls>
@@ -118,6 +117,7 @@ const tools = [
           </section>
           <noscript>Enable JavaScript to play.</noscript>
         </section>
+        <GameLeaderboard completionOnly={signals} hidden />
       </div>
     </div>
 
@@ -140,13 +140,6 @@ const tools = [
       </p>
     </GameRulesDialog>
     <GamePuzzleJsonDialog />
-    <GameWinDialog title="Circuit complete" closeLabel="Close result">
-      <div class="categorical-actions">
-        <button class="button ghost" id="try-again" type="button">Try again</button>
-        <button class="button" id="result-next" type="button">Next level</button>
-      </div>
-    </GameWinDialog>
+    <GameResultDialog title="Circuit complete" closeLabel="Close result" completionOnly={signals} sharing={false} daily={false} />
   </GameShell>
 </div>
-
-<script>import '../../scripts/categorical-circuits.js';</script>

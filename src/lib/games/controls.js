@@ -10,6 +10,16 @@ export function updateModeMenu(get, mode, disabled = false, saving = false) {
   if (checkDaily) { checkDaily.hidden = mode !== 'daily'; checkDaily.disabled = saving; }
 }
 
+/** Daily results expose replay and sharing; Advanced keeps nickname settings. */
+export function updateResultMenu(get, isDaily) {
+  const actions = get('result-replay-actions'), daily = get('daily-result-actions');
+  const advanced = get('result-advanced-features');
+  const destination = isDaily ? daily : advanced;
+  if (actions.parentElement !== destination) destination.appendChild(actions);
+  daily.hidden = !isDaily;
+  advanced.hidden = isDaily && get('nickname-form').hidden;
+}
+
 /** Common overlay actions; each game still decides which controls are enabled. */
 export function bindGameDialogs(get = id => document.getElementById(id), extraDialogs = []) {
   const win = get('win-dialog'), dialogs = [win];

@@ -5,13 +5,13 @@ import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
-import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
+import { bindGameDialogs, ignoresGameShortcut, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderGolfInstruction } from '../lib/games/tutorial-gates.js';
 import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { validateCustomPuzzle } from '../lib/quantum-golf/custom-puzzle.js';
 import { DAILY_START } from '../lib/quantum-golf/daily.js';
-import { GOLF_TUTORIAL } from '../lib/quantum-golf/tutorial.js';
+import { GOLF_TUTORIAL, TUTORIAL_INTRO } from '../lib/quantum-golf/tutorial.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const VIEW_STEPS = { ArrowLeft: [-30, 0], ArrowRight: [30, 0], ArrowUp: [0, -30], ArrowDown: [0, 30] };
@@ -19,10 +19,8 @@ const get = id => document.getElementById(id);
 const onClick = (id, action) => get(id).addEventListener('click', action);
 const dialog = get('win-dialog');
 const shareDialog = get('share-dialog');
-const replayGroups = [
-  [get('replay-actions'), get('daily-replay-actions'), document.querySelector('#advanced-features .advanced-panel')],
-  [get('result-replay-actions'), get('daily-result-actions'), get('result-advanced-features')],
-];
+const replayActions = get('replay-actions'), dailyReplayActions = get('daily-replay-actions');
+const replayAdvanced = document.querySelector('#advanced-features .advanced-panel');
 let level = LEVELS[0], campaignLevel = level, freeEpsilon = Number(get('epsilon').value);
 let state = START_STATE, target = level.target, sequence = '';
 let busy = false, picking = false, won = false;
@@ -84,7 +82,7 @@ const customJson = createCustomPuzzleJson({
 tutorial = createTutorial({
   get,
   renderText: renderGolfInstruction,
-  intro: 'Reach the gold target with H and T.',
+  intro: TUTORIAL_INTRO,
   isBlocked: () => daily.loading,
   controls: '.gates button, .round-controls button, #sequence button, .advanced-panel button, #coordinate-form button',
   steps: GOLF_TUTORIAL.moves.map(({ gate, text }) => ({ text, target: '#gate-' + gate.toLowerCase(), action: () => apply(gate) })),
@@ -117,12 +115,10 @@ function update(visibleState) {
   get('review-note').textContent = reviewStep === null ? '' : `Step ${reviewStep} / ${sequence.length}`;
   get('replay').hidden = !sequence;
   for (const id of ['replay', 'replay-result']) get(id).disabled = locked || !sequence || Boolean(stopReplay);
-  for (const [actions, regular, advanced] of replayGroups) {
-    const destination = isDaily ? regular : advanced;
-    if (actions.parentElement !== destination) destination.appendChild(actions);
-    regular.hidden = !isDaily;
-  }
-  get('result-advanced-features').hidden = isDaily && get('nickname-form').hidden;
+  const replayDestination = isDaily ? dailyReplayActions : replayAdvanced;
+  if (replayActions.parentElement !== replayDestination) replayDestination.appendChild(replayActions);
+  dailyReplayActions.hidden = !isDaily;
+  updateResultMenu(get, isDaily);
   for (const id of ['share-score', 'share-result']) {
     get(id).hidden = tutorialMode || !level || !won || !sequence;
     get(id).disabled = locked || Boolean(scores.submitting);

@@ -1,4 +1,4 @@
-import { getRule, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getLegalMoves, isSolved, validateCircuit, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
+import { getRule, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getSelectionMoves, gateCells, isSolved, validateCircuit, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
 import { customCircuit, identityCircuit } from '../lib/circuit-reduction/custom.js';
 import { generatePuzzle } from '../lib/circuit-reduction/generator.js';
 import { spaceGlyph, circuitWires } from '../lib/circuit-reduction/rendering.js';
@@ -12,10 +12,11 @@ import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
-import { bindGameDialogs, handleRoundShortcut, rectangleCells, updateModeMenu } from '../lib/games/controls.js';
+import { bindGameDialogs, handleRoundShortcut, rectangleCells, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
+import { expandSelection, toggleSelection } from '../lib/games/circuit-selection.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../lib/circuit-reduction/tutorial.js';
+import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/circuit-reduction/tutorial.js';
 
 const GAME = 'circuit-reduction';
 const get = id => document.getElementById(id);
@@ -28,6 +29,7 @@ let circuit = level.circuit, sequence = [], states = [circuit];
 let boardLocked, animation;
 function cancelAnimation() { const current = animation; animation = null; current?.cancel(); }
 let selection = new Set();
+const linkedCells = key => gateCells(circuit, key);
 let searchWorker, guide;
 const tutorialLocked = () => guide?.active && !guide.executing;
 let touchPress, selectionDrag, selectionAnchor = null, suppressBoardClick = false;
@@ -90,7 +92,7 @@ guide = createTutorial({
   get, isBlocked: () => daily.loading,
   renderText: (node, text) => renderCircuitInstruction(node, text, { singleWire: true }),
   controls: '[data-cell], [data-space], [data-rule], #undo, #restart, #compact-identities, #replay, #replay-result, #share-score, #share-result, #show-results',
-  intro: 'Reach the identity: empty wires that leave every input unchanged. Choose a rule matching the selected gates.',
+  intro: TUTORIAL_INTRO,
   onReset: () => setPuzzle('tutorial', { circuit: cloneCircuit(TUTORIAL_CIRCUIT), optimalMoves: null }),
   onLeave: () => { cancelAnimation(); review.clear(); clearSelection(); },
   steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => ({
@@ -103,6 +105,7 @@ guide = createTutorial({
       for (let row = 0; row < rule.left.length; row++) {
         for (let column = 0; column < rule.left[0].length; column++) selection.add(`${move.row + row}:${move.column + column}`);
       }
+      selection = expandSelection(selection, linkedCells);
       updateSelection();
       get('circuit-board').querySelector(`[data-cell="${move.row}:${move.column + Math.floor(rule.left[0].length / 2)}"]`)
         ?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
@@ -116,16 +119,7 @@ guide = createTutorial({
   })),
 });
 function matchingSelection() {
-  if (!selection.size) return [];
-  let row = Infinity, column = Infinity, lastRow = 0, lastColumn = 0;
-  for (const cell of selection) {
-    const [y, x] = cell.split(':').map(Number);
-    row = Math.min(row, y); column = Math.min(column, x);
-    lastRow = Math.max(lastRow, y); lastColumn = Math.max(lastColumn, x);
-  }
-  const height = lastRow - row + 1, width = lastColumn - column + 1;
-  if (selection.size !== height * width) return [];
-  return getLegalMoves(circuit, { allowedRules: allowedRules(), window: { row, column, height, width } });
+  return getSelectionMoves(circuit, selection, { allowedRules: allowedRules() });
 }
 
 function updateSelection() {
@@ -133,7 +127,7 @@ function updateSelection() {
   update({ board: false });
 }
 function selectRectangle(start, end) {
-  selection = rectangleCells(start, end);
+  selection = expandSelection(rectangleCells(start, end), linkedCells);
   updateSelection();
 }
 
@@ -214,14 +208,11 @@ function update({ board = true } = {}) {
   get('replay').hidden = mode === 'tutorial' || editing || !sequence.length;
   get('replay-actions').hidden = get('replay').hidden;
   for (const id of ['share-score', 'share-result']) { get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = Boolean(animation) || daily.loading; }
-  for (const [share, daily, regular] of [
-    [get('share-score'), get('daily-replay-actions'), get('replay-actions')],
-    [get('share-result'), get('daily-result-actions'), get('result-replay-actions')],
-  ]) {
-    const destination = mode === 'daily' ? daily : regular;
-    if (share.parentElement !== destination) destination.appendChild(share);
-    daily.hidden = mode !== 'daily' || share.hidden;
-  }
+  const share = get('share-score'), dailyActions = get('daily-replay-actions');
+  const shareDestination = mode === 'daily' ? dailyActions : get('replay-actions');
+  if (share.parentElement !== shareDestination) shareDestination.appendChild(share);
+  dailyActions.hidden = mode !== 'daily' || share.hidden;
+  updateResultMenu(get, mode === 'daily');
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : `Step ${review.step} / ${sequence.length}`;
   get('show-results').hidden = mode === 'tutorial' || !won || !sequence.length;
@@ -342,7 +333,7 @@ get('circuit-board').addEventListener('click', event => {
   if (!cell || cell.disabled) return;
   if (event.shiftKey && selectionAnchor) { selectRectangle(selectionAnchor, cell.dataset.cell); return; }
   const key = selectionAnchor = cell.dataset.cell;
-  if (selection.has(key)) selection.delete(key); else selection.add(key);
+  selection = toggleSelection(selection, linkedCells(key), linkedCells);
   // Keep the tapped/focused cell in place; updating selection should not rebuild the board.
   updateSelection();
 });

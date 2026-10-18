@@ -1,0 +1,11 @@
+---
+interface Props { kind: 'simplification' | 'signals' }
+const { kind } = Astro.props;
+---
+
+<div data-circuit-game={kind}>
+  <div data-pro-game><slot /></div>
+  <template data-categorical-template><slot name="categorical" /></template>
+</div>
+
+<script>import '../../scripts/circuit-game.js';</script>

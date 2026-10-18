@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, ignoresGameShortcut,
-  rectangleCells, updateModeMenu } from '../../src/lib/games/controls.js';
+  rectangleCells, updateModeMenu, updateResultMenu } from '../../src/lib/games/controls.js';
 
 for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect disabled controls and backdrop boundaries (${extraDialogs.length ? 'with guide' : 'default'})`, () => {
   const nodes = new Map();
@@ -73,6 +73,51 @@ test('daily navigation is visible only in Daily mode and save locks reset withou
     assert.equal(get('check-daily-puzzles').hidden, mode !== 'daily');
     assert.equal(get('check-daily-puzzles').disabled, saving);
   }
+});
+
+test('daily result menus move existing replay controls and retain nickname management', () => {
+  const nodes = new Map();
+  const get = id => {
+    if (!nodes.has(id)) nodes.set(id, { children: [], hidden: false, open: false, appends: 0, listeners: new Map(),
+      appendChild(child) {
+        if (child.parentElement) child.parentElement.children.splice(child.parentElement.children.indexOf(child), 1);
+        child.parentElement = this; this.children.push(child); this.appends++;
+        return child;
+      },
+      addEventListener(name, action) { this.listeners.set(name, action); },
+      click() { this.listeners.get('click')?.(); },
+    });
+    return nodes.get(id);
+  };
+  const actions = get('result-replay-actions'), advanced = get('result-advanced-features');
+  const daily = get('daily-result-actions'), nickname = get('nickname-form');
+  advanced.appendChild(actions); advanced.appendChild(nickname); advanced.open = true;
+  const replay = get('replay-result'), share = get('share-result');
+  actions.appendChild(replay); actions.appendChild(share);
+  let replays = 0, shares = 0;
+  replay.addEventListener('click', () => replays++); share.addEventListener('click', () => shares++);
+  nickname.hidden = true;
+
+  updateResultMenu(get, true);
+  assert.equal(actions.parentElement, daily); assert.equal(daily.hidden, false);
+  assert.equal(advanced.hidden, true, 'Daily results hide the empty Advanced disclosure');
+  assert.deepEqual(actions.children, [replay, share], 'Replay and Share move together');
+  const appends = daily.appends;
+  updateResultMenu(get, true);
+  assert.equal(daily.appends, appends, 'Repeated rendering does not move an already placed block');
+  replay.click(); share.click();
+  assert.deepEqual([replays, shares], [1, 1], 'Moving controls preserves their listeners');
+
+  nickname.hidden = false; updateResultMenu(get, true);
+  assert.equal(advanced.hidden, false, 'A saved nickname remains editable during daily play');
+  assert.equal(nickname.parentElement, advanced);
+  nickname.hidden = true; updateResultMenu(get, true);
+  assert.equal(advanced.hidden, true, 'Forgetting the nickname removes the empty disclosure');
+
+  updateResultMenu(get, false);
+  assert.equal(actions.parentElement, advanced); assert.equal(daily.hidden, true);
+  assert.equal(advanced.hidden, false); assert.equal(advanced.open, true, 'Mode changes preserve the disclosure state');
+  replay.click(); share.click(); assert.deepEqual([replays, shares], [2, 2]);
 });
 
 test('shared shortcut guard protects editing and dialogs without swallowing game-specific modifiers', context => {

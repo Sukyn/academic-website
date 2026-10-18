@@ -10,6 +10,7 @@ import GameJsonActions from '../../components/games/GameJsonActions.astro';
 import GameRoundControls from '../../components/games/GameRoundControls.astro';
 import GameReviewControls from '../../components/games/GameReviewControls.astro';
 import { LEVELS } from '../../lib/graph-states/puzzles.js';
+import { TUTORIAL_INTRO } from '../../lib/graph-states/tutorial.js';
 import { CORRECTION_LABELS } from '../../lib/graph-states/correction-graphics.js';
 import '../../styles/graph-states.css';
 ---
@@ -22,15 +23,15 @@ import '../../styles/graph-states.css';
       <GameModeMenu />
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
-        <GameTutorial />
+        <GameTutorial intro={TUTORIAL_INTRO} />
         <section class="graph-game" aria-label="Graph states">
           <div class="graph-workspace">
             <div class="graph-board-panel">
-              <div id="graph-board" aria-label="Playable graph"></div>
+              <div id="graph-board" class="graph-canvas" aria-label="Playable graph"></div>
             </div>
             <div class="graph-target-panel">
               <h2>Target</h2>
-              <div id="graph-target" role="img" aria-label="Target chain"></div>
+              <div id="graph-target" class="graph-canvas" role="img" aria-label="Target chain"></div>
             </div>
           </div>
           <p class="message" id="shot-count" role="status" hidden></p>

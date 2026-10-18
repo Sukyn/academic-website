@@ -82,9 +82,11 @@ export function operationIcon(operation) {
 // carry their role separately from targets, even when both endpoints are dots.
 export function renderCircuit(container, circuit, {
   selectedCells = [], holes = [], fixedColumns = circuit.columns.length - holes.length,
-  locked = false, interactive = true, width = LEFT + Math.max(1, circuit.columns.length) * CELL_SIZE + 24,
+  locked = false, interactive = true, compact = false, width,
 } = {}) {
   const selected = selectedCells instanceof Set ? selectedCells : new Set(selectedCells);
+  const left = compact ? 0 : LEFT;
+  width ??= left + Math.max(1, circuit.columns.length) * CELL_SIZE + (compact ? 0 : 24);
   const height = TOP * 2 + circuit.wires * ROW_SIZE;
   container.classList.add('categorical-board');
   Object.assign(container.style, { position: 'relative', width: width + 'px', height: height + 'px' });
@@ -92,19 +94,19 @@ export function renderCircuit(container, circuit, {
   const svg = svgNode('svg', { width, height, viewBox: '0 0 ' + width + ' ' + height,
     class: 'categorical-wires', 'aria-hidden': true });
   Object.assign(svg.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
-  const centerX = column => LEFT + (column + .5) * CELL_SIZE;
+  const centerX = column => left + (column + .5) * CELL_SIZE;
   const centerY = wire => TOP + (wire + .5) * ROW_SIZE;
-  const wireEnd = LEFT + Math.max(1, circuit.columns.length) * CELL_SIZE + 8;
+  const wireEnd = left + Math.max(1, circuit.columns.length) * CELL_SIZE + (compact ? 0 : 8);
   const swaps = [];
   circuit.columns.forEach((entries, column) => entries.forEach(operation => {
     if (operation.gate === 'SWAP') swaps.push({ operation, column });
   }));
   for (let wire = 0; wire < circuit.wires; wire++) {
-    let end = 16, path = '';
+    let end = compact ? 0 : 16, path = '';
     for (const { operation, column } of swaps) if (operation.wires.includes(wire)) {
-      const left = LEFT + column * CELL_SIZE;
-      if (left > end) path += `M${end} ${centerY(wire)}H${left}`;
-      end = left + CELL_SIZE;
+      const start = left + column * CELL_SIZE;
+      if (start > end) path += `M${end} ${centerY(wire)}H${start}`;
+      end = start + CELL_SIZE;
     }
     if (end < wireEnd) path += `M${end} ${centerY(wire)}H${wireEnd}`;
     svg.appendChild(svgNode('path', { d: path, fill: 'none', 'data-wire': wire,
@@ -124,7 +126,7 @@ export function renderCircuit(container, circuit, {
     const targets = operation.wires.map(centerY).sort((a, b) => a - b);
     const crossing = (targets[0] + targets[1]) / 2;
     controlLink(svg, centerX(column), [crossing], (operation.controls ?? []).map(centerY));
-    crossedWires(svg, LEFT + column * CELL_SIZE, LEFT + (column + 1) * CELL_SIZE, ...targets, crossing);
+    crossedWires(svg, left + column * CELL_SIZE, left + (column + 1) * CELL_SIZE, ...targets, crossing);
   }
   const holeCells = new Map();
   holes.forEach((hole, index) => {
@@ -150,7 +152,7 @@ export function renderCircuit(container, circuit, {
     const cell = document.createElement(interactive ? 'button' : 'div');
     cell.className = 'categorical-cell' + (selected.has(key) ? ' is-selected' : '') +
       (hole !== undefined ? ' is-hole' : '');
-    Object.assign(cell.style, { position: 'absolute', left: (LEFT + column * CELL_SIZE) + 'px',
+    Object.assign(cell.style, { position: 'absolute', left: (left + column * CELL_SIZE) + 'px',
       top: (TOP + wire * ROW_SIZE) + 'px', width: CELL_SIZE + 'px', height: ROW_SIZE + 'px',
       display: 'grid', placeItems: 'center', padding: '0', border: '0', background: 'transparent' });
     cell.dataset.cell = key; cell.dataset.target = column + ':' + wire;
@@ -183,6 +185,13 @@ export function renderCircuit(container, circuit, {
     fragment.appendChild(cell);
   }
   container.replaceChildren(fragment);
+}
+
+export function renderRulePreview(container, wires, pattern) {
+  const first = pattern.findIndex(column => column.length);
+  const last = pattern.findLastIndex(column => column.length);
+  const columns = first < 0 ? [[]] : pattern.slice(first, last + 1);
+  renderCircuit(container, { wires, columns }, { interactive: false, compact: true });
 }
 
 export function renderAdvancedFlow(svg, targetSvg, circuit, target, { profile = 'controlled', selectedColumn } = {}) {

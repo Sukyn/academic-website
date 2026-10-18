@@ -10,19 +10,23 @@ import GameJsonActions from '../../components/games/GameJsonActions.astro';
 import GameRoundControls from '../../components/games/GameRoundControls.astro';
 import GameReviewControls from '../../components/games/GameReviewControls.astro';
 import CircuitCategoryMenu from '../../components/games/CircuitCategoryMenu.astro';
+import CircuitGame from '../../components/games/CircuitGame.astro';
+import CategoricalCircuitGame from '../../components/games/CategoricalCircuitGame.astro';
 import { LEVELS } from '../../lib/circuit-reduction/puzzles.js';
+import { TUTORIAL_INTRO } from '../../lib/circuit-reduction/tutorial.js';
 import { RULES } from '../../lib/circuit-reduction/engine.js';
 ---
 
 <BaseLayout title="Circuit simplification" description="Simplify quantum circuits to the identity using reversible rewrite rules. Play levels, custom circuits and a daily puzzle.">
+  <CircuitGame kind="simplification">
   <GameShell>
     <a class="back" href="/games/">← Games</a>
     <h1>Circuit simplification</h1>
     <div class="game-layout">
-      <GameModeMenu><CircuitCategoryMenu kind="simplification" /></GameModeMenu>
+      <GameModeMenu><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
-        <GameTutorial />
+        <GameTutorial intro={TUTORIAL_INTRO} />
         <section aria-label="Circuit simplification">
           <div class="circuit-heading"><p id="move-count" role="status">0 moves</p></div>
           <div class="generator-controls circuit-editor-controls" id="circuit-editor-controls" hidden>
@@ -73,8 +77,9 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
       </Fragment>
     </GameDialogs>
   </GameShell>
+  <CategoricalCircuitGame kind="simplification" slot="categorical" />
+  </CircuitGame>
 </BaseLayout>
-<script>import '../../scripts/circuit-reduction.js';</script>
 <style>
   .circuit-heading { display: flex; align-items: center; margin-top: 1rem; font-family: var(--font-ui); font-size: .9rem; }
   .circuit-heading p { margin: 0 0 .5rem; }

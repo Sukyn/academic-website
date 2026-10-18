@@ -1,9 +1,9 @@
 ---
-interface Props { unit?: string; completionOnly?: boolean }
-const { unit = 'Moves', completionOnly = false } = Astro.props;
+interface Props { unit?: string; completionOnly?: boolean; hidden?: boolean }
+const { unit = 'Moves', completionOnly = false, hidden = false } = Astro.props;
 ---
 
-<section class="leaderboard" id="leaderboard-section" aria-labelledby="leaderboard-title">
+<section class="leaderboard" id="leaderboard-section" aria-labelledby="leaderboard-title" hidden={hidden}>
   <h2 id="leaderboard-title">{completionOnly ? 'Completed by' : 'Leaderboard'}</h2>
   <div class="ranking" tabindex="0" role="region" aria-label={completionOnly ? 'Completed players' : 'Leaderboard scores'}>
     <table><thead><tr>{!completionOnly && <th scope="col">Rank</th>}<th scope="col">Player</th><th scope="col">{completionOnly ? 'Completed' : unit}</th></tr></thead><tbody id="leaderboard-body"></tbody></table>

@@ -14,8 +14,8 @@ import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
-import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, updateModeMenu } from '../lib/games/controls.js';
+import { TUTORIAL_PUZZLE, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/quantum-signals/tutorial.js';
+import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'quantum-signals', get = id => document.getElementById(id);
@@ -134,6 +134,7 @@ function update({ board = true, follow = false, animateFrom = null } = {}) {
   for (const id of ['replay', 'replay-result']) get(id).disabled = daily.loading || !sequence.length || review.playing;
   get('replay').hidden = mode === 'tutorial' || !sequence.length;
   for (const id of ['share-replay', 'share-result']) { get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = daily.loading; }
+  updateResultMenu(get, mode === 'daily');
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : 'Placement ' + review.step + ' / ' + sequence.length;
   renderTimeline(sequence, { step: review.step, disabled: daily.loading });
@@ -262,7 +263,7 @@ const customJson = createCustomPuzzleJson({ get, game: GAME, exportPuzzle: () =>
 } });
 const tutorial = createTutorial({
   renderText: renderCircuitInstruction,
-  get, isBlocked: () => daily.loading, intro: 'Fixed gates prepare the input. Fill the holes on the right to match the target.',
+  get, isBlocked: () => daily.loading, intro: TUTORIAL_INTRO,
   controls: '#signal-board button, .signal-palette button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #circuit-editor-controls button, #custom-details select',
   steps: TUTORIAL_STEPS.map(({ hole, gate, text, target, bits }) => ({
     text, target: target ?? '[data-choice="' + gate + '"]', prepare() {

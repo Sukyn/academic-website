@@ -12,21 +12,25 @@ import GameReviewControls from '../../components/games/GameReviewControls.astro'
 import GameHoleControls from '../../components/games/GameHoleControls.astro';
 import GameAutofocus from '../../components/games/GameAutofocus.astro';
 import CircuitCategoryMenu from '../../components/games/CircuitCategoryMenu.astro';
+import CircuitGame from '../../components/games/CircuitGame.astro';
+import CategoricalCircuitGame from '../../components/games/CategoricalCircuitGame.astro';
 import { LEVELS } from '../../lib/quantum-signals/puzzles.js';
+import { TUTORIAL_INTRO } from '../../lib/quantum-signals/tutorial.js';
 import { GATES } from '../../lib/quantum-signals/engine.js';
 import { gateLabel } from '../../lib/quantum-signals/rendering.js';
 import '../../styles/quantum-signals.css';
 ---
 
 <BaseLayout title="Quantum signals" description="Fill the holes in a quantum circuit. Follow superposition, interference and entanglement to reach the target state.">
+  <CircuitGame kind="signals">
   <GameShell>
     <a class="back" href="/games/">← Games</a>
     <h1>Quantum signals</h1>
     <div class="game-layout">
-      <GameModeMenu><CircuitCategoryMenu kind="signals" /></GameModeMenu>
+      <GameModeMenu><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
-        <GameTutorial />
+        <GameTutorial intro={TUTORIAL_INTRO} />
         <section aria-label="Quantum signals">
           <div class="game-scroll signal-scroll" id="signal-scroll" role="region" aria-label="Circuit board. Scroll horizontally for longer circuits." tabindex="0">
             <div id="signal-board" aria-label="Circuit with gate holes"></div>
@@ -104,5 +108,6 @@ import '../../styles/quantum-signals.css';
       </Fragment>
     </GameDialogs>
   </GameShell>
+  <CategoricalCircuitGame kind="signals" slot="categorical" />
+  </CircuitGame>
 </BaseLayout>
-<script>import '../../scripts/quantum-signals.js';</script>

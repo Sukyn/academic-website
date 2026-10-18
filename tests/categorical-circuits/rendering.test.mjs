@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderCircuit, renderAdvancedFlow, operationIcon, operationLabel } from '../../src/lib/categorical-circuits/rendering.js';
+import { renderCircuit, renderRulePreview, renderAdvancedFlow, operationIcon, operationLabel } from '../../src/lib/categorical-circuits/rendering.js';
 import { simulate } from '../../src/lib/categorical-circuits/engine.js';
+import { getRule } from '../../src/lib/categorical-circuits/rules.js';
 
 function surface(context) {
   class Node {
@@ -93,6 +94,45 @@ test('Adjacent swaps replace the straight wire spans and keep cell hit areas unc
   assert.equal(cells.length, 4);
   assert.ok(cells.every(cell => cell.style.width === '88px' && cell.style.height === '88px'));
   assert.equal(cells.filter(cell => cell.attrs['aria-pressed'] === 'true').length, 2);
+});
+
+test('Rule previews trim empty edge columns and board margins without changing the equations', context => {
+  const { board } = surface(context);
+  const basis = getRule('basis-x'), original = structuredClone(basis);
+  renderRulePreview(board, basis.wires, basis.right);
+  assert.equal(board.style.width, '88px');
+  const cells = board.querySelectorAll('.categorical-cell');
+  assert.equal(cells.length, 1);
+  assert.equal(cells[0].style.left, '0px');
+  assert.equal(cells[0].tag, 'div');
+  assert.equal(board.querySelector('.categorical-wire').attrs.d, 'M0 52H88');
+  assert.deepEqual(basis, original, 'Preview cropping preserves rule padding used by the engine');
+
+  const cancel = getRule('cancel-swap');
+  renderRulePreview(board, cancel.wires, cancel.left);
+  assert.equal(board.style.width, '176px');
+  assert.ok(board.querySelectorAll('.categorical-wire').every(wire => wire.attrs.d === ''),
+    'Successive swaps have no extra straight lead-in or tail');
+  const paths = board.querySelectorAll('.categorical-swap-path');
+  assert.equal(paths.length, 4);
+  assert.ok(paths[0].attrs.d.startsWith('M0 52 '));
+  assert.ok(paths[3].attrs.d.endsWith('176 52'));
+  renderRulePreview(board, cancel.wires, cancel.right);
+  assert.equal(board.style.width, '88px');
+  assert.deepEqual(board.querySelectorAll('.categorical-wire').map(wire => wire.attrs.d), ['M0 52H88', 'M0 140H88'],
+    'The identity side still shows both wires');
+});
+
+test('Rule previews retain internal empty columns and wires used by crossings', context => {
+  const { board } = surface(context);
+  const pattern = [[], [{ gate: 'SWAP', wires: [0, 1] }], [], [{ gate: 'SWAP', wires: [1, 2] }], []];
+  const original = structuredClone(pattern);
+  renderRulePreview(board, 3, pattern);
+  assert.equal(board.style.width, '264px');
+  assert.equal(board.querySelectorAll('.categorical-cell').length, 9);
+  assert.deepEqual(board.querySelectorAll('.categorical-wire').map(wire => wire.attrs.d),
+    ['M88 52H264', 'M88 140H176', 'M0 228H176']);
+  assert.deepEqual(pattern, original);
 });
 
 test('Adjacent controlled swaps preserve the straight control row and link to the crossing midpoint', context => {

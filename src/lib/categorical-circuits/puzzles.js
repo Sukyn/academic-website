@@ -32,24 +32,30 @@ function cancel(name, targets, controls, wires) {
     solution: [move('cancel-' + name.toLowerCase(), 0, targets, controls), tidyMove()] };
 }
 
-const simplificationLevels = profile => [
+function alternatingCnot(targets, controls = []) {
+  const [first, second] = targets;
+  const cx = (control, target) => op('X', [target], [control, ...controls]);
+  return [cx(first, second), cx(second, first), cx(first, second)];
+}
+
+function cnotSwap(targets = [0, 1], controls = [], wires = 2) {
+  return { circuit: { wires, columns: [...alternatingCnot(targets, controls).map(operation => [operation]), [op('SWAP', targets, controls)]] },
+    solution: [move('swap-cnot', 0, targets, controls), tidyMove(), move('cancel-swap', 0, targets, controls), tidyMove()] };
+}
+
+const simplificationLevels = profile => profile === 'controlled' ? [
+  ['Control the square', cancel('H', [1], [0], 2)],
+  ['Lift a basis change', basis([0], 1, 2)],
+  ['Two controls', cancel('X', [2], [0, 1], 3)],
+  ['Controlled crossing', naturality('H', [0], [1, 2], 3)],
+  ['Controlled braid', braid([1, 2, 3], [0], 4)],
+] : [
   ['Cross twice', cancel('SWAP', [0, 1], [], 2)],
+  ['Three CNOTs make a swap', cnotSwap()],
   ['Carry the square', naturality()],
   ['Three crossings', braid()],
-  ['Change the target basis', {
-    circuit: { wires: 2, columns: [[op('H', [1])], [op('Z', [1], [0])], [op('H', [1])], [op('X', [1], [0])]] },
-    solution: [move('controlled-basis', 0, [0, 1]), tidyMove(), move('cancel-x', 0, [1], [0]), tidyMove()],
-  }],
-  ...(profile === 'controlled' ? [
-    ['Control the square', cancel('H', [1], [0], 2)],
-    ['Lift a basis change', basis([0], 1, 2)],
-    ['Two controls', cancel('X', [2], [0, 1], 3)],
-    ['Controlled crossing', naturality('H', [0], [1, 2], 3)],
-    ['Controlled braid', braid([1, 2, 3], [0], 4)],
-  ] : [
-    ['Carry the phase', naturality('Z')],
-    ['Carry the flip', naturality('X')],
-  ]),
+  ['Carry the phase', naturality('Z')],
+  ['Carry the flip', naturality('X')],
 ];
 
 function signalPuzzle(wires, columns, holes, solution, profile = 'controlled') {
@@ -62,23 +68,36 @@ const crossing = (first, second, controls = []) => hole([first, second], ['I', '
 const paired = (first, second) => hole([first, second], ['I', 'CX', 'XC', 'CZ',
   ...(Math.abs(first - second) === 1 ? ['SWAP'] : [])]);
 
+function cnotSignalPuzzle(profile, { wires = 3, targets = [0, 1], spectator = 2, controls = [], phase = false, flip = false } = {}) {
+  const [first, second] = targets;
+  // Entangle the moved qubit with a spectator so all three CNOTs affect the target.
+  const columns = [
+    ...controls.map(wire => [op('H', [wire])]),
+    [op('H', [first])], [op('X', [spectator], [first])], [op('X', [second])],
+    ...(phase ? [[op('Z', [first])]] : []), ...(flip ? [[op('X', [spectator])]] : []),
+  ];
+  const holes = alternatingCnot(targets, controls).map(operation => profile === 'prop' ?
+    hole(targets, ['I', 'CX', 'XC']) : hole(operation.wires, ['I', 'X'], operation.controls));
+  return signalPuzzle(wires, columns, holes, profile === 'prop' ? ['CX', 'XC', 'CX'] : ['X', 'X', 'X'], profile);
+}
+
 function signalLevels(profile) {
   const puzzle = (...args) => signalPuzzle(...args, profile);
-  return [
+  return profile === 'controlled' ? [
+    ['Unequal branches', puzzle(2, [[op('H', [0])]], [single(1, [0])], ['H'])],
+    ['Two control bits', puzzle(3, [[op('H', [0]), op('H', [1])]], [single(2, [0, 1])], ['X'])],
+    ['Choose which crossing', puzzle(3, [[op('H', [0])], [op('X', [1])]], [crossing(1, 2, [0]), single(2)], ['SWAP', 'Z'])],
+    ['A controlled interference', puzzle(3, [[op('H', [0])], [op('H', [1], [0])]],
+      [crossing(1, 2, [0]), single(2, [0]), single(1)], ['SWAP', 'H', 'X'])],
+    ['Control three CNOTs', cnotSignalPuzzle(profile, { wires: 4, targets: [1, 2], spectator: 3, controls: [0] })],
+  ] : [
     ['Move the excitation', puzzle(2, [[op('X', [0])]], [crossing(0, 1)], ['SWAP'])],
     ['Move a superposition', puzzle(2, [[op('H', [0])]], [crossing(0, 1), single(0)], ['SWAP', 'X'])],
     ['Move a correlation', puzzle(3, [[op('H', [0])], [op('X', [1], [0])]],
       [crossing(1, 2), single(0)], ['SWAP', 'Z'])],
     ['Return to one path', puzzle(3, [[op('H', [0])], [op('X', [1], [0])], [op('SWAP', [1, 2])]],
-      [crossing(1, 2), profile === 'prop' ? paired(0, 1) : single(1, [0]), single(0)],
-      ['SWAP', profile === 'prop' ? 'CX' : 'X', 'H'])],
-    ...(profile === 'controlled' ? [
-      ['Unequal branches', puzzle(2, [[op('H', [0])]], [single(1, [0])], ['H'])],
-      ['Two control bits', puzzle(3, [[op('H', [0]), op('H', [1])]], [single(2, [0, 1])], ['X'])],
-      ['Choose which crossing', puzzle(3, [[op('H', [0])], [op('X', [1])]], [crossing(1, 2, [0]), single(2)], ['SWAP', 'Z'])],
-      ['A controlled interference', puzzle(3, [[op('H', [0])], [op('H', [1], [0])]],
-        [crossing(1, 2, [0]), single(2, [0]), single(1)], ['SWAP', 'H', 'X'])],
-    ] : []),
+      [crossing(1, 2), paired(0, 1), single(0)], ['SWAP', 'CX', 'H'])],
+    ['Three CNOTs make a swap', cnotSignalPuzzle(profile)],
   ];
 }
 
@@ -93,24 +112,38 @@ export function getTutorial(profile, game = 'simplification') {
   profileCheck(profile);
   if (game !== 'simplification' && game !== 'signals') throw new RangeError('Choose a categorical circuit game.');
   if (game === 'signals') {
-    const puzzle = profile === 'controlled' ? signalPuzzle(3, [[op('H', [0])], [op('X', [1])]],
-      [crossing(1, 2), single(2, [0])], ['SWAP', 'H'], profile) : signalPuzzle(2, [[op('H', [0])]],
-      [crossing(0, 1), single(0)], ['SWAP', 'X'], profile);
-    return { ...puzzle, steps: [
-      { text: 'A crossing exchanges neighbouring wires. Choose SWAP to move the lit paths.', hole: 0, gate: 'SWAP' },
-      { text: profile === 'controlled' ? 'A control applies this gate only on paths where its bit is 1. Choose H on that branch.' : 'Choose X to flip the first bit. Match the output paths to the target.', hole: 1, gate: profile === 'controlled' ? 'H' : 'X' },
-    ] };
+    if (profile === 'controlled') return {
+      ...signalPuzzle(3, [[op('H', [0])], [op('X', [1])]],
+        [crossing(1, 2, [0]), single(2, [0])], ['SWAP', 'H'], profile),
+      steps: [
+        { text: 'Choose SWAP. The control exchanges these wires only on paths whose first bit is 1.', hole: 0, gate: 'SWAP' },
+        { text: 'Choose H. The same control limits the gate to that branch. Match the target paths.', hole: 1, gate: 'H' },
+      ],
+    };
+    return {
+      ...signalPuzzle(3, [[op('H', [0])], [op('X', [1], [0])], [op('X', [2])]],
+        [crossing(1, 2), ...Array.from({ length: 3 }, () => hole([0, 1], ['I', 'CX', 'XC']))],
+        ['SWAP', 'CX', 'XC', 'CX'], profile),
+      steps: [
+        { text: 'A crossing exchanges neighbouring wires. Choose SWAP to move the lit paths.', hole: 0, gate: 'SWAP' },
+        { text: 'Three alternating CNOT gates also make a swap. Start with the upper control.', hole: 1, gate: 'CX' },
+        { text: 'Reverse the direction: put the control on the lower wire.', hole: 2, gate: 'XC' },
+        { text: 'Use the upper control again to finish the swap and match the target.', hole: 3, gate: 'CX' },
+      ],
+    };
   }
   const first = basis([], 0, 2), second = profile === 'controlled' ? basis([0], 1, 2) : naturality('H', [], [0, 1], 2);
-  const columns = [...first.circuit.columns, ...second.circuit.columns];
-  // Finish the first block before tidying, then the second block starts at 0.
-  const solution = [...first.solution, ...second.solution];
+  const blocks = [first, second, ...(profile === 'prop' ? [cnotSwap()] : [])];
+  const columns = blocks.flatMap(block => block.circuit.columns);
+  // Each solved block is tidied away before the next starts at column 0.
+  const solution = blocks.flatMap(block => block.solution);
   return { circuit: { wires: 2, columns }, solution,
     steps: solution.map((action, index) => ({ move: action, text: action.rule === 'tidy' ? 'Tidy removes the empty columns.' :
       index === 0 ? 'Replace H–Z–H with X. The goal is empty wires: the identity.' :
       index === 2 ? 'The two X gates cancel.' : action.rule === 'basis-x' ?
         'The same equation works under a shared control. Select only its target gates.' : action.rule === 'swap-h' ?
           'Move H through the crossing. It follows the wire to the other side.' :
+          action.rule === 'swap-cnot' ? 'Three alternating CNOT gates make a swap.' :
           action.rule === 'cancel-swap' ? 'Two crossings cancel.' : 'Cancel the matching pair.' })),
   };
 }
@@ -124,13 +157,22 @@ export function randomIdentity(profile, { seed, difficulty = 2 } = {}) {
   if (random() < .5) labels.reverse();
   const controlled = profile === 'controlled' && difficulty > 1;
   const controls = controlled ? [labels[0]] : [], targets = controlled ? labels.slice(1) : labels;
-  const factories = [() => {
+  const adjacent = () => {
     const start = Math.floor(random() * (targets.length - 1));
-    return naturality(['H', 'X', 'Z'][Math.floor(random() * 3)], controls, targets.slice(start, start + 2), wires);
-  }];
+    return targets.slice(start, start + 2);
+  };
+  const cnotBlock = () => {
+    const pair = adjacent();
+    if (random() < .5) pair.reverse();
+    return cnotSwap(pair, controls, wires);
+  };
+  const factories = [() => naturality(['H', 'X', 'Z'][Math.floor(random() * 3)], controls, adjacent(), wires)];
   if (targets.length > 2) factories.push(() => braid(targets.slice(0, 3), controls, wires));
   if (profile === 'controlled' && difficulty === 3) factories.push(() => basis(labels.slice(0, 2), labels[2], wires));
-  const blocks = Array.from({ length: difficulty + 1 }, () => factories[Math.floor(random() * factories.length)]());
+  if (difficulty === 1) factories.push(cnotBlock);
+  const cnotIndex = difficulty > 1 ? Math.floor(random() * (difficulty + 1)) : -1;
+  const blocks = Array.from({ length: difficulty + 1 }, (_, index) => index === cnotIndex ? cnotBlock() :
+    factories[Math.floor(random() * factories.length)]());
   return { circuit: { wires, columns: blocks.flatMap(block => block.circuit.columns) }, solution: blocks.flatMap(block => block.solution) };
 }
 
@@ -227,6 +269,14 @@ export function generateSignals(profile, { seed, difficulty = 2 } = {}) {
   profileCheck(profile);
   if ((typeof seed !== 'string' && !Number.isSafeInteger(seed)) || String(seed).length > 100 || !Number.isInteger(difficulty) || difficulty < 1 || difficulty > 3) throw new RangeError('Choose a seed and difficulty 1–3.');
   const random = seededRandom(seed), wires = difficulty === 1 ? 2 : difficulty === 2 ? 3 : 4;
+  if ((profile === 'prop' && difficulty > 1 || profile === 'controlled' && difficulty === 3) && random() < .5) {
+    const first = Math.floor(random() * (wires - 1)), targets = [first, first + 1];
+    if (random() < .5) targets.reverse();
+    const others = Array.from({ length: wires }, (_, index) => index).filter(wire => !targets.includes(wire));
+    const spectator = others.splice(Math.floor(random() * others.length), 1)[0];
+    return cnotSignalPuzzle(profile, { wires, targets, spectator, controls: profile === 'controlled' ? others : [],
+      phase: random() < .5, flip: random() < .5 });
+  }
   const columns = [[op('H', [0])], [op('X', [1])]];
   if (difficulty > 1) columns.push([op('X', [2], [0])]);
   const firstCrossing = Math.floor(random() * (wires - 1));

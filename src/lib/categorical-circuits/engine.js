@@ -6,11 +6,25 @@ export const MAX_WIRES = 4;
 export const MAX_COLUMNS = 48;
 export const MAX_OPERATIONS = 96;
 export const GATES = Object.freeze(['H', 'X', 'Z', 'SWAP']);
+export const moveCost = move => ['tidy', 'insert-column', 'remove-column'].includes(move.rule) ? 0 : 1;
 const EPSILON = 1e-9;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const same = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
 const sorted = values => [...values].sort((a, b) => a - b);
 export const touchedWires = operation => [...operation.wires, ...(operation.controls ?? [])];
+
+export function gateCells(circuit, key, { profile = 'controlled' } = {}) {
+  const [wire, column] = key.split(':').map(Number), cells = new Set([key]);
+  for (const operation of circuit.columns[column]) {
+    const targets = operation.wires.includes(wire);
+    if (profile === 'prop' && (targets || operation.controls?.includes(wire))) {
+      for (const row of touchedWires(operation)) cells.add(row + ':' + column);
+    } else if (targets && operation.gate === 'SWAP') {
+      for (const row of operation.wires) cells.add(row + ':' + column);
+    }
+  }
+  return [...cells];
+}
 
 /** Whole paired gates use the same ordered-wire convention as standard Signals. */
 export function holeOperation(hole, choice) {

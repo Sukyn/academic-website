@@ -66,7 +66,8 @@ async function reductionMove(frame, activate, move) {
     const rule = RULES.find(rule => rule.id === move.rule);
     assert.ok(rule);
     for (let row = 0; row < rule.left.length; row++) for (let column = 0; column < rule.left[0].length; column++) {
-      await activate(frame.locator(`[data-cell="${move.row + row}:${move.column + column}"]`));
+      const cell = frame.locator(`[data-cell="${move.row + row}:${move.column + column}"]`);
+      if (await cell.getAttribute('aria-pressed') !== 'true') await activate(cell);
     }
     await activate(frame.locator(`[data-rule="${move.rule}"]`));
   }
@@ -124,6 +125,82 @@ async function dialogFits(page, id) {
     return dialog.open && Number(getComputedStyle(dialog).opacity) === 1 && box.width > 0 &&
       box.left >= -1 && box.right <= innerWidth + 1 && box.top >= -1 && box.bottom <= innerHeight + 1;
   }, id);
+}
+
+async function resultMenu(page, daily = true) {
+  const placement = await page.evaluate(() => {
+    const actions = document.getElementById('result-replay-actions'), advanced = document.getElementById('result-advanced-features');
+    return { parent: actions.parentElement.id, dailyHidden: document.getElementById('daily-result-actions').hidden,
+      advancedHidden: advanced.hidden, advancedOpen: advanced.open,
+      nickname: Boolean(localStorage.getItem('games.nickname.v1')),
+      buttons: ['replay-result', 'share-result'].map(id => {
+        const button = document.getElementById(id);
+        return { parent: button.parentElement.id, advanced: Boolean(button.closest('#result-advanced-features')) };
+      }) };
+  });
+  assert.equal(placement.parent, daily ? 'daily-result-actions' : 'result-advanced-features');
+  assert.equal(placement.dailyHidden, !daily);
+  assert.equal(placement.advancedHidden, daily && !placement.nickname, 'Daily Advanced contains only saved-nickname controls');
+  for (const [index, button] of placement.buttons.entries()) {
+    assert.equal(button.parent, 'result-replay-actions');
+    assert.equal(button.advanced, !daily);
+    if (daily) {
+      const control = page.locator(index ? '#share-result' : '#replay-result');
+      assert.equal(await control.isVisible(), true, 'Daily replay and sharing are directly visible');
+      assert.equal(await control.isEnabled(), true);
+    }
+  }
+  if (daily) assert.equal(placement.advancedOpen, false, 'Daily actions work without opening Advanced');
+}
+
+async function replayDaily(page, activate) {
+  const result = () => page.evaluate(() => ({
+    summary: document.getElementById('win-summary').textContent,
+    status: document.getElementById('score-status').textContent,
+    resultsHidden: document.getElementById('win-results').hidden,
+    formHidden: document.getElementById('score-form').hidden,
+    player: document.getElementById('result-leaderboard-body').textContent,
+  }));
+  await dialogFits(page, 'win-dialog');
+  const before = await result(), replay = page.locator('#replay-result');
+  await replay.evaluate(button => button.scrollIntoView({ block: 'nearest' }));
+  try { await activate(replay); }
+  catch (error) {
+    const details = await page.evaluate(() => {
+      const dialog = document.getElementById('win-dialog'), button = document.getElementById('replay-result');
+      return { open: dialog.open, dialogBounds: dialog.getBoundingClientRect().toJSON(),
+        opacity: getComputedStyle(dialog).opacity, buttonBounds: button.getBoundingClientRect().toJSON(),
+        disabled: button.disabled, hidden: button.hidden, parent: button.parentElement.id };
+    }).catch(() => null);
+    const name = new URL(page.url()).pathname.split('/').filter(Boolean).at(-1);
+    await page.screenshot({ path: resolve(output, `${page.viewportSize().width}-${name}-replay-failed.png`), fullPage: true,
+      timeout: 5000 }).catch(() => {});
+    throw new Error(`${error.message}\nReplay UI: ${JSON.stringify(details)}`, { cause: error });
+  }
+  await page.locator('#review-controls').waitFor({ state: 'visible' });
+  const total = Number((await page.locator('#review-note').innerText()).match(/\/ (\d+)$/)?.[1]);
+  assert.ok(total > 0);
+  await page.waitForFunction(total => {
+    const note = document.getElementById('review-note').textContent;
+    return note.endsWith(`${total} / ${total}`) && !document.querySelector('[data-graph-animating]') &&
+      !document.getElementById('replay-result').disabled;
+  }, total, { timeout: 120_000 });
+  assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Replay does not open another result');
+  await activate(page.locator('#resume-round'));
+  assert.equal(await page.locator('#review-controls').isVisible(), false);
+  await activate(page.locator('#show-results'));
+  await page.locator('#win-dialog[open]').waitFor();
+  assert.deepEqual(await result(), before, 'Returning from replay preserves the completed round and saved score');
+  await resultMenu(page);
+}
+
+async function shareStill(page, activate) {
+  await activate(page.locator('#share-result'));
+  await page.locator('#share-preview').waitFor({ state: 'visible' });
+  await page.locator('#share-preview').evaluate(image => image.decode());
+  await dialogFits(page, 'share-dialog');
+  await activate(page.locator('#close-share'));
+  assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), true);
 }
 
 async function shareReplay(page, activate, profile) {
@@ -195,14 +272,17 @@ try {
         await activate(page.locator('#close-rules'));
       }
       await solve(page, game, activate);
+      await page.waitForFunction(() => document.getElementById('score-status').textContent !== 'Saving…');
+      await resultMenu(page);
       if (profile === 'mobile') {
-        await page.waitForFunction(() => document.getElementById('score-status').textContent !== 'Saving…');
         if (await page.locator('#score-form').isVisible()) {
           await page.locator('#player-name').fill('Daily games mobile');
           await activate(page.locator('#submit-score'));
         }
         await page.waitForFunction(() => /saved|completed/i.test(document.getElementById('score-status').textContent));
+        await resultMenu(page);
       }
+      await replayDaily(page, activate);
       assert.equal(await page.locator('#check-daily-puzzles').isEnabled(), true, 'Other daily puzzles never require score registration');
       if (game === 'quantum-signals') {
         const target = await page.locator('#signal-target').evaluate(region => {
@@ -218,6 +298,7 @@ try {
         assert.ok(target.count > 0 && target.inView, 'The completed Signals target dots remain horizontally visible');
       }
       if (!index) await shareReplay(page, activate, profile);
+      else await shareStill(page, activate);
       await dialogFits(page, 'win-dialog');
       await page.screenshot({ path: resolve(output, `${profile}-${game}-completed.png`), fullPage: true });
       await activate(page.locator('#check-daily-puzzles'));
@@ -227,7 +308,14 @@ try {
       assert.ok(navigation.y >= -1 && navigation.y + navigation.height <= options.viewport.height + 1, 'The game chooser is fully visible');
       await cards(page, index);
       await page.screenshot({ path: resolve(output, `${profile}-${game}-chooser.png`), fullPage: true });
-      if (index < games.length - 1) await activate(page.locator('#daily-games a').nth(index + 1));
+      await activate(page.locator('#mode-campaign'));
+      await page.locator('#mode-campaign[aria-pressed="true"]').waitFor({ state: 'attached' });
+      await resultMenu(page, false);
+      if (index < games.length - 1) {
+        await activate(page.locator('#mode-daily'));
+        await page.locator('#mode-daily[aria-pressed="true"]').waitFor({ state: 'attached' });
+        await activate(page.locator('#daily-games a').nth(index + 1));
+      }
       console.log(`${profile}: ${titles[index]} daily completed; logo navigation and popup verified.`);
     }
     assert.equal(submissions.length, profile === 'mobile' ? 4 : 0, 'Registration is optional; a saved nickname works across games');
@@ -240,6 +328,7 @@ try {
         await activate(page.locator('#mode-' + mode));
         assert.equal(await page.locator('#daily-games').isVisible(), false, 'The logo chooser is exclusive to Daily mode');
         assert.equal(await page.locator('#check-daily-puzzles').evaluate(button => button.hidden), true);
+        await resultMenu(page, false);
       }
     }
     await context.close();

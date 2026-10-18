@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
-import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove, gateCells } from '../../src/lib/circuit-reduction/engine.js';
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../../src/lib/circuit-reduction/tutorial.js';
 import { createBrowserApi } from './browser-api.mjs';
 import { layoutMoves } from './layout-moves.js';
@@ -137,7 +137,10 @@ async function apply(page, move) {
     const rule = RULES.find(rule => rule.id === move.rule);
     assert.ok(rule, `Known playable rule ${move.rule}`);
     assert.equal(await page.locator(`[data-rule="${move.rule}"]`).evaluate(button => button.hidden), false, 'A witness uses only rules unlocked by the current lesson');
-    for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) await activate(page, page.locator(`[data-cell="${move.row + y}:${move.column + x}"]`));
+    for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) {
+      const cell = page.locator(`[data-cell="${move.row + y}:${move.column + x}"]`);
+      if (await cell.getAttribute('aria-pressed') !== 'true') await activate(page, cell);
+    }
     await activate(page, page.locator(`[data-rule="${move.rule}"]`));
   }
   await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
@@ -341,7 +344,10 @@ async function focusedTutorial() {
           for (let row = 0; row < rule.left.length; row++) for (let column = 0; column < rule.left[0].length; column++) {
             selected.push(`${step.move.row + row}:${step.move.column + column}`);
           }
-          assert.deepEqual(await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(nodes => nodes.map(node => node.dataset.cell)), selected,
+          const wholeGates = new Set(selected.flatMap(cell => gateCells(expected, cell)));
+          const wholeSelection = expected.flatMap((line, row) => line.flatMap((_, column) =>
+            wholeGates.has(`${row}:${column}`) ? [`${row}:${column}`] : []));
+          assert.deepEqual(await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(nodes => nodes.map(node => node.dataset.cell)), wholeSelection,
             'The guide selects the gate block for the matching rule');
           const pattern = expected.slice(step.move.row, step.move.row + rule.left.length)
             .map(row => row.slice(step.move.column, step.move.column + rule.left[0].length));
@@ -462,9 +468,74 @@ async function desktopSelection(page) {
   assert.deepEqual(await selected(), rectangle, 'Shift-click extends from the previous clicked cell');
   await page.keyboard.press('Escape');
   await page.locator('[data-cell="1:2"]').click({ modifiers: ['Shift'] });
-  assert.deepEqual(await selected(), ['1:2'], 'Escape also clears the Shift-click anchor');
+  assert.deepEqual(await selected(), ['0:2', '1:2'], 'Escape clears the anchor and the next tap selects only its linked gate');
+  await page.locator('#mode-random').click();
+  for (const [upper, lower] of [['ZU', 'XD'], ['XU', 'ZD'], ['ZU', 'ZD']]) {
+    const original = [[upper, upper], [lower, lower]];
+    await importJson(page, { circuit: original });
+    for (const [first, second] of [[0, 1], [1, 0]]) {
+      const endpoint = page.locator(`[data-cell="${first}:0"]`);
+      await endpoint.click({ modifiers: ['Control'] });
+      assert.deepEqual(await selected(), ['0:0', '1:0'], `${upper}/${lower}: either endpoint selects the complete gate`);
+      assert.equal(await endpoint.evaluate(node => node === document.activeElement), true, 'Focus remains on the clicked endpoint');
+      await page.locator(`[data-cell="${second}:0"]`).click();
+      assert.deepEqual(await selected(), [], 'The other endpoint deselects the complete gate');
+    }
+    await page.locator('[data-cell="0:0"]').click();
+    await page.locator('[data-cell="0:1"]').click({ modifiers: ['Shift'] });
+    assert.deepEqual(await selected(), ['0:0', '0:1', '1:0', '1:1'], 'Shift includes linked endpoints outside its row');
+    await page.keyboard.press('Escape');
+    await drag('1:0', '1:1');
+    assert.deepEqual(await selected(), ['0:0', '0:1', '1:0', '1:1'], 'Dragging a single row selects complete gates');
+    await page.locator('[data-cell="0:0"]').click({ button: 'right' });
+    assert.deepEqual(await boardCircuit(page), original, 'The context menu preserves a linked gate');
+    assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+  }
+  for (const [rule, row, block] of [
+    ['basis-up', 0, [['H', 'ZU', 'H'], ['.', 'ZD', '.']]],
+    ['basis-down', 1, [['.', 'ZU', '.'], ['H', 'ZD', 'H']]],
+    ['phase-up', 0, [['Z', 'ZU', '.'], ['.', 'ZD', '.']]],
+    ['phase-down', 1, [['.', 'ZU', '.'], ['Z', 'ZD', '.']]],
+  ]) {
+    const original = block.map(line => [...line, ...line]);
+    await importJson(page, { circuit: original });
+    await drag(`${row}:0`, `${row}:2`);
+    assert.equal((await selected()).length, 4, `${rule}: only the linked partner is added outside the rule row`);
+    const button = page.locator(`[data-rule="${rule}"]`);
+    assert.equal(await button.isEnabled(), true, `${rule} remains available after whole-gate selection`);
+    await button.click();
+    await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
+    assert.deepEqual(await boardCircuit(page), applyMove(original, { rule, row, column: 0 }));
+  }
+  await page.locator('#mode-campaign').click();
   await page.locator('#level').selectOption('1');
-  console.log('Desktop selection: drag across wires and spacing handles, Shift-click, Enter, native rule activation and Ctrl+Z verified');
+  console.log('Desktop selection: whole CNOT/CZ toggles, linked Shift/drag, basis/phase context, Enter and Ctrl+Z verified');
+}
+async function touchSelection(page) {
+  const selected = () => page.locator('[data-cell][aria-pressed="true"]').evaluateAll(cells => cells.map(cell => cell.dataset.cell));
+  await activate(page, page.locator('#mode-random'));
+  for (const [upper, lower] of [['ZU', 'XD'], ['XU', 'ZD'], ['ZU', 'ZD']]) {
+    const original = [[upper, upper], [lower, lower]];
+    await importJson(page, { circuit: original });
+    for (const [first, second] of [[0, 1], [1, 0]]) {
+      await activate(page, page.locator(`[data-cell="${first}:0"]`));
+      assert.deepEqual(await selected(), ['0:0', '1:0'], `${upper}/${lower}: tapping either endpoint selects the complete gate`);
+      await activate(page, page.locator(`[data-cell="${second}:0"]`));
+      assert.deepEqual(await selected(), [], 'Tapping the other endpoint deselects the complete gate');
+    }
+    assert.deepEqual(await boardCircuit(page), original, 'Endpoint taps preserve the circuit');
+    assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+  }
+  const original = [['H', 'ZU', 'H', 'H', 'ZU', 'H'], ['.', 'ZD', '.', '.', 'ZD', '.']];
+  await importJson(page, { circuit: original });
+  for (const column of [0, 1, 2]) await activate(page, page.locator(`[data-cell="0:${column}"]`));
+  assert.deepEqual(await selected(), ['0:0', '0:1', '0:2', '1:1'], 'Touch selection includes only the linked partner outside the basis-rule row');
+  const basis = page.locator('[data-rule="basis-up"]');
+  assert.equal(await basis.isEnabled(), true, 'The partial basis rule remains available through touch selection');
+  await activate(page, basis);
+  await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
+  assert.deepEqual(await boardCircuit(page), applyMove(original, { rule: 'basis-up', row: 0, column: 0 }));
+  console.log('Touch selection: either endpoint toggles whole CNOT/CZ gates and the partial basis rule remains playable');
 }
 async function columnSpacing(page) {
   const lesson = LEVELS.find(level => level.circuit.length > 1);
@@ -564,7 +635,8 @@ async function focusedAnimation() {
       const select = async move => {
         const rule = RULES.find(rule => rule.id === move.rule);
         for (let row = 0; row < rule.left.length; row++) for (let column = 0; column < rule.left[0].length; column++) {
-          await activate(page, page.locator(`[data-cell="${move.row + row}:${move.column + column}"]`));
+          const cell = page.locator(`[data-cell="${move.row + row}:${move.column + column}"]`);
+          if (await cell.getAttribute('aria-pressed') !== 'true') await activate(page, cell);
         }
       };
       await select(cancelH);
@@ -657,7 +729,14 @@ async function focusedAnimation() {
   assert.deepEqual(errors, [], 'Animated rewrites, cancellation, replay and reduced motion have no uncaught browser errors');
 }
 try {
-  if (process.env.GAME_TEST_SCOPE === 'animation') await focusedAnimation();
+  if (process.env.GAME_TEST_SCOPE === 'selection') {
+    const page = await pageFor({ viewport: { width: 1440, height: 1050 }, reducedMotion: 'reduce' });
+    try { await desktopSelection(page); } finally { await page.context().close(); }
+    const touch = await pageFor({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+    try { await touchSelection(touch); } finally { await touch.context().close(); }
+    assert.deepEqual(errors, [], 'Desktop and touch whole-gate selection have no uncaught browser errors');
+  }
+  else if (process.env.GAME_TEST_SCOPE === 'animation') await focusedAnimation();
   else if (process.env.GAME_TEST_SCOPE === 'tutorial') await focusedTutorial();
   else if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
   else if (process.env.GAME_TEST_SCOPE === 'registration') await focusedRegistration();

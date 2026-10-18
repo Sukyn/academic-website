@@ -12,7 +12,11 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 // Gate geometry and native interactions have their own rendering/browser tests.
 test('graph replay keeps completed-round actions stable and cancels stale animations', async context => {
   class Element {
-    constructor() { this.listeners = new Map(); this.dataset = {}; this.attrs = {}; this.hidden = this.disabled = this.open = false; }
+    constructor() { this.listeners = new Map(); this.dataset = {}; this.attrs = {}; this.children = []; this.hidden = this.disabled = this.open = false; }
+    appendChild(child) {
+      if (child.parentElement) child.parentElement.children.splice(child.parentElement.children.indexOf(child), 1);
+      child.parentElement = this; this.children.push(child); return child;
+    }
     addEventListener(name, callback) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), callback]); }
     async dispatch(name, event = {}) { await Promise.all((this.listeners.get(name) ?? []).map(callback => callback({ target: this, ...event }))); }
     click() { return this.disabled ? Promise.resolve() : this.dispatch('click'); }

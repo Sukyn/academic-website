@@ -1,5 +1,7 @@
 import { simulate } from './engine.js';
 
+export const TUTORIAL_INTRO = 'Fixed gates prepare the input. Fill the holes on the right to match the target.';
+
 export const TUTORIAL_STEPS = [
   { hole: 'a', gate: 'H', text: 'H on the first wire splits each incoming path into two that differ in the first bit.' },
   { hole: 'b', gate: 'CX', text: 'CNOT flips the second bit when the first bit is 1.' },

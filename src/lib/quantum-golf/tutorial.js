@@ -1,3 +1,5 @@
+export const TUTORIAL_INTRO = 'Reach the gold target with H and T.';
+
 export const GOLF_TUTORIAL = Object.freeze({
   level: 8,
   moves: Object.freeze([

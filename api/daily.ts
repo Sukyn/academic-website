@@ -9,6 +9,7 @@ export default {
     try {
       const params = new URL(request.url).searchParams;
       const game = getGame(params.get("game") ?? undefined);
+      if (!('dailyPuzzle' in game) || !('startDate' in game)) throw new SubmissionError('This game has no daily puzzle.');
       let metadata: ReturnType<typeof dailyMetadata>;
       try {
         metadata = dailyMetadata(params.get("date") ?? undefined, game.startDate);

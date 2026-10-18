@@ -237,7 +237,8 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
       const rule = RULES.find(rule => rule.id === move.rule);
       for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) {
         const cell = get('circuit-board').querySelectorAll('[data-cell]').find(button => button.dataset.cell === `${move.row + y}:${move.column + x}`);
-        assert.ok(cell, 'The rule window is on the visible board'); await cell.click();
+        assert.ok(cell, 'The rule window is on the visible board');
+        if (cell.getAttribute('aria-pressed') !== 'true') await cell.click();
       }
       const button = rules.find(button => button.dataset.rule === move.rule);
       assert.equal(button.disabled, false, `Selected window enables ${move.rule}`); await button.click();
@@ -441,11 +442,11 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await dragOrigin.dispatch('pointerdown', mouse(0, 0));
   await get('circuit-board').dispatch('pointermove', mouse(0, 0, { clientX: pointAt(0, 0).clientX + 3 }));
   await documentMock.dispatch('pointerup', mouse(0, 0, { buttons: 0 }));
-  await dragOrigin.click(); assert.deepEqual(selectedKeys(), ['0:0']);
+  await dragOrigin.click(); assert.deepEqual(selectedKeys(), ['0:0', '1:0']);
   await cellAt(1, 2).dispatch('click', { shiftKey: true }); assert.deepEqual(selectedKeys(), rectangle);
   await documentMock.dispatch('keydown', { key: 'Escape' });
   await cellAt(1, 2).dispatch('click', { shiftKey: true });
-  assert.deepEqual(selectedKeys(), ['1:2'], 'Escape prevents a later Shift-click from reusing the old anchor');
+  assert.deepEqual(selectedKeys(), ['0:2', '1:2'], 'Escape clears the old anchor and the next tap selects only its linked gate');
   for (const ending of ['pointercancel', 'lostpointercapture', 'blur']) {
     await dragOrigin.dispatch('pointerdown', mouse(0, 0));
     await get('circuit-board').dispatch('pointermove', mouse(1, 2));
@@ -584,6 +585,56 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(get('win-results').hidden, true, 'A previous leaderboard cannot attach a player to a random round');
   const randomSignature = boardSignature(); await click('mode-random'); assert.equal(boardSignature(), randomSignature);
   assert.equal(get('custom-json-actions').hidden, false);
+
+  // Either endpoint represents the same whole gate, including reversed CNOTs.
+  for (const [upper, lower] of [['ZU', 'XD'], ['XU', 'ZD'], ['ZU', 'ZD']]) {
+    const original = [[upper, upper], [lower, lower]];
+    await importCircuit(original);
+    for (const [first, second] of [[0, 1], [1, 0]]) {
+      const endpoint = cellAt(first, 0); endpoint.focus();
+      await endpoint.dispatch('click', { ctrlKey: true });
+      assert.deepEqual(selectedKeys(), ['0:0', '1:0'], `${upper}/${lower}: either endpoint selects the whole gate`);
+      assert.equal(documentMock.activeElement, endpoint, 'Selecting a whole gate retains its focused endpoint');
+      await cellAt(second, 0).click();
+      assert.deepEqual(selectedKeys(), [], 'The other endpoint deselects the whole gate');
+    }
+    await cellAt(0, 0).click();
+    await cellAt(0, 1).dispatch('click', { shiftKey: true });
+    assert.deepEqual(selectedKeys(), ['0:0', '0:1', '1:0', '1:1'], 'Shift expands both linked gates outside the selected row');
+    await documentMock.dispatch('keydown', { key: 'Escape' });
+    const origin = cellAt(1, 0);
+    await origin.dispatch('pointerdown', mouse(1, 0));
+    await get('circuit-board').dispatch('pointermove', mouse(1, 1));
+    await documentMock.dispatch('pointerup', mouse(1, 1, { buttons: 0 }));
+    await origin.dispatch('click', { detail: 1, pointerId: 11 });
+    assert.deepEqual(selectedKeys(), ['0:0', '0:1', '1:0', '1:1'], 'Dragging a single row includes the linked endpoints');
+    await cellAt(0, 0).dispatch('contextmenu');
+    assert.deepEqual(boardCircuit(), original, 'A linked gate context menu preserves the circuit');
+    assert.deepEqual(selectedKeys(), ['0:0', '0:1', '1:0', '1:1']);
+    assert.equal(moveCount(), 0, 'Whole-gate selection remains free');
+  }
+
+  // One-wire basis and phase rules still match with their linked partner selected.
+  for (const [rule, row, block] of [
+    ['basis-up', 0, [['H', 'ZU', 'H'], ['.', 'ZD', '.']]],
+    ['basis-down', 1, [['.', 'ZU', '.'], ['H', 'ZD', 'H']]],
+    ['phase-up', 0, [['Z', 'ZU', '.'], ['.', 'ZD', '.']]],
+    ['phase-down', 1, [['.', 'ZU', '.'], ['Z', 'ZD', '.']]],
+  ]) {
+    const original = block.map(line => [...line, ...line]);
+    await importCircuit(original);
+    await cellAt(row, 0).click();
+    await cellAt(row, 2).dispatch('click', { shiftKey: true });
+    assert.equal(selected().length, 4, `${rule}: the other wire contributes only its linked endpoint`);
+    const button = rules.find(button => button.dataset.rule === rule);
+    assert.equal(button.disabled, false, `${rule}: the complete gate does not enlarge the rule window`);
+    const unrelated = cellAt(1 - row, 0);
+    await unrelated.click(); assert.equal(button.disabled, true, 'An explicitly selected unrelated cell still prevents the rewrite');
+    await unrelated.click(); assert.equal(button.disabled, false);
+    await button.click();
+    assert.deepEqual(boardCircuit(), applyMove(original, { rule, row, column: 0 }));
+    assert.equal(moveCount(), 1);
+  }
 
   // Identity construction reuses the ordinary reversible rule palette.
   await click('create-circuit');
@@ -799,12 +850,13 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   Date.now = () => Date.parse('2036-01-01T12:00:00Z');
   assert.equal(get('replay').closest('.advanced-features'), null, 'Daily replay is directly reachable');
   assert.equal(get('replay-actions').hidden, true, 'An untouched daily has no replay row');
-  assert.equal(get('replay-result').closest('.advanced-features'), get('result-advanced-features'), 'Daily result replay remains in result Advanced');
-  assert.equal(get('result-advanced-features').hidden, false);
+  assert.equal(get('replay-result').closest('.advanced-features'), null, 'Daily result replay is directly reachable');
+  assert.equal(get('result-replay-actions').parentElement, get('daily-result-actions'));
+  assert.equal(get('result-advanced-features').hidden, true, 'Daily results hide the empty nickname disclosure');
   assert.equal(get('share-score').parentElement, get('daily-replay-actions'));
-  assert.equal(get('share-result').parentElement, get('daily-result-actions'));
+  assert.equal(get('share-result').parentElement, get('result-replay-actions'), 'Daily replay and sharing retain one action row');
   assert.equal(get('daily-replay-actions').hidden, true, 'An unwon daily has no empty share-action block');
-  assert.equal(get('daily-result-actions').hidden, true);
+  assert.equal(get('daily-result-actions').hidden, false);
   await play(puzzle.solution[0]); const dailyProgress = boardSignature();
   assert.equal(get('replay-actions').hidden, false);
   await click('replay');
@@ -856,6 +908,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   await click('mode-campaign'); await boards();
   assert.equal(get('share-score').parentElement, get('replay-actions'), 'Leaving daily restores main Share to the replay row');
   assert.equal(get('share-result').parentElement, get('result-replay-actions'), 'Leaving daily restores result Share to Advanced');
+  assert.equal(get('result-replay-actions').parentElement, get('result-advanced-features'));
   assert.equal(get('daily-replay-actions').hidden, true);
   assert.equal(get('daily-result-actions').hidden, true);
   await windowMock.dispatch('pagehide'); assert.equal(timers.size, 0, 'Leaving the page cancels refresh/replay/request timers');

@@ -1,6 +1,6 @@
 import { applyMove, isSolved, optimalShots, pathGraph, puzzleData, sequenceCost, MAX_MOVES } from '../lib/graph-states/engine.js';
 import { LEVELS, generatePuzzle, DAILY_START } from '../lib/graph-states/puzzles.js';
-import { TUTORIAL } from '../lib/graph-states/tutorial.js';
+import { TUTORIAL, TUTORIAL_INTRO } from '../lib/graph-states/tutorial.js';
 import { edgeAtPoint, renderGraph, renderCircuit } from '../lib/graph-states/rendering.js';
 import { correctionGlyph } from '../lib/graph-states/correction-graphics.js';
 import { animateGraphMove, REPLAY_COMPLEMENT_DURATION } from '../lib/graph-states/animation.js';
@@ -12,7 +12,7 @@ import { createStepReplay } from '../lib/games/step-replay.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
-import { bindGameDialogs, ignoresGameShortcut, updateModeMenu } from '../lib/games/controls.js';
+import { bindGameDialogs, ignoresGameShortcut, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'graph-states', get = id => document.getElementById(id);
@@ -124,6 +124,7 @@ function update({ board = true, follow = false } = {}) {
   for (const id of ['share-replay', 'share-result']) {
     get(id).hidden = mode === 'tutorial' || !won || !sequence.length; get(id).disabled = daily.loading;
   }
+  updateResultMenu(get, mode === 'daily');
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : `Operation ${review.step} / ${sequence.length}`;
   renderTimeline(sequence, { step: review.step, disabled: review.playing || Boolean(animation) || daily.loading || editing });
@@ -298,7 +299,7 @@ const customJson = createCustomPuzzleJson({ get, game: GAME,
 });
 const tutorial = createTutorial({
   get, isBlocked: () => daily.loading,
-  intro: 'Restore the numbered chain by complementing vertices.',
+  intro: TUTORIAL_INTRO,
   controls: '#graph-board button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #graph-editor-controls button, #custom-details select',
   steps: TUTORIAL.steps.map(({ move, text }) => ({ text, target: '#graph-board ' + moveSelector(move), action: () => playMove(move) })),
   onReset: () => setPuzzle('tutorial', TUTORIAL.graph),
