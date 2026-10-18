@@ -321,7 +321,7 @@ try {
     assert.equal(submissions.length, profile === 'mobile' ? 4 : 0, 'Registration is optional; a saved nickname works across games');
     for (const game of games) {
       await page.goto(`${base}/games/${game}/`, { waitUntil: 'domcontentloaded' });
-      await page.locator('#tutorial-panel').waitFor({ state: 'visible' });
+      await page.locator('#tutorial-start:not([disabled])').waitFor({ state: 'visible' });
       assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true', 'Games still open their tutorial without a daily link');
       assert.equal(await page.locator('#daily-games').isVisible(), false);
       for (const mode of ['campaign', 'random']) {

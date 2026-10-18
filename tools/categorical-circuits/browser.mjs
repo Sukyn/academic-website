@@ -650,14 +650,31 @@ async function mobileSignalViewport(page, tap, profile) {
   const levels = getLevels(profile, 'signals');
   await tap(page.locator('#mode-campaign'));
   await page.locator('#level').selectOption(String(levels.length));
+  // Settle scroll events caused by replacing the previous level before scrolling manually.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const positions = () => page.evaluate(() => Object.fromEntries(['categorical-scroll', 'flow-scroll'].map(id => {
+    const node = document.getElementById(id);
+    return [id, { left: node.scrollLeft, width: node.scrollWidth, viewport: node.clientWidth,
+      maximum: node.scrollWidth - node.clientWidth }];
+  })));
+  const initial = await positions();
+  assert.ok(Object.values(initial).every(node => node.maximum > 0),
+    `Long mobile circuits have scrollable ranges: ${JSON.stringify(initial)}`);
+  const offset = Math.min(120, ...Object.values(initial).map(node => node.maximum));
+  const manualScroll = async (id, expected) => {
+    await page.locator('#' + id).evaluate((node, left) => { node.scrollLeft = left; }, expected);
+    try {
+      await page.waitForFunction(left => ['categorical-scroll', 'flow-scroll'].every(id =>
+        Math.abs(document.getElementById(id).scrollLeft - left) <= 1), expected);
+    } catch (error) {
+      throw new Error(`Manual scroll from ${id} did not reach ${expected}: ${JSON.stringify(await positions())}`, { cause: error });
+    }
+  };
   const target = await page.locator('#signal-target').boundingBox();
   const synchronized = () => page.waitForFunction(() => Math.abs(document.getElementById('categorical-scroll').scrollLeft - document.getElementById('flow-scroll').scrollLeft) <= 1);
-  await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = node.scrollWidth; });
-  await synchronized();
-  assert.ok(await page.locator('#flow-scroll').evaluate(node => node.scrollLeft) > 0, 'Long mobile circuits can scroll');
+  await manualScroll('flow-scroll', offset);
   assert.equal((await page.locator('#signal-target').boundingBox()).x, target.x);
-  await page.locator('#categorical-scroll').evaluate(node => { node.scrollLeft = 0; });
-  await synchronized();
+  await manualScroll('categorical-scroll', 0);
   await tap(page.locator('#categorical-board [data-hole="0"]').first());
   const path = await page.locator('.signal-flow-path').first().elementHandle();
   const last = levels.at(-1).holes.length - 1;
