@@ -1,6 +1,6 @@
 import { applyMove, isSolved, moveCost } from './engine.js';
 import { getLevels, signalsSolved } from './puzzles.js';
-import { scoreName, SubmissionError } from '../games/submission.js';
+import { checkSubmissionSize, scoreName, SubmissionError } from '../games/submission.js';
 
 export const MAX_REPLAY_MOVES = 1_000;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -23,10 +23,7 @@ export function createLevelLeaderboard(kind, profile) {
 
   function validateSubmission(input) {
     if (!object(input)) throw new SubmissionError('Expected a level submission.');
-    let bytes;
-    try { bytes = new TextEncoder().encode(JSON.stringify(input)).byteLength; }
-    catch { throw new SubmissionError('Expected a level submission.'); }
-    if (bytes > maxBytes) throw new SubmissionError('Submission is too large.', 413);
+    checkSubmissionSize(input, maxBytes, 'Expected a level submission.');
     if (Object.keys(input).some(key => !['game', 'level', 'name', 'sequence'].includes(key)) ||
         (Object.hasOwn(input, 'game') && input.game !== game)) throw new SubmissionError('Submit only this campaign level.');
     const board = getBoard(input), name = scoreName(input.name), sequence = input.sequence;

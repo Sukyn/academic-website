@@ -1,7 +1,7 @@
 import { applyMove, isSolved, moveCost, sequenceCost, LEARNED_RULE_IDS } from "./engine.js";
 import { CAMPAIGN_VERSION, DAILY_START, DAILY_VERSION, LEVELS, dailyPuzzle } from "./puzzles.js";
 import { dailyBounds, dailyDate, validDailyDate } from "../games/daily-calendar.js";
-import { scoreName, SubmissionError } from "../games/submission.js";
+import { checkSubmissionSize, scoreName, SubmissionError } from "../games/submission.js";
 
 export const CAMPAIGN = CAMPAIGN_VERSION;
 export const MAX_SUBMISSION_BYTES = 256_000;
@@ -35,16 +35,13 @@ export function validateSubmission(input, now = Date.now()) {
   }
   // A body game selector remains supported when the URL has no selector. Keep
   // its replay resource budget identical to explicitly selected requests.
-  if (new TextEncoder().encode(JSON.stringify(input)).byteLength > MAX_SUBMISSION_BYTES) {
-    throw new SubmissionError("Submission is too large.", 413);
-  }
-  const payload = input;
-  const board = getBoard(payload, now);
+  checkSubmissionSize(input, MAX_SUBMISSION_BYTES, "Expected a score submission.");
+  const board = getBoard(input, now);
   if ("date" in board && board.date !== dailyDate(now)) {
     throw new SubmissionError("This puzzle's leaderboard is closed.", 409);
   }
-  const name = scoreName(payload.name);
-  const sequence = payload.sequence;
+  const name = scoreName(input.name);
+  const sequence = input.sequence;
   if (!Array.isArray(sequence) || !sequence.length || sequence.length > MAX_REPLAY_MOVES) {
     throw new SubmissionError(`Use a replay with 1 to ${MAX_REPLAY_MOVES.toLocaleString("en")} moves.`);
   }

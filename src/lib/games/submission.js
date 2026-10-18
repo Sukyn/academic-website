@@ -7,6 +7,17 @@ export class SubmissionError extends Error {
   }
 }
 
+/** JSON may parse successfully yet be too deeply nested to serialize again. */
+export function checkSubmissionSize(input, maxBytes, invalidMessage) {
+  let source;
+  try { source = JSON.stringify(input); }
+  catch { throw new SubmissionError(invalidMessage); }
+  if (typeof source !== "string") throw new SubmissionError(invalidMessage);
+  if (source.length > maxBytes || new TextEncoder().encode(source).byteLength > maxBytes) {
+    throw new SubmissionError("Submission is too large.", 413);
+  }
+}
+
 export function scoreName(value) {
   const name = typeof value === "string" ? value.trim().replace(/\s+/gu, " ") : "";
   // At most two UTF-16 units per code point: bound the array allocation even

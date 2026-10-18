@@ -198,7 +198,7 @@ function markSelection(activeCells) {
 }
 
 function renderSelection() {
-  if (signals || editing && editor) return;
+  if (signals) return;
   markSelection(selected);
   available = selected.size ? getLegalMoves(circuit, { profile, selection: selected }) : [];
   if (editing) {
@@ -209,7 +209,8 @@ function renderSelection() {
     input.checked = context.has(Number(input.value));
     input.disabled = Number(input.value) >= circuit.wires;
   }
-  for (const [id, button] of ruleButtons) button.disabled = review.step !== null || !available.some(move => move.rule === id);
+  const matchedRules = new Set(available.map(move => move.rule));
+  for (const [id, button] of ruleButtons) button.disabled = review.step !== null || !matchedRules.has(id);
 }
 
 function render({ board = true, animateFrom } = {}) {

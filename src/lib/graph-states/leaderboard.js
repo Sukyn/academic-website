@@ -1,7 +1,7 @@
 import { applyMove, isSolved, MAX_MOVES, sequenceCost } from './engine.js';
 import { DAILY_START, DAILY_VERSION, LEVELS, dailyPuzzle } from './puzzles.js';
 import { dailyBounds, dailyDate, validDailyDate } from '../games/daily-calendar.js';
-import { scoreName, SubmissionError } from '../games/submission.js';
+import { checkSubmissionSize, scoreName, SubmissionError } from '../games/submission.js';
 
 export const CAMPAIGN = 'graph-states-campaign-v1';
 export const DAILY_CAMPAIGN = DAILY_VERSION;
@@ -25,9 +25,7 @@ export function getBoard(selector, now = Date.now()) {
 /** Replay the official graph and count each local complementation as one shot. */
 export function validateSubmission(input, now = Date.now()) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new SubmissionError('Expected a score submission.');
-  if (new TextEncoder().encode(JSON.stringify(input)).byteLength > MAX_SUBMISSION_BYTES) {
-    throw new SubmissionError('Submission is too large.', 413);
-  }
+  checkSubmissionSize(input, MAX_SUBMISSION_BYTES, 'Expected a score submission.');
   const board = getBoard(input, now);
   if ('date' in board && board.date !== dailyDate(now)) throw new SubmissionError("This puzzle's leaderboard is closed.", 409);
   const name = scoreName(input.name);

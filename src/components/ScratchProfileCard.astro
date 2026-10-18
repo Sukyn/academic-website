@@ -6,14 +6,20 @@ interface Props {
 }
 
 const {
-  src = "/og/pp.jpg",
+  src = "/images/profile/colin-blake-portrait.jpg",
   alt = "Stylized profile picture of Colin Blake",
   sources,
 } = Astro.props;
 
 const imageSources = Array.from(
   new Set(
-    sources?.length ? sources : [src, "/og/pp-2.jpg", "/og/pp-3.jpg", "/og/pp-4.jpg", "/og/pp-5.png"],
+    sources?.length ? sources : [
+      src,
+      "/images/profile/colin-blake-portrait-2.jpg",
+      "/images/profile/colin-blake-portrait-3.jpg",
+      "/images/profile/colin-blake-portrait-4.jpg",
+      "/images/profile/colin-blake-portrait-5.png",
+    ],
   ),
 );
 ---

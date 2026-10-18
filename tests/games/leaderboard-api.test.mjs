@@ -897,23 +897,30 @@ test('circuit reduction shares ranking SQL while isolating campaigns, replays an
   }
 });
 
-test('advanced deeply nested replays return client errors without entering the database', async () => {
+test('deeply nested game replays return client errors without entering the database', async () => {
   const previous = globalThis.__quantumGolfPostgres;
   let queries = 0;
   globalThis.__quantumGolfPostgres = () => { queries++; throw new Error('Invalid submissions cannot query the database.'); };
   try {
-    for (const profile of ['prop', 'controlled']) {
-      const game = `circuit-reduction-${profile}`;
-      const raw = `{"game":"${game}","level":1,"name":"Ada","sequence":[` + '['.repeat(12_000) + 'null' + ']'.repeat(12_000) + ']}';
+    for (const [game, maxBytes] of [
+      ['graph-states', MAX_GRAPH_BYTES],
+      ['quantum-signals', MAX_SIGNAL_BYTES],
+      ['circuit-reduction', MAX_CIRCUIT_BYTES],
+      ...['prop', 'controlled'].map(profile => [`circuit-reduction-${profile}`, 128_000]),
+    ]) {
+      const depth = Math.min(12_000, Math.floor((maxBytes - 100) / 2));
+      const raw = `{"game":"${game}","level":1,"name":"Ada","sequence":[` + '['.repeat(depth) + 'null' + ']'.repeat(depth) + ']}';
       const send = (body, address = endpoint) => route.fetch(new Request(address, {
         method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body,
       }));
       for (const address of [endpoint, `${endpoint}?game=${game}`]) {
         const response = await send(raw, address);
         assert.equal(response.status, 400);
-        assert.deepEqual(await response.json(), { error: 'Expected a level submission.' });
+        const { error } = await response.json();
+        assert.equal(typeof error, 'string');
+        assert.ok(error.length > 0 && error.length <= 160, 'Only a short public validation error is exposed');
       }
-      const oversized = JSON.stringify({ game, level: 1, name: 'Ada', sequence: [], padding: 'x'.repeat(128_000) });
+      const oversized = JSON.stringify({ game, level: 1, name: 'Ada', sequence: [], padding: 'x'.repeat(maxBytes) });
       assert.equal((await send(oversized)).status, 413, 'Body-selected limits remain enforced before validation');
       assert.equal((await send(oversized, `${endpoint}?game=${game}`)).status, 413, 'URL-selected limits remain enforced during reading');
     }

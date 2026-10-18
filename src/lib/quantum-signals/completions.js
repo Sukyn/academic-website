@@ -1,7 +1,7 @@
 import { applyPlacement, simulate } from './engine.js';
 import { DAILY_START, DAILY_VERSION, LEVELS, dailyPuzzle } from './puzzles.js';
 import { validDailyDate } from '../games/daily-calendar.js';
-import { scoreName, SubmissionError } from '../games/submission.js';
+import { checkSubmissionSize, scoreName, SubmissionError } from '../games/submission.js';
 
 export const CAMPAIGN = 'signals-completions-v2';
 export const DAILY_CAMPAIGN = DAILY_VERSION;
@@ -25,9 +25,7 @@ export function getBoard(selector, now = Date.now()) {
 /** Verify a completed circuit; gate counts and editing detours have no bearing. */
 export function validateSubmission(input, now = Date.now()) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new SubmissionError('Expected a completion submission.');
-  if (new TextEncoder().encode(JSON.stringify(input)).byteLength > MAX_SUBMISSION_BYTES) {
-    throw new SubmissionError('Submission is too large.', 413);
-  }
+  checkSubmissionSize(input, MAX_SUBMISSION_BYTES, 'Expected a completion submission.');
   const board = getBoard(input, now), name = scoreName(input.name);
   if (!Array.isArray(input.sequence) || !input.sequence.length || input.sequence.length > MAX_REPLAY_MOVES) {
     throw new SubmissionError(`Use a replay with 1 to ${MAX_REPLAY_MOVES.toLocaleString('en')} placements.`);
