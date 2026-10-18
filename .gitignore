@@ -30,3 +30,6 @@ desktop.ini
 
 # jetbrains setting folder
 .idea/
+
+# local editor settings
+.vscode/
