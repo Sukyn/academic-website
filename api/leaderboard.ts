@@ -34,44 +34,29 @@ async function board(sql: ReturnType<typeof getSql>, campaign: string, level: nu
       SELECT DISTINCT ON (name) id, name, moves, created_at
       FROM scores WHERE campaign = ${campaign} AND level = ${level}
       ORDER BY name, moves, created_at, id
-    ), ranked AS (
-      SELECT id, name, moves,
-        ROW_NUMBER() OVER (ORDER BY moves, created_at, id) AS rank,
-        COUNT(*) OVER () AS total
-      FROM best
     ), selected_player AS (
       SELECT name FROM scores WHERE campaign = ${campaign} AND level = ${level}
         AND (id = ${player.id ?? null} OR name = ${player.name ?? null}) LIMIT 1
     )
-    SELECT ranked.*, name = (SELECT name FROM selected_player) AS is_player
-    FROM ranked WHERE total < 10 OR rank <= 5
-      OR ABS(rank - (SELECT rank FROM ranked WHERE name = (SELECT name FROM selected_player))) <= 2
-    ORDER BY rank
+    SELECT id, name, moves, name = (SELECT name FROM selected_player) AS is_player
+    FROM best ORDER BY moves, created_at, id
   `;
-  const entries = rows.map(row => ({
-    id: number(row.id), name: String(row.name), moves: number(row.moves), rank: number(row.rank),
+  const entries = rows.map((row, index) => ({
+    id: number(row.id), name: String(row.name), moves: number(row.moves), rank: index + 1,
   }));
   const mine = rows.findIndex(row => row.is_player === true);
-  return { total: rows[0] ? number(rows[0].total) : 0, entries, currentPlayer: mine < 0 ? null : entries[mine] };
+  return { total: entries.length, entries, currentPlayer: mine < 0 ? null : entries[mine] };
 }
 
 async function completions(sql: ReturnType<typeof getSql>, campaign: string, level: number, player: { id?: number; name?: string } = {}) {
   const rows = await sql`
-    WITH ordered AS (
-      SELECT id, name, COUNT(*) OVER () AS total,
-        ROW_NUMBER() OVER (ORDER BY name, id) AS position
-      FROM completions WHERE campaign = ${campaign} AND level = ${level}
-    ), selected_player AS (
-      SELECT id FROM completions WHERE campaign = ${campaign} AND level = ${level}
-        AND (id = ${player.id ?? null} OR name = ${player.name ?? null}) LIMIT 1
-    )
-    SELECT id, name, total, id = (SELECT id FROM selected_player) AS is_player
-    FROM ordered WHERE position <= 10 OR id = (SELECT id FROM selected_player)
+    SELECT id, name, (id = ${player.id ?? null} OR name = ${player.name ?? null}) AS is_player
+    FROM completions WHERE campaign = ${campaign} AND level = ${level}
     ORDER BY name, id
   `;
   const entries = rows.map(row => ({ id: number(row.id), name: String(row.name), completed: true }));
   const mine = rows.findIndex(row => row.is_player === true);
-  return { total: rows[0] ? number(rows[0].total) : 0, entries, currentPlayer: mine < 0 ? null : entries[mine] };
+  return { total: entries.length, entries, currentPlayer: mine < 0 ? null : entries[mine] };
 }
 
 export default {

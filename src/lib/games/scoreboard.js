@@ -6,9 +6,7 @@ import { scoreName } from './submission.js';
 function checkBoard(data, submitted = false, completionOnly = false) {
   const positive = value => Number.isSafeInteger(value) && value > 0;
   if (!data || !Number.isSafeInteger(data.total) || data.total < 0 ||
-      !Array.isArray(data.entries) || data.entries.length > Math.min(completionOnly ? 11 : 10, data.total) ||
-      (data.total > 0 && !data.entries.length) ||
-      (completionOnly && data.entries.length < Math.min(10, data.total))) {
+      !Array.isArray(data.entries) || data.entries.length !== data.total) {
     throw new Error('Invalid leaderboard response.');
   }
   const validEntry = entry => entry && positive(entry.id) &&
@@ -19,7 +17,7 @@ function checkBoard(data, submitted = false, completionOnly = false) {
   const ids = new Set();
   let previousRank = 0;
   for (const entry of data.entries) {
-    if (!validEntry(entry) || ids.has(entry.id) || (!completionOnly && entry.rank <= previousRank)) {
+    if (!validEntry(entry) || ids.has(entry.id) || (!completionOnly && entry.rank !== previousRank + 1)) {
       throw new Error('Invalid leaderboard response.');
     }
     if (!completionOnly) previousRank = entry.rank;
@@ -27,9 +25,8 @@ function checkBoard(data, submitted = false, completionOnly = false) {
   }
   const player = data.currentPlayer;
   const playerKeys = completionOnly ? ['id', 'name', 'completed'] : ['id', 'name', 'rank', 'moves'];
-  if ((player !== null && (!validEntry(player) || !data.entries.some(entry =>
-    playerKeys.every(key => entry[key] === player[key])))) ||
-      (completionOnly && data.entries.length === 11 && data.entries[10].id !== player?.id)) {
+  if (player !== null && (!validEntry(player) || !data.entries.some(entry =>
+    playerKeys.every(key => entry[key] === player[key])))) {
     throw new Error('Invalid leaderboard response.');
   }
   if (submitted && !player) throw new Error('Invalid saved score response.');
@@ -92,6 +89,7 @@ export function createScoreboard({
     nickname.refresh(); syncNickname();
     get('nickname-status').textContent = '';
     get('score-status').textContent = '';
+    for (const id of ['leaderboard-total', 'result-leaderboard-total']) get(id).textContent = '';
   }
 
   async function load() {

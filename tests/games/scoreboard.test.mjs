@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createScoreboard } from '../../src/lib/games/scoreboard.js';
+import { renderLeaderboard } from '../../src/lib/games/leaderboard.js';
 
 const NAME_KEY = 'games.nickname.v1';
 const settled = () => new Promise(resolve => setImmediate(resolve));
@@ -21,7 +22,7 @@ function setup(context, { completionOnly = false, nickname = null, blockedStorag
       await Promise.all((this.listeners.get(type) ?? []).map(listener => listener(event)));
     }
   }
-  const ids = ['player-rank', 'leaderboard-body', 'result-leaderboard-body', 'leaderboard-status', 'score-status', 'score-form', 'player-name',
+  const ids = ['player-rank', 'leaderboard-body', 'result-leaderboard-body', 'leaderboard-total', 'result-leaderboard-total', 'leaderboard-status', 'score-status', 'score-form', 'player-name',
     'nickname-form', 'nickname-value', 'nickname-save', 'nickname-forget', 'nickname-status'];
   const elements = new Map(ids.map(id => [id, new Element()]));
   if (completionOnly) elements.delete('player-rank');
@@ -62,6 +63,67 @@ function setup(context, { completionOnly = false, nickname = null, blockedStorag
     select(value) { selected = value; }, eligible(value) { eligible = value; },
     get updates() { return updates; }, get closed() { return closed; },
   };
+}
+
+function assertTotals(app, expected) {
+  for (const id of ['leaderboard-total', 'result-leaderboard-total']) {
+    assert.equal(app.get(id).textContent, expected, id);
+  }
+}
+
+for (const completionOnly of [false, true]) {
+  const mode = completionOnly ? 'Completion' : 'Ranked';
+  test(`${mode} leaderboards show every completed player and the total`, context => {
+    const app = setup(context, { completionOnly });
+    for (const [total, expected] of [
+      [0, '0 players have completed this challenge.'],
+      [1, '1 player has completed this challenge.'],
+      [3, '3 players have completed this challenge.'],
+      [10, '10 players have completed this challenge.'],
+    ]) {
+      const entries = Array.from({ length: total }, (_, index) => completionOnly
+        ? { id: index + 1, name: `Player ${index + 1}`, completed: true }
+        : { id: index + 1, name: `Player ${index + 1}`, rank: index + 1, moves: index + 2 });
+      renderLeaderboard({ entries, currentPlayer: null, total }, { completionOnly, get: app.get });
+      assertTotals(app, expected);
+      for (const id of ['leaderboard-body', 'result-leaderboard-body']) {
+        assert.equal(app.get(id).children.length, entries.length);
+      }
+    }
+  });
+
+  test(`${mode} scoreboard totals survive refresh failures and clear on round changes without accepting stale replies`, async context => {
+    const app = setup(context, { completionOnly });
+    const initial = app.scores.load();
+    assertTotals(app, '');
+    app.reply(app.requests.at(-1)); await initial;
+    assertTotals(app, '0 players have completed this challenge.');
+
+    const save = app.submit();
+    app.reply(app.requests.at(-1), app.board(1)); await save;
+    assertTotals(app, '1 player has completed this challenge.');
+
+    const failedRefresh = app.scores.load();
+    app.requests.at(-1).reject(new Error('Network unavailable'));
+    await failedRefresh;
+    assertTotals(app, '1 player has completed this challenge.');
+
+    const oldBoard = app.scores.load(), oldRequest = app.requests.at(-1);
+    app.scores.reset();
+    assertTotals(app, '');
+    app.select({ game: completionOnly ? 'quantum-signals' : 'circuit-reduction', level: 2 });
+    const newBoard = app.scores.load();
+    assertTotals(app, '');
+    app.reply(app.requests.at(-1)); await newBoard;
+    app.reply(oldRequest, app.board(1)); await oldBoard;
+    assertTotals(app, '0 players have completed this challenge.');
+
+    const oldSave = app.submit(), oldSaveRequest = app.requests.at(-1);
+    app.scores.reset(); app.select(null);
+    await app.scores.load();
+    app.reply(oldSaveRequest, app.board(2)); await oldSave;
+    assertTotals(app, '');
+  });
 }
 
 test('shot rankings omit absent benchmarks and keep the first player row and shot units', async context => {
@@ -236,13 +298,14 @@ test('Completion mode saves a replay without score fields and renders only names
   assert.equal(app.requests.length, 3);
 });
 
-test('Completion boards show the first ten players and may append the current player', async context => {
+test('Completion boards show all players, including the current player after the first ten', async context => {
   const app = setup(context, { completionOnly: true });
-  const entries = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, name: `Player ${index}`, completed: true }));
+  const entries = Array.from({ length: 20 }, (_, index) => ({ id: index + 1, name: `Player ${index}`, completed: true }));
   const own = { id: 21, name: 'Zoe', completed: true };
   const loading = app.scores.load();
   app.reply(app.requests[0], { total: 21, entries: [...entries, own], currentPlayer: own }); await loading;
-  assert.equal(app.get('leaderboard-body').children.length, 11);
+  assert.equal(app.get('leaderboard-body').children.length, 21);
+  assertTotals(app, '21 players have completed this challenge.');
   assert.equal(app.get('leaderboard-body').children.at(-1).className, 'current-player');
   assert.equal(app.scores.player.id, 21);
 });
@@ -260,8 +323,8 @@ test('Malformed completion boards preserve valid rows and reject score-bearing o
     { total: '1', entries: [entry], currentPlayer: null },
     { total: 1, entries: [], currentPlayer: null },
     { total: 12, entries: [entry], currentPlayer: null },
-    { total: 11, entries: eleven, currentPlayer: null },
-    { total: 11, entries: eleven, currentPlayer: eleven[0] },
+    { total: 11, entries: eleven.slice(0, 10), currentPlayer: null },
+    { total: 11, entries: eleven, currentPlayer: { ...eleven[0], id: 99 } },
     { total: 2, entries: [entry, entry], currentPlayer: null },
     withEntry({ id: 0 }), withEntry({ id: '7' }), withEntry({ completed: false }),
     withEntry({ completed: 1 }), withEntry({ completed: 'true' }),

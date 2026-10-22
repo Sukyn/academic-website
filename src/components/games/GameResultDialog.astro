@@ -24,6 +24,7 @@ const ranked = !completionOnly;
     <div class="ranking" tabindex="0" role="region" aria-label={completionOnly ? 'Completed players for this result' : 'Your leaderboard position'}>
       <table><thead><tr>{!completionOnly && <th scope="col">Rank</th>}<th scope="col">Player</th><th scope="col">{completionOnly ? 'Completed' : unit}</th></tr></thead><tbody id="result-leaderboard-body"></tbody></table>
     </div>
+    <p class="message" id="result-leaderboard-total" role="status"></p>
   </div>
   <div class="result-actions" id="result-actions" hidden={ranked}>
     <button class="button ghost" id="try-again" type="button">Try again</button>

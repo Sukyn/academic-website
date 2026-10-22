@@ -319,10 +319,11 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
       }
       board = await (await get()).json();
       assert.equal(board.total, 9);
-      assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 6, 7, 8, 9], 'Fewer than ten players show everyone');
+      assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 6, 7, 8, 9], 'Every completed player appears in rank order');
       board = await (await post(valid({ name: 'Player 8' }))).json();
       ids.push(board.currentPlayer.id);
-      assert.deepEqual(ranks(await (await get()).json()), [1, 2, 3, 4, 5], 'Ten players switch to the top-five view');
+      assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'The saved-score response keeps everyone visible at ten players');
+      assert.deepEqual(ranks(await (await get()).json()), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'The public leaderboard also keeps everyone visible at ten players');
       for (let index = 9; index < 30; index++) {
         board = await (await post(valid({ name: `Player ${index}` }))).json();
         ids.push(board.currentPlayer.id);
@@ -332,22 +333,28 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
     response = await get();
     board = await response.json();
     assert.equal(board.total, 31);
-    assert.deepEqual(ranks(board), [1, 2, 3, 4, 5]);
+    assert.deepEqual(ranks(board), Array.from({ length: 31 }, (_, index) => index + 1));
+    assert.equal(new Set(board.entries.map(entry => entry.id)).size, 31);
+    assert.equal(new Set(board.entries.map(entry => entry.name)).size, 31, 'Only one best attempt per nickname appears in the full leaderboard');
+    const publicEntries = board.entries;
     assert.equal(board.currentPlayer, null);
     assert.equal(response.headers.get('Cache-Control'), 'public, max-age=15');
     board = await (await get(1, ids[18])).json();
     assert.equal(board.currentPlayer.rank, 19);
     assert.equal(board.currentPlayer.name, 'Player 18');
-    assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 17, 18, 19, 20, 21]);
+    assert.deepEqual(board.entries, publicEntries, 'Selecting a player in the middle retains the full leaderboard');
     board = await (await post(valid({ name: 'Player 18' }))).json();
     assert.equal(board.currentPlayer.id, ids[18]);
     assert.equal(board.currentPlayer.rank, 19);
+    assert.deepEqual(board.entries, publicEntries, 'An idempotent score retry retains every ranked player');
     board = await (await get(1, ids[3])).json();
-    assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 6], 'Overlapping top and personal windows contain no duplicates');
+    assert.deepEqual(board.entries, publicEntries, 'Selecting a player near the top retains every player without duplicates');
     board = await (await get(1, improvedId)).json();
     assert.equal(board.currentPlayer.rank, 31);
-    assert.deepEqual(ranks(board), [1, 2, 3, 4, 5, 29, 30, 31]);
-    assert.equal((await (await get(1, 999999)).json()).currentPlayer, null);
+    assert.deepEqual(board.entries, publicEntries, 'Selecting the last player retains the full leaderboard');
+    board = await (await get(1, 999999)).json();
+    assert.equal(board.currentPlayer, null);
+    assert.deepEqual(board.entries, publicEntries, 'An unknown player ID does not limit the public leaderboard');
 
     const thirdHole = LEVELS.find(level => level.id === 3);
     const thirdSolution = solveShortest(thirdHole.target, thirdHole.epsilon, { maxDepth: thirdHole.optimalMoves });
@@ -1065,7 +1072,8 @@ test('Signals records verified completions in the shared table without ranks', a
   const list = (selector = 'level=1', player) => route.fetch(new Request(`${address}&${selector}${player ? `&player=${player}` : ''}`));
   const checkShape = body => {
     assert.deepEqual(Object.keys(body).sort(), ['currentPlayer', 'entries', 'total']);
-    assert.ok(body.entries.length <= 11);
+    assert.equal(body.entries.length, body.total, 'Every completed player appears in the response');
+    assert.equal(new Set(body.entries.map(entry => entry.id)).size, body.total, 'Players are never repeated');
     for (const entry of body.entries) {
       assert.deepEqual(Object.keys(entry).sort(), ['completed', 'id', 'name']);
       assert.equal(entry.completed, true);
@@ -1130,15 +1138,17 @@ test('Signals records verified completions in the shared table without ranks', a
     const last = await (await post({ ...payload, name: 'Zoë' }, origin, address)).json();
     checkShape(last);
     assert.equal(last.total, 17);
-    assert.equal(last.entries.length, 11);
-    assert.equal(last.entries.at(-1).name, 'Zoë', 'A current player outside the first ten remains visible');
-    assert.deepEqual(last.entries.slice(0, 10).map(entry => entry.name), ['Ada', ...Array.from({ length: 9 }, (_, i) => `Player 0${i}`)]);
+    assert.equal(last.entries.length, 17);
+    assert.deepEqual(last.entries.at(-1), last.currentPlayer, 'The current player remains part of the full alphabetical list');
+    assert.deepEqual(last.entries.map(entry => entry.name), ['Ada',
+      ...Array.from({ length: 15 }, (_, index) => `Player ${String(index).padStart(2, '0')}`), 'Zoë']);
     assert.deepEqual(await (await list('level=1', last.currentPlayer.id)).json(), last);
     const anonymous = await list();
     assert.equal(anonymous.headers.get('Cache-Control'), 'public, max-age=15');
     const publicList = await anonymous.json();
     checkShape(publicList);
-    assert.equal(publicList.entries.length, 10); assert.equal(publicList.currentPlayer, null);
+    assert.equal(publicList.entries.length, 17); assert.equal(publicList.currentPlayer, null);
+    assert.deepEqual(publicList.entries, last.entries, 'Anonymous and personal completion lists show the same full leaderboard');
     assert.equal((await list('level=1', last.currentPlayer.id)).headers.get('Cache-Control'), 'no-store');
     const htmlName = "<b>O'Neil</b>";
     const html = await (await post({ ...payload, name: htmlName }, origin, address)).json();

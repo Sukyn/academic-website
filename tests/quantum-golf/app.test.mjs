@@ -427,8 +427,15 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
     return blob;
   }
   const player = (rank, name = `Player ${rank}`, moves = 1) => ({ id: rank, name, moves, rank });
-  const board = (entries = [], currentPlayer = null, total = entries.length) => ({ total, entries, currentPlayer });
+  const board = (entries = [], currentPlayer = null) => ({ total: entries.length, entries, currentPlayer });
   const displayedRanks = (id) => get(id).children.slice(1).map((row) => Number(row.children[0].textContent));
+  const assertCompletionCounts = total => {
+    for (const id of ['leaderboard-total', 'result-leaderboard-total']) {
+      assert.equal(get(id).textContent, total === 1
+        ? '1 player has completed this challenge.'
+        : `${total} players have completed this challenge.`);
+    }
+  };
   function selectLevel(value) {
     get('level').value = String(value);
     get('level').dispatch('change');
@@ -641,6 +648,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(rows[0].children[2].textContent, '1');
   assert.equal(rows[1].children.some((cell) => cell.textContent === '<b>Ada</b>'), true, 'Visitor names are literal text');
   assert.equal(rows[0].textContent.includes('HT'), false, 'The optimum row exposes only its count');
+  assertCompletionCounts(1);
 
   const firstSolution = finishLevel(0);
   assert.equal(winning(), true);
@@ -781,9 +789,9 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   const retry = get('score-form').dispatch('submit');
   const retryTimer = [...timers.values()].at(-1);
   const own = player(19, 'Ada');
-  const windowRanks = [1, 2, 3, 4, 5, 17, 18, 19, 20, 21];
-  const windowEntries = windowRanks.map((rank) => rank === 19 ? own : player(rank));
-  await reply(requests.at(-1), board(windowEntries, own, 40));
+  const allRanks = Array.from({ length: 40 }, (_, index) => index + 1);
+  const allEntries = allRanks.map((rank) => rank === 19 ? own : player(rank));
+  await reply(requests.at(-1), board(allEntries, own));
   await retry;
   assert.equal(timers.has(retryTimer), false, 'Successful responses release their timeout');
   assert.equal(dialog.open, true);
@@ -794,11 +802,13 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(get('result-next').hidden, false);
   assert.match(get('player-rank').textContent, /19/);
   assert.match(get('player-rank').textContent, /40/);
-  assert.deepEqual(displayedRanks('result-leaderboard-body'), windowRanks);
-  assert.deepEqual(displayedRanks('leaderboard-body'), windowRanks);
+  assert.deepEqual(displayedRanks('result-leaderboard-body'), allRanks);
+  assert.deepEqual(displayedRanks('leaderboard-body'), allRanks);
+  assertCompletionCounts(40);
   const ownRow = get('result-leaderboard-body').children.find((row) => row.classList.contains('current-player'));
   assert.ok(ownRow, 'The submitted player is highlighted');
-  assert.equal(ownRow.children[0].textContent, '19', 'Sparse windows keep the global ordinal rank');
+  assert.equal(ownRow.children[0].textContent, '19', 'The submitted player keeps the global ordinal rank');
+  assert.equal(get('result-leaderboard-body').children.indexOf(ownRow), 19, 'The submitted player stays in ranked order after the optimum reference');
   assert.equal(ownRow.children[1].textContent, 'Ada (you)');
   assert.match(get('leaderboard-body').textContent, /Ada/);
   assert.equal(get('submit-score').disabled, true);
@@ -810,11 +820,12 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   await browser.dispatch('pageshow', { persisted: true });
   const restoredBoard = requests.at(-1);
   assert.equal(new URL(restoredBoard.url, 'https://example.test').searchParams.get('player'), String(own.id));
-  await reply(restoredBoard, board(windowEntries, own, 40));
+  await reply(restoredBoard, board(allEntries, own));
   assert.equal(sphere.model.sequence, savedSequence, 'Restoring a saved round preserves its circuit');
   samePoint(sphere.model.state, savedState);
   assert.equal(dialog.open, true, 'Restoration preserves the result dialog');
   assert.equal(get('score-form').hidden, true, 'Restoration keeps a saved round submitted');
+  assertCompletionCounts(40);
   click('try-again');
   assert.equal(dialog.open, false);
   assert.equal(winning(), false);
@@ -837,13 +848,15 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   click('close-win');
   assert.equal(dialog.open, false);
   const smallOwn = player(9, 'Ada');
-  await reply(closedPost, board(Array.from({ length: 9 }, (_, index) => index === 8 ? smallOwn : player(index + 1)), smallOwn, 9));
+  const smallEntries = Array.from({ length: 9 }, (_, index) => index === 8 ? smallOwn : player(index + 1));
+  await reply(closedPost, board(smallEntries, smallOwn));
   assert.equal(dialog.open, false, 'A completed save must not reopen a dialog the player closed');
   assert.equal(get('next-level').disabled, false);
   click('show-results');
   assert.equal(dialog.open, true);
   assert.equal(get('win-results').hidden, false);
-  assert.deepEqual(displayedRanks('result-leaderboard-body'), [1, 2, 3, 4, 5, 6, 7, 8, 9], 'Fewer than ten people displays everyone');
+  assert.deepEqual(displayedRanks('result-leaderboard-body'), [1, 2, 3, 4, 5, 6, 7, 8, 9], 'The result displays every player in ranked order');
+  assertCompletionCounts(9);
   const reopenedGet = requests.at(-1);
   assert.equal(new URL(reopenedGet.url, 'https://www.colin-blake.eu').searchParams.get('player'), '9', 'Reopening Scores asks for the submitted player context');
 
@@ -853,7 +866,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   await click('nickname-forget');
   assert.equal(nicknameStorage.has('games.nickname.v1'), false, 'Forgetting restores manual registration on later wins.');
   assert.equal(reopenedGet.options.signal.aborted, true);
-  await reply(reopenedGet, board([smallOwn], smallOwn, 9));
+  await reply(reopenedGet, board(smallEntries, smallOwn));
 
   finishLevel(0);
   assert.equal(get('score-form').hidden, false, 'A late personal GET cannot replace the next round\'s entry form');
@@ -866,7 +879,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   click('close-win');
   click('restart');
   assert.equal(dialog.open, false);
-  await reply(resetPost, board(windowEntries, own, 40));
+  await reply(resetPost, board(allEntries, own));
   await resetSubmission;
   assert.equal(dialog.open, false);
   assert.equal(winning(), false);

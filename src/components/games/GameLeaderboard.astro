@@ -8,5 +8,6 @@ const { unit = 'Moves', completionOnly = false, hidden = false } = Astro.props;
   <div class="ranking" tabindex="0" role="region" aria-label={completionOnly ? 'Completed players' : 'Leaderboard scores'}>
     <table><thead><tr>{!completionOnly && <th scope="col">Rank</th>}<th scope="col">Player</th><th scope="col">{completionOnly ? 'Completed' : unit}</th></tr></thead><tbody id="leaderboard-body"></tbody></table>
   </div>
+  <p class="message" id="leaderboard-total" role="status"></p>
   <p class="message" id="leaderboard-status" role="status"></p>
 </section>

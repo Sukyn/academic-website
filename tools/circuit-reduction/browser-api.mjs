@@ -14,9 +14,7 @@ export function createBrowserApi({ now = process.env.GAME_TEST_TIME ? Date.parse
     const entries = [...(completed.get(`${board.campaign}:${board.level}`)?.values() ?? [])]
       .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : a.id - b.id);
     const currentPlayer = entries.find(entry => entry.id === player.id || entry.name === player.name) ?? null;
-    const visible = entries.slice(0, 10);
-    if (currentPlayer && !visible.includes(currentPlayer)) visible.push(currentPlayer);
-    return { entries: visible, currentPlayer, total: entries.length };
+    return { entries, currentPlayer, total: entries.length };
   }
 
   function getDaily(gameId, chosen) {
