@@ -25,7 +25,7 @@ from reportlab.platypus import (
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "public" / "profile"
-UPDATED = "15 October 2026"
+UPDATED = "24 October 2026"
 INK = colors.HexColor("#202b36")
 NAVY = colors.HexColor("#173b55")
 MUTED = colors.HexColor("#52616c")
@@ -199,13 +199,10 @@ def cv():
         p("<b>Cap sur le numérique à Bercy</b>, Paris, 8 December 2025: quantum research and research careers."),
     ]
 
-    story += section("Research software and skills")
+    story += section("Research software")
     story += [
         p("<b>" + link("https://github.com/Sukyn/minimality-auto/", "minimality-auto")
           + " (Python).</b> Command-line search for invariants separating an equation from the other axioms of a quantum-circuit theory."),
-        p("<b>Research:</b> equational reasoning, ZX-calculus.<br/>"
-          "<b>Programming:</b> Python, Java, C, C++, OCaml.<br/>"
-          "<b>Methods and tools:</b> Why3, Git, UML, unit testing."),
     ]
     story += section("Languages")
     story += [p("French: native. English: full professional proficiency. Spanish: professional working proficiency.")]
