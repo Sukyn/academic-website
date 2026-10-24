@@ -203,6 +203,7 @@ def cv():
     story += [
         p("<b>" + link("https://github.com/Sukyn/minimality-auto/", "minimality-auto")
           + " (Python).</b> Command-line search for invariants separating an equation from the other axioms of a quantum-circuit theory."),
+        p("<b>Tools:</b> Why3, Git, UML, unit testing."),
     ]
     story += section("Languages")
     story += [p("French: native. English: full professional proficiency. Spanish: professional working proficiency.")]
