@@ -10,12 +10,14 @@ interface Props {
   title: string;
   description?: string;
   noindex?: boolean;
+  wallpaper?: boolean;
 }
 
 const {
   title,
   description = "Quantum computing research, publications, and collaboration ideas by Colin Blake.",
   noindex = false,
+  wallpaper = true,
 } = Astro.props;
 
 const siteName = siteProfile.name;
@@ -55,7 +57,7 @@ const canonical = Astro.url.toString();
 
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <ZXWallpaper />
+    {wallpaper && <ZXWallpaper />}
     <div class="page">
       <Header />
       <main id="main-content" class="container" tabindex="-1">

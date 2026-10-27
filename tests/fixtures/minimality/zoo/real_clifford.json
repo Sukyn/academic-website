@@ -1,0 +1,26 @@
+{
+  "name": "Real Clifford (Figure 3)",
+  "wire_dimension": 2,
+  "source": {"paper":"arXiv:2602.09874","figure":3,"minimality_scope":"all arities"},
+  "generators": {
+    "minus": {"type":0,"matrix":[[-1]]},
+    "H": {"type":1,"matrix":[[0.7071067811865476,0.7071067811865476],[0.7071067811865476,-0.7071067811865476]]},
+    "Z": {"type":1,"matrix":{"diagonal":[1,-1]}},
+    "CNOT": {"type":2,"matrix":{"permutation":[0,1,3,2]}}
+  },
+  "macros": {
+    "X": {"wires":1,"ops":[{"gen":"H"},{"gen":"Z"},{"gen":"H"}]}
+  },
+  "equations": [
+    {"id":"minus2","lhs":{"gen":"minus","repeat":2},"rhs":{"id":0}},
+    {"id":"H2","lhs":{"gen":"H","repeat":2},"rhs":{"id":1}},
+    {"id":"Z2","lhs":{"gen":"Z","repeat":2},"rhs":{"id":1}},
+    {"id":"F","lhs":{"wires":1,"ops":[{"gen":"Z"},{"gen":"H"},{"gen":"Z"},{"gen":"H"}]},"rhs":{"tensor":[{"gen":"minus"},{"wires":1,"ops":[{"gen":"H"},{"gen":"Z"},{"gen":"H"},{"gen":"Z"}]}]}},
+    {"id":"CX2","lhs":{"gen":"CNOT","repeat":2},"rhs":{"id":2}},
+    {"id":"B","lhs":{"wires":2,"ops":[{"gen":"CNOT"},{"gen":"CNOT","on":[1,0]}]},"rhs":{"wires":2,"ops":[{"perm":[1,0]},{"gen":"CNOT"}]}},
+    {"id":"ZC","lhs":{"wires":2,"ops":[{"gen":"Z","on":1},{"gen":"CNOT"},{"gen":"Z","on":1}]},"rhs":{"wires":2,"ops":[{"gen":"CNOT"},{"gen":"Z","on":0}]}},
+    {"id":"CZr","lhs":{"wires":2,"ops":[{"gen":"H","on":0},{"gen":"H","on":1},{"gen":"CNOT"},{"gen":"H","on":0},{"gen":"H","on":1}]},"rhs":{"wires":2,"ops":[{"gen":"CNOT","on":[1,0]}]}},
+    {"id":"CF","lhs":{"wires":2,"ops":[{"gen":"CNOT"},{"gen":"H","on":1},{"gen":"CNOT"},{"gen":"Z","on":1},{"gen":"H","on":1}]},"rhs":{"wires":2,"ops":[{"gen":"H","on":1},{"gen":"Z","on":1},{"gen":"CNOT"},{"gen":"H","on":1},{"gen":"CNOT"}]}},
+    {"id":"I","lhs":{"wires":3,"ops":[{"gen":"CNOT","on":[1,2]},{"gen":"CNOT","on":[0,1]},{"gen":"CNOT","on":[0,2]}]},"rhs":{"wires":3,"ops":[{"gen":"CNOT","on":[0,1]},{"gen":"CNOT","on":[1,2]}]}}
+  ]
+}

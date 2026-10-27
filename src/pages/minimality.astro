@@ -1,0 +1,112 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ContentDialog from '../components/ContentDialog.astro';
+import { siteProfile } from '../data/site';
+import { STRUCTURES } from '../lib/minimality/model.js';
+import { AUDITED_ZOO_COMMIT } from '../lib/minimality/zoo-catalog.js';
+import '../styles/minimality.css';
+---
+
+<BaseLayout title="Minimality" description="Build circuit equations and search for independent axioms." noindex wallpaper={false}>
+  <div class="minimality" id="minimality-app">
+    <header class="minimality-heading">
+      <h1>Minimality</h1>
+      <div class="workspace-actions">
+        <div class="document-actions" aria-label="Theory actions">
+          <button type="button" id="new-theory">New</button>
+          <button type="button" id="open-theory">Open</button>
+          <button type="button" id="save-theory">Save</button>
+          <span class="action-divider" aria-hidden="true"></span>
+          <button type="button" id="undo-theory" aria-label="Undo" title="Undo" disabled>↶</button>
+          <button type="button" id="redo-theory" aria-label="Redo" title="Redo" disabled>↷</button>
+        </div>
+        <div class="search-controls">
+          <div class="search-actions">
+            <label class="timeout-field"><span>Time limit</span><select id="search-timeout"><option value="10">10 s</option><option value="30" selected>30 s</option></select></label>
+            <button type="button" class="run-button" id="run-search" disabled>Run search →</button>
+          </div>
+          <p id="search-availability" class="availability-message" role="status" hidden></p>
+        </div>
+      </div>
+    </header>
+
+    <label class="theory-title"><span class="sr-only">Theory name</span><input id="theory-name" data-field="theory-name" value="Untitled theory" maxlength="120" autocomplete="off" /></label>
+    <p id="editor-message" class="editor-message" role="status" aria-live="polite" hidden></p>
+
+    <div class="minimality-layout">
+      <aside class="generator-panel" aria-labelledby="generators-heading">
+        <div class="structure-panel">
+          <label class="structure-label" for="theory-zoo">Theory zoo</label>
+          <div class="zoo-controls">
+            <select id="theory-zoo" class="structure-select" aria-busy="true" disabled><option value="">Loading…</option></select>
+            <button type="button" id="reload-zoo" class="zoo-refresh" aria-label="Reload theory zoo" title="Reload theory zoo" disabled>↻</button>
+          </div>
+          <p id="zoo-message" class="availability-message" role="status" hidden></p>
+          <details id="zoo-unavailable" class="zoo-unavailable" hidden>
+            <summary>Unavailable theories</summary>
+            <dl id="zoo-unavailable-list"></dl>
+          </details>
+          <button type="button" id="see-references" class="circuit-control" data-content-dialog="theory-references" aria-haspopup="dialog" aria-controls="theory-references-dialog" disabled>See references</button>
+        </div>
+        <div class="structure-panel">
+          <label class="structure-label" for="theory-structure">Categorical structure</label>
+          <div class="structure-controls">
+            <select id="theory-structure" class="structure-select" data-field="theory-structure">
+              {STRUCTURES.map(structure => <option value={structure}>{structure}</option>)}
+            </select>
+            <label id="control-values-field" class="control-values" hidden>
+              <span>Values</span>
+              <select id="control-values" data-field="theory-controlValues" aria-label="Number of control values">
+                {[2, 3, 4, 5, 6].map(count => <option value={count}>{count}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="panel-heading"><h2 id="generators-heading">Generators</h2><span id="generator-count" class="item-count">0</span></div>
+        <div class="generator-labels" aria-hidden="true"><span>Name</span><span>Wires</span></div>
+        <div id="generator-list"></div>
+        <button type="button" class="add-button" id="add-generator">+ Generator</button>
+        <section class="shortcuts-panel" aria-labelledby="shortcuts-heading">
+          <details id="shortcut-editors">
+            <summary><h2 id="shortcuts-heading">Shortcuts</h2><span id="shortcut-count" class="item-count">0</span></summary>
+            <div id="shortcut-list"></div>
+          </details>
+          <button type="button" class="add-button" id="add-shortcut">+ Shortcut</button>
+        </section>
+      </aside>
+
+      <section class="rules-panel" aria-labelledby="rules-heading">
+        <div class="panel-heading"><h2 id="rules-heading">Equations</h2><span id="rule-count" class="item-count">0</span></div>
+        <div id="rule-list"></div>
+        <button type="button" class="add-button" id="add-rule">+ Equation</button>
+      </section>
+    </div>
+
+    <section class="minimality-search" aria-labelledby="search-heading">
+      <div class="search-toolbar">
+        <div class="search-heading"><h2 id="search-heading">Search</h2><span id="search-summary" role="status" aria-live="polite"></span></div>
+      </div>
+      <div id="search-output" hidden>
+        <p id="search-error" class="search-error" role="alert" hidden></p>
+        <ol id="search-results" class="search-results" aria-label="Search results"></ol>
+        <div class="search-footer"><span id="search-progress"></span><a id="search-source" target="_blank" rel="noopener noreferrer" hidden></a></div>
+      </div>
+    </section>
+    <div id="generator-picker" class="generator-picker" popover="auto" role="dialog" aria-label="Add generator" tabindex="-1">
+      <div id="generator-choices"></div>
+      <p id="generator-picker-empty" hidden>No generators fit here.</p>
+      <button type="button" id="close-generator-picker" class="picker-close">Cancel</button>
+    </div>
+    <input id="theory-file" type="file" accept=".json,application/json" hidden />
+    <noscript><p>Enable JavaScript to edit circuit equations.</p></noscript>
+  </div>
+  <ContentDialog id="theory-references" labelledBy="theory-references-title" stickyClose>
+    <h2 id="theory-references-title">References</h2>
+    <p class="reference-scope">Paper comparisons checked against zoo revision <a href={`https://github.com/Sukyn/minimality-auto/tree/${AUDITED_ZOO_COMMIT}/theories`} target="_blank" rel="noopener noreferrer">{AUDITED_ZOO_COMMIT.slice(0, 7)}</a>.</p>
+    <dl id="theory-references-list" class="theory-references" data-contact={siteProfile.email}></dl>
+  </ContentDialog>
+</BaseLayout>
+
+<script>
+  import '../scripts/minimality.js';
+</script>

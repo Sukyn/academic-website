@@ -6,7 +6,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "dev": "astro dev",
+    "dev": "node tools/minimality/dev.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",

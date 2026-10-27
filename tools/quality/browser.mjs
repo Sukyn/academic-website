@@ -8,6 +8,7 @@ import { LEVELS as SIGNAL_LEVELS } from '../../src/lib/quantum-signals/puzzles.j
 import { solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
 import { LEVELS as GRAPH_LEVELS } from '../../src/lib/graph-states/puzzles.js';
 import { solutionForGraph } from '../../src/lib/graph-states/engine.js';
+import { AUDITED_ZOO_COMMIT } from '../../src/lib/minimality/zoo-catalog.js';
 
 const requireFrom = directory => createRequire(resolve(directory, 'package.json'));
 const qualityRequire = requireFrom(process.env.QUALITY_MODULE_DIR ?? 'tmp/quality-tools/node_modules');
@@ -22,6 +23,7 @@ const routes = (await readdir('dist', { recursive: true })).filter(file => file.
 assert.ok(routes.length > 0, 'Build the website before auditing it.');
 const auditTime = new Date('2026-10-25T10:00:00Z');
 const fixture = createBrowserApi({ now: auditTime.getTime() });
+const zooTheory = JSON.parse(await readFile('tests/fixtures/minimality/zoo/real_clifford.json', 'utf8'));
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
 const results = [], failures = [], resilience = [], links = new Map();
@@ -128,6 +130,9 @@ try {
       });
       try {
         await fixture.install(page);
+        if (pathname === 'minimality/') await page.route('**/api/minimality?zoo=1', route => route.fulfill({ json: {
+          commit: AUDITED_ZOO_COMMIT, theories: [{ id: 'real_clifford', name: zooTheory.name, theory: zooTheory }],
+        } }));
         if (archive) await page.route('https://iww.inria.fr/**', route => route.abort());
         await page.clock.setFixedTime(auditTime);
         const response = await page.goto(new URL(pathname === '404.html' ? '__quality-missing__/' : pathname, base).href);

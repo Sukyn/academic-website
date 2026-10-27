@@ -2,14 +2,15 @@
 type Props = {
   id: string;
   labelledBy: string;
+  stickyClose?: boolean;
 };
 
-const { id, labelledBy } = Astro.props as Props;
+const { id, labelledBy, stickyClose = false } = Astro.props as Props;
 ---
 
 <dialog
   id={`${id}-dialog`}
-  class="content-dialog"
+  class:list={["content-dialog", { "content-dialog--sticky-close": stickyClose }]}
   aria-labelledby={labelledBy}
 >
   <div class="content-dialog__surface">
@@ -60,6 +61,16 @@ const { id, labelledBy } = Astro.props as Props;
     display: flex;
     justify-content: flex-end;
     margin-bottom: 1rem;
+  }
+
+  .content-dialog--sticky-close .content-dialog__topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: -1rem -1.25rem 1rem;
+    padding: .75rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
   }
 
   .content-dialog__close {

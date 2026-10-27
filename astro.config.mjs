@@ -7,6 +7,16 @@ export default defineConfig({
   compressHTML: true,
   prefetch: true,
   markdown: { syntaxHighlight: false },
+  vite: {
+    server: {
+      proxy: {
+        "/api/minimality": {
+          target: `http://127.0.0.1:${process.env.MINIMALITY_API_PORT ?? 8787}`,
+          changeOrigin: false,
+        },
+      },
+    },
+  },
   security: {
     csp: {
       directives: [
@@ -30,7 +40,7 @@ export default defineConfig({
   },
   integrations: [
     sitemap({
-      filter: (page) => !/^\/(offers|circuits)(\/|$)/.test(new URL(page).pathname),
+      filter: (page) => !/^\/(offers|circuits|minimality)(\/|$)/.test(new URL(page).pathname),
     }),
   ],
 });

@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-export function runPython(args, options = {}) {
-  const commands = process.env.QUANTUM_GOLF_PYTHON
-    ? [[process.env.QUANTUM_GOLF_PYTHON]]
+export function pythonCommands(override = process.env.QUANTUM_GOLF_PYTHON) {
+  return override
+    ? [[override]]
     : process.platform === 'win32' ? [['py', '-3'], ['python']] : [['python3']];
-  for (const [command, ...prefix] of commands) {
+}
+
+export function runPython(args, options = {}) {
+  for (const [command, ...prefix] of pythonCommands()) {
     const result = spawnSync(command, [...prefix, ...args], { encoding: 'utf8', ...options });
     if (result.error?.code !== 'ENOENT') return result;
   }
