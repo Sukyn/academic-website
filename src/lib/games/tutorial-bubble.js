@@ -56,9 +56,13 @@ export function createTutorialBubble(panel, getAnchor) {
         const visible = context.top >= bounds.top + 12 && context.bottom <= bounds.top + bounds.height - 12;
         const overlap = placement.left < context.right && placement.left + size.width > context.left &&
           placement.top < context.bottom && placement.top + size.height > context.top;
-        if (context.height + size.height + 36 <= bounds.height &&
+        // Leave room for page scrolling to round to device pixels instead of landing just outside a strict fit.
+        const headroom = 2;
+        if (context.height + size.height + 36 + headroom <= bounds.height &&
           (!visible || overlap || referent?.preferredSide === side && free < size.height + 12)) {
-          const shift = context.top - (bounds.top + 12 + (side === 'above' ? size.height + 12 : 0));
+          const targetTop = side === 'above' ? bounds.top + size.height + 24 + headroom :
+            bounds.top + bounds.height - context.height - size.height - 24 - headroom;
+          const shift = context.top - targetTop;
           if (Math.abs(shift) > .5) { view.scrollBy({ top: shift, behavior: 'instant' }); schedule(); return; }
         }
       }
