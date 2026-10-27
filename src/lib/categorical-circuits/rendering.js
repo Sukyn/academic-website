@@ -135,11 +135,8 @@ export function renderCircuit(container, circuit, {
     // The slot's constructor remains visible before a gate is chosen. These
     // dim endpoints describe its controls, not a filled operation or amplitude.
     if (hole.controls?.length && !hole.wires.some(wire => roles.has(cellKey(wire, column)))) {
-      const wires = [...hole.wires, ...hole.controls];
-      svg.appendChild(svgNode('line', { x1: centerX(column), x2: centerX(column),
-        y1: centerY(Math.min(...wires)), y2: centerY(Math.max(...wires)),
-        stroke: CIRCUIT_COLORS.z, 'stroke-width': 2, 'stroke-opacity': .45,
-        class: 'categorical-link', 'data-hole-context': index }));
+      controlLink(svg, centerX(column), hole.wires.map(centerY), hole.controls.map(centerY),
+        { 'stroke-opacity': .45, 'data-hole-context': index });
       for (const wire of hole.controls) if (!roles.has(cellKey(wire, column))) {
         roles.set(cellKey(wire, column), { control: true, placeholder: true,
           label: 'Control for hole ' + (index + 1) + ', target wire' + (hole.wires.length > 1 ? 's ' : ' ') + wireList(hole.wires) });
@@ -195,8 +192,6 @@ export function renderRulePreview(container, wires, pattern) {
 }
 
 export function renderAdvancedFlow(svg, targetSvg, circuit, target, { profile = 'controlled', selectedColumn } = {}) {
-  // Keep the target reference stable across edits; the shared renderer caches its
-  // markers independently from the evolving state and its overall phase.
   renderFlow(svg, targetSvg, { ...circuit, target }, {}, undefined,
     { trace: flowTrace(circuit, profile), selectedColumn });
 }

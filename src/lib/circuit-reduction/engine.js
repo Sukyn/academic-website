@@ -160,7 +160,7 @@ export function gateCells(circuit, key) {
     symbol.endsWith('D') ? [cell, (row - 1) + ':' + column] : [cell];
 }
 
-/** Match rule windows together with their linked endpoints. */
+/** Match selected gates, inferring empty cells inside each padded rule window. */
 export function getSelectionMoves(circuit, selection, { allowedRules } = {}) {
   if (!Array.isArray(selection) && !(selection instanceof Set)) throw new RangeError('Choose cells inside this circuit.');
   const linked = key => gateCells(circuit, key), selected = expandSelection(selection, linked);
@@ -170,16 +170,29 @@ export function getSelectionMoves(circuit, selection, { allowedRules } = {}) {
     const current = Number(cell.split(':')[1]);
     column = Math.min(column, current); lastColumn = Math.max(lastColumn, current);
   }
-  const width = lastColumn - column + 1;
-  if (!RULES.some(rule => rule.left[0].length === width)) return [];
   const moves = [];
-  for (let row = 0; row < circuit.length; row++) for (let height = 1; row + height <= circuit.length; height++) {
-    const candidates = getLegalMoves(circuit, { allowedRules, window: { row, column, height, width } });
-    if (!candidates.length) continue;
-    const cells = [];
-    for (let y = row; y < row + height; y++) for (let x = column; x < column + width; x++) cells.push(y + ':' + x);
-    const window = expandSelection(cells, linked);
-    if (window.size === selected.size && [...window].every(cell => selected.has(cell))) moves.push(...candidates);
+  for (const rule of RULES) {
+    if (allowedRules && !allowedRules.includes(rule.id)) continue;
+    const height = rule.left.length, width = rule.left[0].length;
+    // A rule is at most three columns wide. Inspect only windows containing the
+    // selected columns, even when the circuit has thousands of identity slots.
+    const first = Math.max(0, lastColumn - width + 1), last = Math.min(column, circuit[0].length - width);
+    for (let row = 0; row + height <= circuit.length; row++) for (let start = first; start <= last; start++) {
+      if (!matches(circuit, rule.left, row, start) && !matches(circuit, rule.right, row, start)) continue;
+      const cells = [], gates = [];
+      for (let y = row; y < row + height; y++) for (let x = start; x < start + width; x++) {
+        const cell = y + ':' + x;
+        cells.push(cell);
+        if (circuit[y][x] !== EMPTY) gates.push(cell);
+      }
+      const window = expandSelection(cells, linked), required = expandSelection(gates, linked);
+      if ([...selected].some(cell => !window.has(cell))) continue;
+      // An entirely empty side still needs an explicit window to choose where
+      // an identity pair is inserted. Otherwise only its gates are required.
+      if (required.size ? [...required].every(cell => selected.has(cell)) : window.size === selected.size) {
+        moves.push({ rule: rule.id, row, column: start });
+      }
+    }
   }
   return moves;
 }
@@ -226,7 +239,7 @@ export function applyMove(circuit, move) {
   const rule = getRule(move.rule);
   if (!rule) throw new RangeError('Unknown circuit rule.');
   const pattern = matches(circuit, rule.left, row, column) ? rule.right : matches(circuit, rule.right, row, column) ? rule.left : null;
-  if (!pattern) throw new RangeError('Select every cell in a matching rule window, including empty cells.');
+  if (!pattern) throw new RangeError('The gates and available space do not match this rule.');
   const next = cloneCircuit(circuit);
   pattern.forEach((line, y) => line.forEach((cell, x) => { next[row + y][column + x] = cell; }));
   return next;

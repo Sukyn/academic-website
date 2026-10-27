@@ -2,8 +2,8 @@ import * as gifenc from 'gifenc';
 import { applyMove, isSolved, validateCircuit, moveCost } from '../lib/circuit-reduction/engine.js';
 import { CIRCUIT_COLORS, drawGate } from '../lib/games/circuit-graphics.js';
 import { drawCircuit } from '../lib/circuit-reduction/rendering.js';
-import { createRewriteTransition, transitionSample, REWRITE_DURATION } from '../lib/circuit-reduction/transition.js';
-import { installReplayEncoder } from '../lib/games/replay-gif.js';
+import { createRewriteTransition, transitionSample, REPLAY_REWRITE_DURATION } from '../lib/circuit-reduction/transition.js';
+import { installReplayEncoder, writeReplayFrame } from '../lib/games/replay-gif.js';
 const { GIFEncoder, applyPalette } = Reflect.get(gifenc, 'default') ?? gifenc;
 const IMAGE_WIDTH = 960, GIF_WIDTH = 720, MAX_TRANSITIONS = 16, TWEEN_FRAMES = 8, CIRCUIT_TOP = 100;
 const colors = ['#18231e', CIRCUIT_COLORS.text, '#fff3cf', CIRCUIT_COLORS.z, CIRCUIT_COLORS.h, CIRCUIT_COLORS.x, CIRCUIT_COLORS.wire];
@@ -54,19 +54,6 @@ function drawTransition(ctx, before, plan, layout) {
     ctx.restore();
   }
   ctx.globalAlpha = 1;
-}
-
-// gifenc writes image descriptors at (0, 0). Set the circuit crop's vertical
-// origin in its standard GIF descriptor, leaving the first frame's header live.
-function writeFrame(gif, indexed, width, height, delay, first) {
-  const start = gif.bytesView().length;
-  gif.writeFrame(indexed, width, height, { ...(first ? { palette } : {}), delay, dispose: 1 });
-  if (!first) {
-    const bytes = gif.bytesView(), descriptor = start + 8;
-    if (bytes[descriptor] !== 0x2c) throw new Error('Could not encode the replay frame.');
-    bytes[descriptor + 3] = CIRCUIT_TOP & 255;
-    bytes[descriptor + 4] = CIRCUIT_TOP >> 8;
-  }
 }
 
 export function encodeReplay(round, onProgress, imageOnly = false) {
@@ -120,7 +107,7 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
   const pixels = (first, delay) => {
     const y = first ? 0 : CIRCUIT_TOP;
     const indexed = applyPalette(ctx.getImageData(0, y, width, height - y).data, palette, 'rgb444');
-    writeFrame(gif, indexed, width, height - y, delay, first);
+    writeReplayFrame(gif, indexed, width, height - y, { palette: first ? palette : undefined, delay, top: y });
   };
   const frame = (circuit, delay, plan, progress) => {
     ctx.fillStyle = colors[0]; ctx.fillRect(0, CIRCUIT_TOP, width, height - CIRCUIT_TOP);
@@ -140,7 +127,7 @@ export function encodeReplay(round, onProgress, imageOnly = false) {
     if (plan) {
       for (let tween = 1; tween <= TWEEN_FRAMES; tween++) {
         const complete = tween === TWEEN_FRAMES;
-        frame(complete ? after : before, complete && final ? 1800 : REWRITE_DURATION / TWEEN_FRAMES,
+        frame(complete ? after : before, complete && final ? 1800 : REPLAY_REWRITE_DURATION / TWEEN_FRAMES,
           complete ? null : plan, tween / TWEEN_FRAMES);
       }
     } else frame(after, final ? 1800 : 80);

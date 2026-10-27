@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { selectionCells } from '../../src/lib/categorical-circuits/engine.js';
+import { applyOperation, holeOperation, selectionCells } from '../../src/lib/categorical-circuits/engine.js';
 import { getLevels, getTutorial, randomIdentity, generateSignals, signalsData } from '../../src/lib/categorical-circuits/puzzles.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
 
@@ -17,10 +17,8 @@ const base = process.env.GAME_BASE_URL ?? 'http://127.0.0.1:4323';
 const output = resolve('tmp/categorical-circuits-browser');
 const seed = 'categorical-browser-quality';
 const fixture = createBrowserApi();
-const signalInputPuzzle = { wires: 2, columns: [[{ gate: 'H', wires: [0] }]],
-  holes: [{ wires: [0, 1], choices: ['I', 'SWAP'] }, { wires: [0], choices: ['I', 'H', 'X', 'Z'] }],
-  targetCircuit: { wires: 2, columns: [[{ gate: 'H', wires: [0] }],
-    [{ gate: 'SWAP', wires: [0, 1] }], [{ gate: 'X', wires: [0] }]] } };
+const signalInputPuzzle = { wires: 2, columns: [[{ gate: 'X', wires: [0] }, { gate: 'X', wires: [1] }], [{ gate: 'H', wires: [1] }]],
+  holes: [{ wires: [0, 1], choices: ['I', 'SWAP'] }, { wires: [0], choices: ['I', 'H', 'X', 'Z'] }] };
 function swapIdentity(controlled = false) {
   const operation = { gate: 'SWAP', wires: controlled ? [1, 2] : [0, 1], ...(controlled ? { controls: [0] } : {}) };
   return { wires: controlled ? 3 : 2, columns: [[operation], [operation]] };
@@ -208,6 +206,7 @@ async function categoryNavigation(page, kind, profile) {
   assert.equal(await page.locator('#mode-daily').count(), 0, 'PROP categories have no daily puzzles');
   assert.equal(await page.locator('#level option').count(), getLevels(profile, kind).length);
   if (kind === 'signals') {
+    assert.equal(await page.locator('#signal-memo').isVisible(), true, 'The category tutorial retains the shared gate memo');
     assert.equal(await page.locator('#autofocus').evaluate(button => button.closest('#advanced-features') !== null), true,
       'Autofocus belongs to Advanced');
     assert.equal(await page.locator('#autofocus').isVisible(), false);
@@ -403,16 +402,121 @@ async function signalTriplePalette(page, puzzle, profile, index) {
   }
 }
 
+async function signalMemo(page, tap, hole, profile, consult = false) {
+  const memo = page.locator('#signal-memo');
+  const choices = hole.wires.length === 1 ? ['I', 'H', 'X', 'Z'] :
+    profile === 'prop' ? ['I', 'CX', 'XC', 'CZ', 'SWAP'] : ['I', 'SWAP'];
+  assert.deepEqual(await memo.locator('[data-memo-choice]').evaluateAll(nodes => nodes.map(node => node.dataset.memoChoice)), choices,
+    'The memo covers all gates for the target arity, independently of puzzle choices');
+  const wires = [...hole.wires, ...(hole.controls ?? [])].sort((a, b) => a - b);
+  assert.equal(await memo.locator('#signal-memo-caption').textContent(), 'Bits from left to right: ' + wires.map(wire => 'wire ' + (wire + 1)).join(', '));
+  assert.equal(await memo.locator('#signal-memo-caption').evaluate(node => node.getBoundingClientRect().width <= 1 && node.getBoundingClientRect().height <= 1), true,
+    'Wire ordering is available to screen readers without a visible wire heading');
+  const diagram = memo.locator('#signal-memo-body > .signal-memo-circuit');
+  assert.equal(await diagram.count(), 1, 'One expanded reference diagram keeps every basis lane in place');
+  const bases = Array.from({ length: 2 ** wires.length }, (_, basis) => basis.toString(2).padStart(wires.length, '0'));
+  assert.deepEqual(await diagram.locator('.signal-memo-lane').evaluateAll(nodes => nodes.map(node => node.dataset.basis)), bases,
+    'The expanded map retains all constructor-control bits');
+  assert.equal(await memo.locator('#signal-memo-black, #signal-memo-white, .signal-memo-inputs').count(), 0,
+    'The reference describes a linear map without selecting an input colour');
+  if (!consult) return;
+  const circuit = await page.locator('#categorical-board').innerHTML(), target = await page.locator('#signal-target').innerHTML();
+  await tap(memo.locator('summary'));
+  assert.equal(await memo.locator('[role="tabpanel"]').isVisible(), true);
+  for (const gate of choices) {
+    const tab = memo.locator(`[data-memo-choice="${gate}"]`);
+    await tap(tab);
+    assert.equal(await tab.getAttribute('aria-selected'), 'true');
+    const wireCount = Math.max(...wires) + 1, operation = holeOperation(hole, gate);
+    const rows = bases.map(bits => {
+      const state = Array(2 ** wireCount).fill(0);
+      const input = [...bits].reduce((value, bit, index) => value | Number(bit) << (wireCount - wires[index] - 1), 0);
+      state[input] = 1;
+      if (operation) applyOperation(state, operation, wireCount);
+      return { input: bits, outputs: state.flatMap((value, output) => Math.abs(value) < 1e-9 ? [] : [{
+        bits: wires.map(wire => output >> (wireCount - wire - 1) & 1).join(''), flipsColour: value < 0,
+      }]) };
+    });
+    const expectedPaths = rows.flatMap(row => row.outputs.map(output => ({ from: row.input, to: output.bits, flipsColour: output.flipsColour })));
+    const expectedMarkers = expectedPaths.filter(path => path.flipsColour).map(({ from, to }) => ({ from, to }));
+    assert.equal(await memo.locator('#signal-memo-key').evaluate(node => node.hidden), expectedMarkers.length === 0,
+      'The colour-swap key appears only for maps with a negative coefficient');
+    if (expectedMarkers.length) {
+      assert.match(await memo.locator('#signal-memo-key').innerText(), /Swaps colour/);
+      assert.equal(await memo.locator('#signal-memo-key > svg').count(), 1);
+    }
+    for (const row of rows) {
+      await tap(diagram.locator(`[data-memo-input="${row.input}"]`));
+      const shown = await diagram.evaluate(node => {
+        const amplitudes = role => [...node.querySelectorAll(`.signal-memo-node[data-role="${role}"]`)].map(dot => ({
+          bits: dot.dataset.bits, flipsColour: dot.dataset.colourSwap === 'true', active: dot.dataset.active === 'true', y: Number(dot.getAttribute('cy')),
+          fill: dot.getAttribute('fill'), stroke: dot.getAttribute('stroke'), hasPhase: dot.hasAttribute('data-phase'),
+        }));
+        return { input: node.dataset.input, role: node.querySelector('svg.signal-memo-paths')?.getAttribute('role'),
+          lanes: [...node.querySelectorAll('.signal-memo-lane')].map(lane => ({ bits: lane.dataset.basis, y: Number(lane.getAttribute('y1')) })),
+          paths: [...node.querySelectorAll('.signal-memo-path[data-role="output"]')].map(path => ({
+            from: path.dataset.from, to: path.dataset.to, flipsColour: path.dataset.colourSwap === 'true', active: path.dataset.active === 'true',
+            stroke: path.getAttribute('stroke'), hasPhase: path.hasAttribute('data-phase'),
+            fromY: path.getPointAtLength(0).y, toY: path.getPointAtLength(path.getTotalLength()).y,
+          })),
+          inputs: amplitudes('input'), outputs: amplitudes('output'),
+          markers: [...node.querySelectorAll('svg.signal-memo-colour-swap')].map(marker => ({
+            from: marker.dataset.from, to: marker.dataset.to, active: marker.dataset.active === 'true',
+          })),
+          selected: [...node.querySelectorAll('[data-memo-input][aria-pressed="true"]')].map(button => button.dataset.memoInput),
+          graphs: node.querySelectorAll('svg.signal-memo-paths').length,
+          gates: node.querySelectorAll('.signal-memo-circuit-gate > svg').length,
+          controls: node.querySelectorAll('.signal-memo-circuit-gate > svg > circle').length };
+      });
+      assert.equal(shown.input, row.input); assert.equal(shown.role, 'img');
+      assert.equal(shown.graphs, 1); assert.equal(shown.gates, 1);
+      assert.deepEqual(shown.selected, [row.input], 'A native input control selects one independent basis case');
+      assert.deepEqual(shown.inputs.map(({ bits, active }) => ({ bits, active })),
+        bases.map(bits => ({ bits, active: bits === row.input })));
+      assert.deepEqual(shown.paths.map(({ from, to, flipsColour }) => ({ from, to, flipsColour }))
+        .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)), expectedPaths,
+        'All input-to-output maps remain visible without aggregating their amplitudes');
+      assert.deepEqual(shown.paths.filter(path => path.active).map(({ from, to, flipsColour }) => ({ from, to, flipsColour })),
+        expectedPaths.filter(path => path.from === row.input), 'Only the selected input’s map is highlighted');
+      assert.deepEqual(shown.outputs.map(({ bits, flipsColour }) => ({ bits, flipsColour })), row.outputs,
+        `${gate}: ${row.input} outputs match the simulator’s destinations and colour swaps`);
+      assert.deepEqual(shown.markers.map(({ from, to }) => ({ from, to }))
+        .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)), expectedMarkers,
+        'Exactly the negative edges carry a colour-swap symbol');
+      assert.deepEqual(shown.markers.filter(marker => marker.active).map(({ from, to }) => ({ from, to })),
+        expectedMarkers.filter(marker => marker.from === row.input), 'Only the selected input’s colour-swap symbols are highlighted');
+      assert.ok(shown.outputs.every(dot => dot.active), 'Only the selected input produces output amplitudes');
+      const lanes = new Map(shown.lanes.map(({ bits, y }) => [bits, y]));
+      for (const dot of [...shown.inputs, ...shown.outputs]) {
+        assert.equal(dot.y, lanes.get(dot.bits), 'Each amplitude stays on its fixed basis lane');
+        assert.equal(dot.fill, 'none'); assert.equal(dot.stroke, '#dde3d7'); assert.equal(dot.hasPhase, false);
+      }
+      for (const path of shown.paths) {
+        assert.equal(path.stroke, '#dde3d7'); assert.equal(path.hasPhase, false);
+        assert.ok(Math.abs(path.fromY - lanes.get(path.from)) < 0.01);
+        assert.ok(Math.abs(path.toY - lanes.get(path.to)) < 0.01, 'Each independent path arrives on its output basis lane');
+      }
+      if (profile === 'controlled' && hole.controls?.length && gate !== 'I') assert.equal(shown.controls, hole.controls.length,
+        'The inline reference gate retains the constructor controls');
+    }
+  }
+  assert.equal(await page.locator('#categorical-board').innerHTML(), circuit, 'Reading any reference gate, including an unavailable choice, places no gates');
+  assert.equal(await page.locator('#signal-target').innerHTML(), target);
+  assert.deepEqual(await page.locator('#gate-palette [data-choice]').evaluateAll(nodes => nodes.map(node => node.dataset.choice)), hole.choices,
+    'The gameplay palette still offers only the puzzle choices');
+  await tap(memo.locator('summary'));
+}
+
 async function generatedSignalTriple(page, tap, profile) {
   let puzzle;
   const solution = profile === 'prop' ? ['CX', 'XC', 'CX'] : ['X', 'X', 'X'];
   for (let sample = 0; sample < 32; sample++) {
     const candidate = generateSignals(profile, { seed: `signals-triple-browser-${sample}`, difficulty: profile === 'prop' ? 2 : 3 });
-    if (candidate.holes.length === 3 && candidate.solution.join() === solution.join()) { puzzle = candidate; break; }
+    if (candidate.holes.length >= 5 && candidate.solution.slice(0, 3).join() === solution.join()) { puzzle = candidate; break; }
   }
   assert.ok(puzzle, 'Random Signals puzzles include the three-CNOT family');
-  await importJson(page, tap, signalsData(puzzle, undefined, profile));
-  for (const index of puzzle.holes.keys()) {
+  await importJson(page, tap, signalsData(puzzle, profile));
+  for (const index of [0, 1, 2]) {
     await tap(page.locator(`#categorical-board [data-hole="${index}"]`).first());
     await signalTriplePalette(page, puzzle, profile, index);
   }
@@ -427,11 +531,12 @@ async function desktopInputCheck(page, tap, kind, profile) {
     const level = getLevels(profile, 'signals').find(level => level.title ===
       (profile === 'controlled' ? 'Unequal branches' : 'Move the excitation'));
     await page.locator('#level').selectOption(String(level.id));
-    const choice = level.solution[0];
-    await page.locator('#categorical-board [data-hole="0"]').first().focus();
-    await page.keyboard.press('Enter');
-    await page.locator(`#gate-palette [data-choice="${choice}"]`).focus();
-    await page.keyboard.press('Enter');
+    for (const [hole, choice] of level.solution.entries()) {
+      await page.locator(`#categorical-board [data-hole="${hole}"]`).first().focus();
+      await page.keyboard.press('Enter');
+      await page.locator(`#gate-palette [data-choice="${choice}"]`).focus();
+      await page.keyboard.press('Enter');
+    }
     await closeWin(page, tap);
     return;
   }
@@ -585,9 +690,8 @@ async function signalAnimationParity(page, tap) {
     assert.equal(await page.locator('#undo').isDisabled(), true);
     assert.equal(await page.locator('#signal-target').innerHTML(), target);
     assert.equal(await page.locator('#show-results').isDisabled(), false, 'Reset clears the cancelled transition lock');
-    await importJson(page, tap, { wires: 2, columns: [],
-      holes: [{ wires: [0], choices: ['I', 'H'] }, { wires: [1], choices: ['I', 'X'] }],
-      targetCircuit: { wires: 2, columns: [[{ gate: 'H', wires: [0] }]] } });
+    await importJson(page, tap, { wires: 2, columns: [[{ gate: 'X', wires: [0] }, { gate: 'X', wires: [1] }], [{ gate: 'H', wires: [0] }]],
+      holes: [{ wires: [0], choices: ['I', 'H'] }, { wires: [1], choices: ['I', 'X'] }] });
     const early = await page.evaluate(() => {
       document.querySelector('#gate-palette [data-choice="H"]').click();
       const results = document.getElementById('show-results');
@@ -705,6 +809,27 @@ async function importJson(page, tap, source) {
     await page.locator('#puzzle-json-status').innerText());
 }
 
+async function implicitBasisSelection(page, tap, profile) {
+  for (const controlled of [false, true]) {
+    const gate = { gate: 'X', wires: [1], ...(controlled ? { controls: [0] } : {}) };
+    await importJson(page, tap, { wires: 2, columns: [[], [gate], [], [], [gate], []] });
+    const initialTargets = await page.locator('#categorical-board [data-role="target"]').count();
+    await tap(await boardCells(page, 1, 1));
+    const cells = page.locator('#categorical-board [aria-pressed="true"]');
+    assert.equal(await cells.count(), controlled && profile === 'prop' ? 2 : 1,
+      'Selecting the gate does not select any surrounding identity cells');
+    const button = page.locator(`#rule-list [data-rule="${controlled ? 'controlled-basis' : 'basis-x'}"]`);
+    assert.equal(await button.isEnabled(), true, 'The reverse basis rule infers its empty padding');
+    await tap(button);
+    assert.equal(await page.locator('#status').innerText(), '');
+    assert.equal(await page.locator('#move-count').innerText(), '1 move');
+    assert.ok(await page.locator('#categorical-board [data-role="target"]').count() > initialTargets);
+    await tap(page.locator('#undo'));
+    assert.equal(await page.locator('#categorical-board [data-role="target"]').count(), initialTargets);
+    assert.equal(await page.locator('#move-count').innerText(), '0 moves');
+  }
+}
+
 async function multiHoleReplay(page, tap, source) {
   const padded = { ...source, columns: [...source.columns, ...Array.from({ length: 8 }, () => [])] };
   const last = padded.holes.length - 1;
@@ -757,10 +882,10 @@ async function invalidImports(page, tap, kind) {
     '{"wires":2,"columns":[[{"gate":"<img src=x onerror=alert(1)>","wires":[0]}]]}'];
   const nonAdjacentSwap = { wires: 3, columns: [[{ gate: 'SWAP', wires: [0, 2] }]] };
   invalid.push(JSON.stringify(kind === 'signals' ? { ...nonAdjacentSwap,
-    holes: [{ wires: [0], choices: ['I', 'X'] }], targetCircuit: { wires: 3, columns: [[]] } } : nonAdjacentSwap));
+    holes: [{ wires: [0], choices: ['I', 'X'] }] } : nonAdjacentSwap));
   if (kind === 'signals') invalid.push(JSON.stringify({ wires: 4, columns: Array.from({ length: 24 }, () =>
     Array.from({ length: 4 }, (_, wire) => ({ gate: 'X', wires: [wire] }))),
-    holes: [{ wires: [0], choices: ['I', 'H'] }], targetCircuit: { wires: 4, columns: [[]] } }));
+    holes: [{ wires: [0], choices: ['I', 'H'] }] }));
   for (const source of invalid) {
     await tap(page.locator('#input-json'));
     await page.locator('#puzzle-json-text').fill(source);
@@ -779,16 +904,14 @@ async function invalidImports(page, tap, kind) {
 }
 
 async function propWholeGateHoles(page, tap, source) {
-  const prefix = [[{ gate: 'H', wires: [0] }], [{ gate: 'X', wires: [2] }]];
+  const prefix = [[0, 1, 2].map(wire => ({ gate: 'X', wires: [wire] })),
+    [{ gate: 'Z', wires: [2], controls: [1] }], [{ gate: 'X', wires: [1], controls: [0] }]];
   const choices = ['I', 'CX', 'XC', 'CZ', 'SWAP'];
   const custom = { wires: 3, columns: prefix,
-    holes: [{ wires: [0, 1], choices }, { wires: [1, 2], choices }],
-    targetCircuit: { wires: 3, columns: [...prefix,
-      [{ gate: 'X', wires: [1], controls: [0] }], [{ gate: 'Z', wires: [2], controls: [1] }]] } };
+    holes: [{ wires: [0, 1], choices }, { wires: [1, 2], choices }] };
   await importJson(page, tap, custom);
   assert.equal(await page.locator('#categorical-board [data-placeholder]').count(), 0,
     'PROP holes contain whole gates without a fixed control placeholder');
-  assert.equal(await page.locator('#categorical-board [data-role="control"]').count(), 0);
   assert.equal(await page.locator('#categorical-board [data-hole]').count(), 4, 'Each paired hole has two selectable endpoints');
   assert.equal(await page.locator('#categorical-board [data-hole-context]').count(), 0);
   for (const gate of ['CX', 'XC', 'CZ']) {
@@ -805,11 +928,11 @@ async function propWholeGateHoles(page, tap, source) {
   assert.equal(await page.locator('#categorical-board .categorical-swap-path').count(), 2);
   await page.keyboard.press('Digit1');
   await tap(page.locator('#gate-palette [data-choice="XC"]'));
-  assert.equal(await page.locator('#categorical-board [data-cell="1:2"]').getAttribute('data-role'), 'control');
-  assert.equal(await page.locator('#categorical-board [data-cell="0:2"]').getAttribute('data-role'), 'target');
+  assert.equal(await page.locator(`#categorical-board [data-cell="1:${prefix.length}"]`).getAttribute('data-role'), 'control');
+  assert.equal(await page.locator(`#categorical-board [data-cell="0:${prefix.length}"]`).getAttribute('data-role'), 'target');
   await tap(page.locator('#gate-palette [data-choice="CX"]'));
-  assert.equal(await page.locator('#categorical-board [data-cell="0:2"]').getAttribute('data-role'), 'control');
-  assert.equal(await page.locator('#categorical-board [data-cell="1:2"]').getAttribute('data-role'), 'target');
+  assert.equal(await page.locator(`#categorical-board [data-cell="0:${prefix.length}"]`).getAttribute('data-role'), 'control');
+  assert.equal(await page.locator(`#categorical-board [data-cell="1:${prefix.length}"]`).getAttribute('data-role'), 'target');
   await tap(page.locator('#categorical-board [data-hole="1"]').last());
   await tap(page.locator('#gate-palette [data-choice="CZ"]'));
   await closeWin(page, tap);
@@ -823,6 +946,7 @@ async function editorCheck(page, tap, kind, profile, checkDimensions = false, ke
   await tap(page.locator('#new-circuit'));
   assert.equal(await page.locator('#editor-controls').isVisible(), true);
   if (kind === 'signals') {
+    assert.equal(await page.locator('#signal-memo').isVisible(), false, 'The editor has no selected gameplay hole to describe');
     const choose = async (tool, wire, column) => {
       await tap(page.locator(`[data-editor-tool="${tool}"]`));
       await tap(await boardCells(page, wire, column));
@@ -836,7 +960,9 @@ async function editorCheck(page, tap, kind, profile, checkDimensions = false, ke
     assert.equal(await page.locator('#categorical-board .categorical-swap-path').count(), 2,
       'The pending crossing can still connect to its neighbouring wire');
     await choose('erase', 0, 0);
-    await choose('H', 0, 0);
+    for (const wire of [0, 1, 2]) await choose('X', wire, 0);
+    await choose(profile === 'controlled' ? 'H' : 'X', 1, 1);
+    await choose('control', 1, 1); await tap(await boardCells(page, 0, 1));
     await choose(profile === 'controlled' ? 'H' : 'X', 1, 3);
     await choose('control', 1, 3);
     await tap(page.locator('#play-custom'));
@@ -844,10 +970,9 @@ async function editorCheck(page, tap, kind, profile, checkDimensions = false, ke
     await tap(await boardCells(page, 0, 3));
     assert.equal(await page.locator('#categorical-board [data-cell="0:3"]').getAttribute('data-role'), 'control');
     await choose('hole', 1, 3);
-    await tap(page.locator('#capture-target'));
+    assert.equal(await page.locator('#capture-target, [data-editor-target]').count(), 0, 'The all-ones goal has no target editor');
     const custom = await exported(page, tap);
-    assert.equal(Object.hasOwn(custom, 'target'), false, 'Targets export a reference circuit, not floating-point vectors');
-    assert.ok(custom.targetCircuit);
+    assert.deepEqual(Object.keys(custom).sort(), ['columns', 'holes', 'wires'], 'Only the circuit and holes are exported');
     assert.deepEqual(custom.holes[0].wires, profile === 'controlled' ? [1] : [0, 1]);
     assert.deepEqual(custom.holes[0].controls, profile === 'controlled' ? [0] : undefined);
     assert.deepEqual(custom.holes[0].choices, profile === 'controlled' ? ['I', 'H', 'X', 'Z'] : ['I', 'CX', 'XC', 'CZ']);
@@ -979,14 +1104,20 @@ try {
       assert.equal(await page.locator('#leaderboard-section').isVisible(), false, 'The tutorial hides the campaign leaderboard');
       assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true');
       await fits(page);
-      await tap(page.locator('#tutorial-start'));
       const tutorial = getTutorial(profile, kind);
+      if (kind === 'signals') {
+        assert.equal(await page.locator('#signal-memo').evaluate(node => node.open), false, 'The category memo starts collapsed');
+        await signalMemo(page, tap, tutorial.holes[0], profile, true);
+      }
+      await tap(page.locator('#tutorial-start'));
       if (kind === 'simplification' && profile === 'prop') assert.ok(tutorial.steps.some(step => step.move?.rule === 'swap-cnot'),
         'The PROP tutorial teaches the three-CNOT SWAP equation');
       if (kind === 'signals') {
+        assert.equal(await page.locator('#signal-target .signal-flow-target').count(), 1);
+        assert.equal(await page.locator('#signal-target .signal-flow-target').getAttribute('data-basis'), String(2 ** tutorial.wires - 1));
         if (profile === 'prop') {
-          assert.deepEqual(tutorial.steps.map(step => step.gate), ['SWAP', 'CX', 'XC', 'CX']);
-          assert.deepEqual(tutorial.holes[0].wires, [1, 2]);
+          assert.deepEqual(tutorial.steps.map(step => step.gate), ['SWAP', 'CX', 'XC', 'CX', 'CX', 'H']);
+          assert.deepEqual(tutorial.holes[0].wires, [0, 1]);
         } else {
           assert.equal(tutorial.steps[0].gate, 'SWAP');
           assert.ok(tutorial.holes[0].controls?.length, 'Controlled PROP introduces a controlled crossing');
@@ -998,11 +1129,12 @@ try {
         assert.equal(current, `Step ${index + 1} of ${tutorial.steps.length}`);
         const focus = page.locator('[data-tutorial-focus]');
         assert.equal(await focus.count(), 1);
+        assert.equal(await focus.isDisabled(), true, 'Cinematic tutorials highlight read-only game controls');
+        if (kind === 'signals') await signalMemo(page, tap, tutorial.holes[tutorial.steps[index].hole], profile);
         if (tutorial.steps[index].move?.rule === 'swap-cnot') {
           assert.equal(await focus.getAttribute('data-rule'), 'swap-cnot', 'The tutorial highlights the actual three-CNOT rule');
-          assert.equal(await focus.isEnabled(), true);
         }
-        if (kind === 'signals' && profile === 'prop' && index > 0) {
+        if (kind === 'signals' && profile === 'prop' && index > 0 && index < 4) {
           await signalTriplePalette(page, tutorial, profile, tutorial.steps[index].hole);
         }
         if (kind === 'signals' && name === 'mobile') {
@@ -1013,7 +1145,7 @@ try {
           assert.ok(hole.x >= viewport.x - 1 && hole.x + hole.width <= viewport.x + viewport.width + 1,
             'The mobile tutorial keeps its selected hole visible and aligned with the paths');
         }
-        if (index % 2) await tap(focus); else await tap(page.locator('#tutorial-next'));
+        await tap(page.locator('#tutorial-next'));
         await page.waitForFunction(({ final, step, count }) => document.getElementById('tutorial-heading').textContent ===
           (final ? 'Tutorial complete' : `Step ${step} of ${count}`),
         { final: index === tutorial.steps.length - 1, step: index + 2, count: tutorial.steps.length });
@@ -1035,6 +1167,15 @@ try {
       for (const [index, level] of levels.entries()) {
         assert.ok((await page.locator(`#level option[value="${index + 1}"]`).innerText()).includes(level.title));
         await page.locator('#level').selectOption(String(index + 1));
+        assert.equal(await page.locator('#previous-level').isDisabled(), index === 0);
+        assert.equal(await page.locator('#next-level').isDisabled(), true, 'Unsolved levels cannot advance');
+        if (kind === 'signals') {
+          assert.equal(await page.locator('#signal-memo').isVisible(), true, 'Every category level retains the shared memo');
+          await signalMemo(page, tap, level.holes[0], profile, true);
+          assert.equal(await page.locator('#signal-target .signal-flow-target').count(), 1);
+          assert.equal(await page.locator('#signal-target .signal-flow-target').getAttribute('data-basis'), String(2 ** level.wires - 1),
+            'Each lesson has one fixed all-ones goal');
+        }
         assert.equal(await page.locator('#edit-circuit').isVisible(), false);
         assert.equal(await page.locator('#new-circuit').isVisible(), false);
         const fixedSwaps = (level.circuit?.columns ?? level.columns).flat().filter(operation => operation.gate === 'SWAP').length;
@@ -1044,11 +1185,14 @@ try {
           await page.screenshot({ path: resolve(output, label + '-crossings.png'), fullPage: true });
         }
         const tripleLesson = kind === 'signals' && level.title === (profile === 'prop' ? 'Three CNOTs make a swap' : 'Control three CNOTs');
-        if (tripleLesson) for (const hole of level.holes.keys()) {
+        if (tripleLesson) for (const hole of [0, 1, 2]) {
           await tap(page.locator(`#categorical-board [data-hole="${hole}"]`).first());
           await signalTriplePalette(page, level, profile, hole);
         }
         await solve(page, tap, level, kind, profile);
+        assert.equal(await page.locator('#next-level').isDisabled(), index === levels.length - 1);
+        assert.equal(await page.locator('#result-next').evaluate(button => button.hidden), index === levels.length - 1,
+          'The last campaign level hides the result navigation');
         if (tripleLesson) for (const hole of level.holes.keys()) {
           assert.equal(await page.locator(`#categorical-board [data-hole="${hole}"]`).first().getAttribute('data-filled'), 'true');
         }
@@ -1069,6 +1213,7 @@ try {
         else await signalAnimationParity(page, tap);
       } else await simplificationShortcutParity(page, tap, name === 'mobile');
       await tap(page.locator('#mode-random'));
+      if (kind === 'signals') assert.equal(await page.locator('#signal-memo').isVisible(), true, 'Category random puzzles retain the shared memo');
       assert.equal(await page.locator('#leaderboard-section').isVisible(), false, 'Random/custom modes hide the campaign leaderboard');
       const random = kind === 'signals' ? generateSignals(profile, { seed, difficulty: 2 }) : randomIdentity(profile, { seed, difficulty: 2 });
       const shared = await exported(page, tap);
@@ -1077,9 +1222,15 @@ try {
       if (kind === 'signals') await multiHoleReplay(page, tap, shared);
       if (kind === 'signals' && profile === 'prop') await propWholeGateHoles(page, tap, shared);
       await solve(page, tap, random, kind, profile);
+      await tap(page.locator('#show-results'));
+      assert.equal(await page.locator('#result-next').innerText(), 'New puzzle');
+      await tap(page.locator('#result-next'));
+      assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false);
+      assert.equal(await page.locator('#mode-random').getAttribute('aria-pressed'), 'true');
       await tap(page.locator('#restart'));
       if (kind === 'simplification') await generatedCnotSwap(page, tap, profile);
       else await generatedSignalTriple(page, tap, profile);
+      if (kind === 'simplification') await implicitBasisSelection(page, tap, profile);
       await invalidImports(page, tap, kind);
       if (name === 'desktop' && kind === 'signals' && profile === 'prop') await rejectedEditorKeepsPuzzle(page, tap, shared);
       if (kind === 'simplification' && profile === 'controlled') await differentControlContexts(page, tap);

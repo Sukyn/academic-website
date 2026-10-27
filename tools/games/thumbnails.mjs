@@ -45,11 +45,7 @@ try {
       } else if (name === 'quantum-signals') {
         const { renderFlow } = await import('/src/lib/quantum-signals/rendering.js');
         const { LEVELS } = await import('/src/lib/quantum-signals/puzzles.js');
-        const { simulate, stateEqual } = await import('/src/lib/quantum-signals/engine.js');
-        const placements = { a: 'CX' };
-        if (!stateEqual(simulate(LEVELS[6], placements).state, [Math.SQRT1_2, 0, 0, Math.SQRT1_2])) {
-          throw new Error('The Bell-pair illustration must populate 00 and 11.');
-        }
+        const placements = {};
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const target = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const diagram = document.createElement('div'); diagram.style.display = 'flex';

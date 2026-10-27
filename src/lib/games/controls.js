@@ -1,3 +1,6 @@
+import { ignoresShortcut as ignoresGameShortcut } from '../browser/shortcuts.js';
+export { ignoresGameShortcut };
+
 export function updateModeMenu(get, mode, disabled = false, saving = false) {
   for (const name of ['tutorial', 'campaign', 'random', 'daily']) {
     const button = get('mode-' + name);
@@ -8,6 +11,18 @@ export function updateModeMenu(get, mode, disabled = false, saving = false) {
   const dailyGames = get('daily-games'), checkDaily = get('check-daily-puzzles');
   if (dailyGames) { dailyGames.hidden = mode !== 'daily'; dailyGames.inert = saving; }
   if (checkDaily) { checkDaily.hidden = mode !== 'daily'; checkDaily.disabled = saving; }
+}
+
+/** Campaign and result navigation use the same level and completion state. */
+export function updateLevelControls(get, { mode, level, count, loading, canAdvance }) {
+  const campaign = mode === 'campaign', last = level === count;
+  get('campaign-controls').hidden = !campaign;
+  if (campaign) get('level').value = String(level);
+  get('level').disabled = loading;
+  get('previous-level').disabled = loading || !campaign || level === 1;
+  get('next-level').disabled = loading || !campaign || !canAdvance || last;
+  get('result-next').disabled = get('next-level').disabled;
+  get('result-next').hidden = !campaign || last;
 }
 
 /** Daily results expose replay and sharing; Advanced keeps nickname settings. */
@@ -42,12 +57,6 @@ export function bindGameDialogs(get = id => document.getElementById(id), extraDi
     const bounds = dialog.getBoundingClientRect();
     if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
   });
-}
-
-/** Leave native editing and modal keyboard handling to their own controls. */
-export function ignoresGameShortcut(event) {
-  return Boolean(event.defaultPrevented || event.altKey || event.repeat || event.target.isContentEditable ||
-    /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || document.querySelector('dialog[open]'));
 }
 
 /** Return true when no game-specific shortcut should handle this event. */

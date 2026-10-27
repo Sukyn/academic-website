@@ -2,7 +2,7 @@ import { CIRCUIT_COLORS, gateGlyph, svgNode } from '../games/circuit-graphics.js
 import { createRewriteTransition, transitionSample, REWRITE_DURATION } from './transition.js';
 
 /** Animate the small rewrite window over the old board; never redraw per frame. */
-export function animateRewrite(board, before, after, move) {
+export function animateRewrite(board, before, after, move, { duration = REWRITE_DURATION } = {}) {
   const view = board.ownerDocument?.defaultView;
   if (typeof board.animate !== 'function' || view?.matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
   const plan = createRewriteTransition(before, after, move);
@@ -45,7 +45,7 @@ export function animateRewrite(board, before, after, move) {
     // All writes precede animation startup. Geometry stays in board coordinates,
     // including the enlarged touch layout; no measurements or JS frame loop.
     for (const { sprite, item, link } of sprites) {
-      const frames = [0, .25, .5, .75, 1].map(progress => {
+      const frames = [0, .16, .3, .45, .55, .6, .7, .84, 1].map(progress => {
         const { column, opacity, scale } = transitionSample(item, progress);
         return { transform: `translateX(${column * 64}px) scale(${link ? 1 : scale})`, opacity, offset: progress };
       });
@@ -53,7 +53,7 @@ export function animateRewrite(board, before, after, move) {
         sprite.style.transform = frames[0].transform;
         continue;
       }
-      const animation = sprite.animate(frames, { duration: REWRITE_DURATION, fill: 'both', easing: 'linear' });
+      const animation = sprite.animate(frames, { duration, fill: 'both', easing: 'linear' });
       animations.push(animation);
       completions.push(animation.finished.then(() => true, () => false));
     }

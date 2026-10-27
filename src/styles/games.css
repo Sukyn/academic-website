@@ -2,7 +2,6 @@
   .quantum-game { --golf-h: #ee9f86; --golf-t: #b5a2ea; }
   .quantum-game button { -webkit-appearance: none; appearance: none; background-image: none; touch-action: manipulation; }
   .quantum-game [hidden] { display: none !important; }
-  .quantum-game .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .quantum-game .back { font-family: var(--font-ui); font-size: .85rem; text-decoration: none; }
   .quantum-game h1 { margin: .7rem 0 0; }
   .quantum-game output { color: var(--color-heading); font-variant-numeric: tabular-nums; }
@@ -19,7 +18,7 @@
   .quantum-game .daily-archive { display: grid; gap: .4rem; padding-top: .6rem; font-size: .85rem; }
   .quantum-game .daily-archive select { width: 100%; max-width: none; height: 2.2rem; }
   .quantum-game .game-toolbar { display: flex; align-items: center; gap: .5rem; min-height: 2.5rem; font-family: var(--font-ui); }
-  .quantum-game .game-tutorial { position: sticky; top: .6rem; z-index: 5; margin-block: .75rem; padding: .8rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); font-family: var(--font-ui); font-size: .9rem; }
+  .quantum-game .game-tutorial { margin-block: .75rem; font-family: var(--font-ui); font-size: .9rem; }
   .quantum-game .game-tutorial p { margin: 0; }
   .quantum-game #tutorial-heading { margin-bottom: .3rem; color: var(--color-accent); font-size: .8rem; }
   .quantum-game .tutorial-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; }

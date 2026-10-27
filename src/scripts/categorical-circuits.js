@@ -1,29 +1,35 @@
-import { RULES, validateCircuit, getLegalMoves, applyMove, isSolved, isIdentity, selectionCells, holeOperation, gateCells, moveCost } from '../lib/categorical-circuits/engine.js';
+import { RULES, validateCircuit, getLegalMoves, applyMove, applyOperation, isSolved, isIdentity, selectionCells, holeOperation, gateCells, moveCost } from '../lib/categorical-circuits/engine.js';
 import { getLevels, getTutorial, randomIdentity, generateSignals, validateSignals, fillSignals, signalsSolved, signalsData, solveSignals } from '../lib/categorical-circuits/puzzles.js';
 import { renderCircuit, renderRulePreview, renderAdvancedFlow, operationIcon, operationLabel } from '../lib/categorical-circuits/rendering.js';
 import { createCircuitEditor } from '../lib/categorical-circuits/editor.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
+import { createRulePalette } from '../lib/games/rule-palette.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
 import { createCircuitViewport } from '../lib/games/circuit-viewport.js';
 import { createPuzzleResult } from '../lib/games/puzzle-result.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { expandSelection, toggleSelection } from '../lib/games/circuit-selection.js';
-import { bindGameDialogs, updateModeMenu, handleRoundShortcut, handleGateShortcut, directionalControl, rectangleCells } from '../lib/games/controls.js';
+import { bindGameDialogs, updateLevelControls, updateModeMenu, handleRoundShortcut, handleGateShortcut, directionalControl, rectangleCells } from '../lib/games/controls.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { pinFlowLabels, highlightFlowBits, highlightFlowColumn, signalBoardWidth } from '../lib/quantum-signals/rendering.js';
 import { animateFlow, flowElements } from '../lib/quantum-signals/animation.js';
+import { createGateMemo, gateMemoChoices } from '../lib/quantum-signals/gate-memo.js';
 
 const root = document.querySelector('[data-categorical-game]');
 const get = id => document.getElementById(id);
 const on = (id, action) => get(id).addEventListener('click', () => attempt(action));
 const kind = root.dataset.kind, signals = kind === 'signals';
 const profile = get('circuit-category').value === 'controlled' ? 'controlled' : 'prop';
+const memo = signals ? createGateMemo({ get, operation: holeOperation, apply: applyOperation, icon: operationIcon, label: operationLabel,
+  choices: hole => hole.wires.length === 1 ? gateMemoChoices(hole) : profile === 'prop' ? [...gateMemoChoices(hole), 'SWAP'] : ['I', 'SWAP'],
+}) : null;
 let mode = 'tutorial', levelIndex = 0, levels, puzzle, circuit, placements = [];
 let editing = false, editorModel, states = [], selectedHole = 0, guide, winTimer, shots = 0;
 let selected = new Set(), selectionAnchor = null, available = [], drag, suppressClick = false, context = new Set();
 let autofocus = false, flowAnimation = null;
-const steps = [], ruleButtons = new Map();
+const steps = [];
+let rulePalette;
 const snapshot = move => signals ? { placements } : { circuit, shots, ...(move ? { move } : {}) };
 const linkedCells = key => gateCells(circuit, key, { profile });
 const evaluate = createPuzzleResult((puzzle, placements) => signalsSolved(puzzle, placements, profile));
@@ -77,7 +83,7 @@ const editor = signals ? createCircuitEditor({ get, profile: () => profile,
 const json = createCustomPuzzleJson({
   get, game: signals ? 'quantum-signals' : 'circuit-simplification',
   exportPuzzle() {
-    if (signals) return signalsData(editing ? editor.puzzle() : puzzle, undefined, profile);
+    if (signals) return signalsData(editing ? editor.puzzle() : puzzle, profile);
     return validateCircuit(editing ? circuit : puzzle.circuit, profile);
   },
   importPuzzle(data) {
@@ -173,6 +179,7 @@ function populateLevels() {
 
 function makeRuleButtons() {
   if (signals) return;
+  const buttons = [];
   for (const rule of RULES) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'button ghost categorical-rule';
     button.dataset.rule = rule.id; button.setAttribute('aria-label', rule.title);
@@ -182,12 +189,9 @@ function makeRuleButtons() {
       renderRulePreview(miniature, rule.wires, pattern);
       miniature.setAttribute('aria-hidden', 'true'); button.appendChild(miniature);
     }
-    button.addEventListener('click', () => attempt(() => {
-      const move = available.find(move => move.rule === rule.id);
-      if (move) playMove(move);
-    }));
-    get('rule-list').appendChild(button); ruleButtons.set(rule.id, button);
+    get('rule-list').appendChild(button); buttons.push(button);
   }
+  rulePalette = createRulePalette(buttons, { apply: move => attempt(() => playMove(move)) });
 }
 
 function markSelection(activeCells) {
@@ -209,8 +213,7 @@ function renderSelection() {
     input.checked = context.has(Number(input.value));
     input.disabled = Number(input.value) >= circuit.wires;
   }
-  const matchedRules = new Set(available.map(move => move.rule));
-  for (const [id, button] of ruleButtons) button.disabled = review.step !== null || !matchedRules.has(id);
+  rulePalette.update(available, { disabled: review.step !== null });
 }
 
 function render({ board = true, animateFrom } = {}) {
@@ -233,9 +236,9 @@ function render({ board = true, animateFrom } = {}) {
       locked: review.step !== null, width: signals ? signalBoardWidth(shown.columns.length) : undefined });
     if (signals) renderAdvancedFlow(get('signal-flow'), get('signal-target'), shown, editing ? editorModel.target : puzzle.target,
       { profile, selectedColumn: editing ? undefined : puzzle.columns.length + activeHole });
-  } else {
+  } else if (signals) {
     markSelection(activeCells);
-    if (signals) highlightFlowColumn(get('signal-flow'), puzzle.columns.length + activeHole);
+    highlightFlowColumn(get('signal-flow'), puzzle.columns.length + activeHole);
   }
   if (signals) {
     const hole = !editing && puzzle.holes[activeHole];
@@ -256,13 +259,14 @@ function render({ board = true, animateFrom } = {}) {
     get('autofocus').setAttribute('aria-pressed', String(autofocus));
     if (focused?.dataset.choice) (get('gate-palette').querySelector(`[data-choice="${focused.dataset.choice}"]`) ?? holeButton(activeHole))?.focus({ preventScroll: true });
     else if (focused?.dataset.hole !== undefined) holeButton(activeHole)?.focus({ preventScroll: true });
+    memo.update(hole);
   } else renderSelection();
+  const complete = mode !== 'tutorial' && !editing && won();
   updateModeMenu(get, mode);
-  get('campaign-controls').hidden = mode !== 'campaign'; get('level').value = String(levelIndex + 1);
+  updateLevelControls(get, { mode, level: levelIndex + 1, count: levels.length, loading: false,
+    canAdvance: complete && !scores.submitting });
   const count = reviewed?.shots ?? shots;
   get('move-count').textContent = `${count} ${count === 1 ? 'move' : 'moves'}`;
-  get('previous-level').disabled = levelIndex === 0;
-  get('next-level').disabled = scores.submitting || mode !== 'campaign' || !won() || levelIndex === levels.length - 1;
   get('custom-controls').hidden = mode !== 'random';
   get('editor-controls').hidden = !editing;
   get('edit-circuit').hidden = get('new-circuit').hidden = mode !== 'random' || editing;
@@ -276,7 +280,6 @@ function render({ board = true, animateFrom } = {}) {
   get('replay').disabled = review.playing;
   get('review-controls').hidden = review.step === null;
   get('review-note').textContent = review.step === null ? '' : `Step ${review.step} / ${states.length - 1}`;
-  const complete = mode !== 'tutorial' && !editing && won();
   const showForm = complete && mode === 'campaign' && !scores.player && !scores.automatic;
   get('leaderboard-section').hidden = mode !== 'campaign';
   get('show-results').hidden = !complete;
@@ -285,15 +288,18 @@ function render({ board = true, animateFrom } = {}) {
   get('win-results').hidden = !scores.player;
   for (const id of ['player-name', 'submit-score']) get(id).disabled = scores.submitting || !showForm;
   get('result-actions').hidden = false;
-  get('result-next').hidden = mode === 'campaign' && levelIndex === levels.length - 1;
-  get('result-next').disabled = scores.submitting;
+  if (mode !== 'campaign') {
+    get('result-next').hidden = false;
+    get('result-next').disabled = scores.submitting;
+  }
   get('result-next').textContent = mode === 'campaign' ? 'Next level' : 'New puzzle';
   get('replay-result').disabled = states.length <= 1 || review.playing;
   get('win-summary').textContent = signals ? 'The output matches the target.' : `Identity reached in ${shots} ${shots === 1 ? 'move' : 'moves'}.`;
   json.update({ visible: mode === 'random', canShare: !editing || signals || !isSolved(circuit) });
   guide?.render();
   if (previousFlow) {
-    const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom);
+    const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom,
+      { duration: mode === 'tutorial' ? 850 : undefined });
     get('show-results').disabled = true;
     job.finished.then(() => {
       if (flowAnimation !== job) return;
@@ -321,18 +327,37 @@ function setupTutorial() {
   steps.splice(0, steps.length, ...tutorial.steps.map(step => ({
     text: step.text,
     target: signals ? `[data-choice="${step.gate}"]` : step.move.rule === 'tidy' ? '#tidy' : `[data-rule="${step.move.rule}"]`,
+    anchor() {
+      if (signals) {
+        if (guide.executing) return { elements: [...get('signal-flow').querySelectorAll(`.signal-flow-node[data-boundary="${puzzle.columns.length + step.hole}"]`)],
+          avoid: [get('flow-panel')] };
+        return { elements: [...get('categorical-board').querySelectorAll(`[data-hole="${step.hole}"]`)]
+          .map(cell => cell.querySelector('.gate-glyph, .categorical-hole') ?? cell), avoid: [get('categorical-scroll')] };
+      }
+      if (step.move.rule === 'tidy') return { element: get('tidy'), avoid: [get('categorical-scroll')] };
+      const cells = selectionCells(step.move, { profile })
+        .map(key => get('categorical-board').querySelector(`[data-cell="${key}"]`)).filter(Boolean);
+      return { elements: cells.map(cell => cell.querySelector('.gate-glyph') ?? cell), avoid: cells };
+    },
     prepare() {
       if (signals) selectedHole = step.hole;
       else selected = new Set(step.move.rule === 'tidy' ? [] : selectionCells(step.move, { profile }));
       render();
       if (signals) viewport.follow(holeButton(selectedHole));
     },
-    action() { return signals ? place(step.gate) : playMove(step.move); },
+    action() {
+      if (signals) {
+        get('flow-panel').scrollIntoView({ block: 'center' }); guide.reposition();
+        return place(step.gate);
+      }
+      return playMove(step.move);
+    },
   })));
   guide.enter();
 }
 
 guide = createTutorial({ get, steps,
+  onRender: focus => rulePalette?.prioritize(focus?.dataset.rule),
   controls: '#categorical-board button, #rule-list button, #gate-palette button, #erase-gate, #autofocus, #undo, #restart, #tidy, #add-space',
   isBlocked: () => Boolean(flowAnimation),
   renderText: (node, text) => renderCircuitInstruction(node, text),

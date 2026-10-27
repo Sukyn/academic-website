@@ -35,18 +35,18 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
       };
     }
     addEventListener(name, callback, capture = false) {
-      const listeners = capture === true ? this.captureListeners : this.listeners;
+      const listeners = capture === true || capture?.capture ? this.captureListeners : this.listeners;
       listeners.set(name, [...(listeners.get(name) || []), callback]);
     }
     dispatch(name, extra = {}) {
-      const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; },
+      const event = { type: name, target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; },
         stopImmediatePropagation() { this.stopped = true; }, ...extra };
       const path = [this];
       if (name === 'click') {
         for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
       }
       const callbacks = [];
-      if (name === 'click') for (const callback of globalThis.document.captureListeners.get(name) || []) {
+      for (const callback of globalThis.document.captureListeners.get(name) || []) {
         callbacks.push(callback(event));
         if (event.stopped) return Promise.all(callbacks);
       }
@@ -87,6 +87,11 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
       return this.children.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
     }
     setAttribute(name, value) { this.attrs[name] = String(value); }
+    toggleAttribute(name, force) {
+      const present = force ?? !Object.hasOwn(this.attrs, name);
+      if (present) this.setAttribute(name, ''); else this.removeAttribute(name);
+      return present;
+    }
     getAttribute(name) { return this.attrs[name] ?? null; }
     removeAttribute(name) { delete this.attrs[name]; }
     get lastElementChild() { return this.children.at(-1) ?? null; }
@@ -475,11 +480,13 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(strokes(), 0, 'Manual controls cannot skip tutorial steps');
   assert.equal(frames.size, 0);
   await click('tutorial-start');
-  assert.equal(get('gate-t').disabled, false);
+  assert.equal(get('gate-t').disabled, true);
   assert.equal(get('gate-h').disabled, true);
   assert.equal(get('gate-t').getAttribute('data-tutorial-focus'), '');
-  const firstGuidedGate = click('gate-t'); flushFrames(); await firstGuidedGate; await settle();
-  assert.equal(sphere.model.sequence, 'T', 'Clicking the highlighted gate advances exactly once');
+  await click('gate-t');
+  assert.equal(sphere.model.sequence, '', 'Clicking the highlighted gate cannot advance the demonstration');
+  const firstGuidedGate = click('tutorial-next'); flushFrames(); await firstGuidedGate; await settle();
+  assert.equal(sphere.model.sequence, 'T', 'Next applies the guided gate exactly once');
   for (let step = 1; step < 10; step++) {
     const next = click('tutorial-next'); flushFrames(); await next;
   }
@@ -506,7 +513,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(get('tutorial-panel').hidden, false);
   assert.equal(get('tutorial-heading').textContent, 'Step 1 of 10');
   assert.equal(get('tutorial-next').disabled, false);
-  assert.equal(get('gate-t').disabled, false, 'A failed Daily request restores the same tutorial step');
+  assert.equal(get('gate-t').disabled, true, 'A failed Daily request restores the same read-only tutorial step');
   const resumedStep = click('tutorial-next'); flushFrames(); await resumedStep;
   assert.equal(sphere.model.sequence, 'T');
   reducedMotion = false;
@@ -532,7 +539,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(strokes(), 0, 'A cancelled animation cannot commit a tutorial gate');
   await browser.dispatch('pageshow', { persisted: true });
   assert.equal(get('mode-tutorial').getAttribute('aria-pressed'), 'true');
-  assert.equal(get('tutorial-heading').textContent, 'Guided example');
+  assert.equal(get('tutorial-heading').textContent, 'Guided demonstration');
   assert.equal(requests.length, 0, 'Returning to a tutorial still avoids score requests');
   await click('tutorial-start');
   const abandonedStep = click('tutorial-next'), abandonedFrame = frames.values().next().value;

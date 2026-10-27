@@ -53,22 +53,12 @@ function publicationLinks(publication: Pub, note?: PublicationNote) {
     links.push({ label, href: safeHref });
   }
 
-  const primaryUrl = note?.fullVersionUrl ?? url;
-
+  const primaryUrl = webUrl(note?.fullVersionUrl ?? url);
   if (primaryUrl) {
-    try {
-      const parsed = new URL(primaryUrl);
-
-      if (parsed.hostname === "arxiv.org" || parsed.hostname.endsWith(".arxiv.org")) {
-        pushLink("arXiv", primaryUrl);
-      } else if (parsed.hostname === "doi.org" || parsed.hostname.endsWith(".doi.org")) {
-        pushLink("DOI", primaryUrl);
-      } else {
-        pushLink("Open", primaryUrl);
-      }
-    } catch {
-      pushLink("Open", primaryUrl);
-    }
+    const hostname = new URL(primaryUrl).hostname;
+    const label = /(^|\.)arxiv\.org$/.test(hostname) ? "arXiv" :
+      /(^|\.)doi\.org$/.test(hostname) ? "DOI" : "Open";
+    links.push({ label, href: primaryUrl });
   }
 
   if (doi) pushLink("DOI", `https://doi.org/${doi}`);

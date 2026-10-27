@@ -39,7 +39,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     }
     addEventListener(name, callback, options) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), { callback, capture: options === true || Boolean(options?.capture) }]); }
     async dispatch(name, extra = {}) {
-      const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stopped = true; }, ...extra };
+      const event = { type: name, target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stopped = true; }, ...extra };
       const path = [this]; if (['click', 'contextmenu', 'pointerdown', 'pointerup', 'pointermove', 'pointercancel', 'lostpointercapture'].includes(name)) for (let parent = this.parentElement; parent; parent = parent.parentElement) path.push(parent);
       const promises = [];
       for (const capture of [true, false]) {
@@ -61,6 +61,11 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
       this.attrs[name] = String(value);
       if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value);
     }
+    toggleAttribute(name, force) {
+      const present = force ?? !Object.hasOwn(this.attrs, name);
+      if (present) this.setAttribute(name, ''); else this.removeAttribute(name);
+      return present;
+    }
     getAttribute(name) { return this.attrs[name] ?? null; }
     removeAttribute(name) { delete this.attrs[name]; }
     matches(selector) {
@@ -78,7 +83,17 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
       return this.children.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
     }
     querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+    get ownerDocument() { return documentMock; }
+    get firstElementChild() { return this.children[0] ?? null; }
+    get nextElementSibling() { return this.parentElement?.children[this.parentElement.children.indexOf(this) + 1] ?? null; }
     get lastElementChild() { return this.children.at(-1) ?? null; }
+    insertBefore(child, reference) {
+      if (child === reference) return child;
+      child.remove();
+      const index = reference === null ? this.children.length : this.children.indexOf(reference);
+      assert.ok(index >= 0, 'The insertion anchor belongs to this parent');
+      child.parentElement = this; this.children.splice(index, 0, child); return child;
+    }
     appendChild(child) {
       if (child.tagName === '#FRAGMENT') { for (const node of [...child.children]) this.appendChild(node); }
       else { child.remove(); child.parentElement = this; this.children.push(child); }
@@ -267,15 +282,18 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.equal(selected().length, 0, 'Tutorial rejects manual circuit edits and shortcuts');
   await click('tutorial-start');
   let tutorialMoves = 0;
-  for (const [index, step] of TUTORIAL_STEPS.entries()) {
+  for (const step of TUTORIAL_STEPS) {
     const target = step.target ? documentMock.querySelector(step.target) : rules.find(button => button.dataset.rule === step.move.rule);
     assert.ok(target, 'The tutorial highlights an actual game control');
-    assert.equal(target.disabled, false);
+    assert.equal(target.disabled, true, 'The highlighted game control stays read-only');
     assert.equal(target.getAttribute('data-tutorial-focus'), '', 'Only the current action is highlighted');
     assert.equal(moveCount(), tutorialMoves);
     assert.equal(Boolean(selected().length), !step.target, 'Only rewrite steps select a gate window');
+    if (!step.target) assert.ok(selected().every(cell => cell.dataset.gate !== '.'), 'The tutorial selects gates without their implicit empty padding');
     const before = boardCircuit();
-    if (step.target || index % 2 === 0) await target.click(); else await click('tutorial-next');
+    await target.click();
+    assert.deepEqual(boardCircuit(), before, 'Clicking the highlighted control cannot apply a tutorial move');
+    await click('tutorial-next');
     await settle();
     tutorialMoves += moveCost(step.move);
     assert.equal(moveCount(), tutorialMoves, 'Only rewrites count as moves');
@@ -326,6 +344,14 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     assert.equal(button.hidden, !LEVELS[0].allowedRules.includes(button.dataset.rule));
     if (button.hidden) assert.equal(button.disabled, true);
     assert.ok(button.querySelector('.rule-preview'), 'The playable rule shows a circuit diagram');
+    const rule = RULES.find(rule => rule.id === button.dataset.rule);
+    for (const [index, mini] of button.querySelectorAll('.rule-mini').entries()) {
+      const pattern = index ? rule.right : rule.left;
+      const occupied = pattern[0].map((_, column) => pattern.some(row => row[column] !== '.'));
+      const first = occupied.indexOf(true), last = occupied.lastIndexOf(true);
+      const width = moveCost({ rule: rule.id }) ? first < 0 ? 1 : last - first + 1 : pattern[0].length;
+      assert.equal(mini.children.length - 1, width * pattern.length, 'Rewrite previews omit outer padding while slides retain their gap');
+    }
   }
   assert.equal(elements.has('paper-rules'), false, 'Rules are not placed in a collapsed Advanced disclosure');
   assert.ok(rules.every(button => button.parentElement === rules[0].parentElement), 'All rules share the visible palette');
@@ -634,6 +660,26 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     await button.click();
     assert.deepEqual(boardCircuit(), applyMove(original, { rule, row, column: 0 }));
     assert.equal(moveCount(), 1);
+  }
+
+  // Reverse basis changes need only the gate, with surrounding identities inferred.
+  for (const [rule, row, block] of [
+    ['basis-x', 0, [['.', 'X', '.']]],
+    ['basis-z', 0, [['.', 'Z', '.']]],
+    ['basis-up', 0, [['.', 'XU', '.'], ['.', 'ZD', '.']]],
+    ['basis-down', 1, [['.', 'ZU', '.'], ['.', 'XD', '.']]],
+  ]) {
+    const original = block.map(line => [...line, ...line]);
+    await importCircuit(original);
+    await cellAt(row, 1).click();
+    assert.equal(selected().length, block.length, 'Only the selected gate and its linked endpoint are selected');
+    const button = rules.find(button => button.dataset.rule === rule);
+    assert.equal(button.disabled, false, `${rule}: empty padding is inferred`);
+    await button.click();
+    assert.deepEqual(boardCircuit(), applyMove(original, { rule, row, column: 0 }));
+    assert.equal(moveCount(), 1);
+    await click('undo');
+    assert.deepEqual(boardCircuit(), original, 'Undo preserves the original replay geometry');
   }
 
   // Identity construction reuses the ordinary reversible rule palette.

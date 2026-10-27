@@ -1,14 +1,14 @@
 # Quantum signals
 
-Fill circuit holes with H, X, Z, CX, XC, CZ or identity to reach a real quantum state. Holes offering identity can stay empty. Targets match up to global sign, including relative phase.
+Fill circuit holes with H, X, Z, CX, XC, CZ or identity to collect every path at the all-ones label. Holes offering identity can stay empty. A single surviving path may have either overall sign.
 
-The simulator uses at most four qubits, sixteen columns and six holes. Fixed gates prepare the input; all editable holes follow them. White wires show the circuit. The mirrored diagram uses Gray-code order: adjacent lanes differ in one bit. Black dots and dark paths mean + phase; white dots and paths mean − phase. Dot areas show probabilities. Both views scroll together; the target sits beyond a divider.
+The simulator uses at most four qubits, sixteen columns and six holes. Fixed gates and holes can be interleaved. White wires show the circuit; expanded paths use binary order. Black dots and gray paths mean + phase; white dots and paths mean − phase. Matching signs add and opposite signs cancel. The goal is a gold ring beyond the divider.
 
-The flow model reuses the gate simulator and adds contributions before each new column, so destructive interference extinguishes paths. Target markers match up to global phase.
+The tutorial uses three worked circuits to explain bits, amplitudes, interference and controls. It begins with empty wires, then introduces imposed gates. Next plays each action; Restart resets the tutorial. On mobile, each step shows the relevant circuit or expanded paths. The gate memo uses fixed basis lanes and marks routes that swap the incoming colour.
 
-Twelve lessons introduce flips, interference and entanglement. Random and Paris-time daily puzzles use targets generated from a known valid filling. The daily seed/version is frozen.
+Twelve levels introduce flips, interference and entanglement. Later levels, random puzzles and Paris-time daily puzzles use graph-state preparation, phase choices and leaf-by-leaf recombination. Their imposed final Hadamard requires coherent amplitudes at the finish. Hole positions and offered gates are constrained; every generated solution needs H and Z, plus a controlled gate for two or three qubits. Optional empty holes occur only in generated and custom puzzles.
 
-In Custom/Random, use **Advanced → Edit this circuit** or **Start from scratch**. Click a circuit cell for its gate palette; connect a control, target or paired hole by clicking another wire. Target dots cycle off → black → white → off. Selected target states have equal probability. Play the draft, then use the shared JSON buttons to exchange it. Targets use signed bit labels such as `{"00":1,"11":-1}`. Wire 0 is the leftmost bit. CX controls the first listed wire; XC controls the second.
+In Custom/Random, use **Advanced → Edit this circuit** or **Start from scratch**. Select a cell, then connect paired gates on another wire. JSON contains only wires and columns, without target data. Wire 0 is the leftmost bit internally. CX controls the first listed wire; XC controls the second.
 
 Shared menus, daily transport and lazy replay downloads use the existing game modules. Optional completion lists show players and checked boxes for levels and daily puzzles, without scores or ranks.
 

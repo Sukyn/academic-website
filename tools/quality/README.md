@@ -5,6 +5,7 @@ npm test
 npm run check
 npm audit --audit-level=high
 npm run build
+node tools/quality/weights.mjs
 node tools/circuit-reduction/certify-generated.mjs --check-data
 ```
 
@@ -21,10 +22,12 @@ Start `npm run preview -- --host 127.0.0.1 --port 4323`, then run:
 
 ```sh
 npm run test:site:browser
+npm run test:tutorials:browser
 node tmp/quality-tools/node_modules/knip/bin/knip.js --config knip.json
 ```
 
 Reports go to `tmp/quality-report/`. Browser tests use score fixtures; API tests use PGlite.
+Size checks cap raw and estimated gzip sizes for HTML, JS, CSS and JSON, including 32 KiB raw JSON and 32 KiB gzip scripts. Optional PDF downloads are reported separately.
 For recovery checks only: `npm run test:site:browser -- --resilience-only`.
 
 Set `SITE_BASE_URL` (site checks) or `GAME_BASE_URL` (games) for another preview. `PLAYWRIGHT_EXECUTABLE` and `PLAYWRIGHT_MODULE_DIR` select an existing browser/runtime. Game API options are in [the game README](../circuit-reduction/README.md).

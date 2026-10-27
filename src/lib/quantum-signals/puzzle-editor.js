@@ -1,7 +1,6 @@
 import { controlWire, validatePlayablePuzzle } from './engine.js';
 import { draftFromPuzzle, resizeDraft, setDraftEntry, connectDraftEntry, puzzleFromDraft } from './editor.js';
 import { gateIcon, gateLabel } from './rendering.js';
-import { PHASE_COLORS, phaseColor, grayBasis } from './state-visuals.js';
 
 const SINGLE = ['I', 'H', 'X', 'Z'], PAIR = ['I', 'CX', 'XC', 'CZ'], STEP = 64;
 const TOOLS = [['H', 'H'], ['X', 'X'], ['Z', 'Z'], ['hole', 'Hole'],
@@ -89,21 +88,6 @@ export function createPuzzleEditor({ get, onPlay }) {
       button.setAttribute('aria-pressed', String(entry.choices.includes(gate))); button.append(gateIcon(gate, entry.wires)); return button;
     }) : []));
   }
-  function renderTargets() {
-    get('editor-targets').replaceChildren(...draft.weights.map((_, row) => {
-      const basis = grayBasis(row), weight = draft.weights[basis];
-      const bits = basis.toString(2).padStart(draft.wires, '0'), button = element('button', 'editor-target');
-      button.type = 'button'; button.id = 'editor-target-' + basis;
-      button.dataset.editorTarget = basis; button.dataset.sign = weight;
-      const phase = weight === 0 ? 'off' : weight > 0 ? 'positive phase' : 'negative phase';
-      button.setAttribute('aria-label', 'Target ' + bits + ': ' + phase);
-      const text = element('span'); text.textContent = bits;
-      const line = element('span', 'editor-target-line'), dot = element('span', 'editor-target-dot');
-      line.setAttribute('aria-hidden', 'true'); dot.setAttribute('aria-hidden', 'true');
-      if (weight) { dot.style.background = phaseColor(weight); dot.style.borderColor = PHASE_COLORS.negative; }
-      button.append(text, line, dot); return button;
-    }));
-  }
   function render() {
     const focused = form.contains(document.activeElement) ? document.activeElement.id : null;
     get('editor-wires').value = String(draft.wires); get('editor-columns').value = String(draft.columns.length);
@@ -117,10 +101,10 @@ export function createPuzzleEditor({ get, onPlay }) {
     catch (error) { get('custom-status').textContent = error.message; render(); }
   }
   function load(puzzle) {
-    draft = puzzle ? draftFromPuzzle(puzzle) : { wires: 2, columns: Array.from({ length: 4 }, () => []), weights: [1, 0, 0, 0] };
+    draft = puzzle ? draftFromPuzzle(puzzle) : { wires: 2, columns: Array.from({ length: 4 }, () => []) };
     column = wire = 0; linking = null; closeMenu();
-    get('editor-scroll').scrollLeft = get('editor-targets').scrollTop = 0;
-    get('custom-status').textContent = ''; renderTargets(); render();
+    get('editor-scroll').scrollLeft = 0;
+    get('custom-status').textContent = ''; render();
   }
   function chooseTool(tool) {
     const current = at(column, wire);
@@ -178,15 +162,8 @@ export function createPuzzleEditor({ get, onPlay }) {
   });
   for (const id of ['editor-wires', 'editor-columns']) get(id).addEventListener('change', () => report(() => {
     draft = resizeDraft(draft, { wires: Number(get('editor-wires').value), columns: Number(get('editor-columns').value) });
-    column = Math.min(column, draft.columns.length - 1); wire = Math.min(wire, draft.wires - 1); linking = null; closeMenu(); renderTargets(); render();
+    column = Math.min(column, draft.columns.length - 1); wire = Math.min(wire, draft.wires - 1); linking = null; closeMenu(); render();
   }));
-  get('editor-targets').addEventListener('click', event => {
-    const button = event.target.closest('[data-editor-target]'); if (!button) return;
-    const index = Number(button.dataset.editorTarget), weights = [...draft.weights];
-    weights[index] = weights[index] === 0 ? 1 : weights[index] === 1 ? -1 : 0;
-    draft = { ...draft, weights }; get('custom-status').textContent = ''; renderTargets();
-    get('editor-target-' + index).focus({ preventScroll: true });
-  });
   form.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || (menu.hidden && !linking)) return;
     event.preventDefault();
@@ -204,8 +181,6 @@ export function createPuzzleEditor({ get, onPlay }) {
       if (unconnected) {
         column = pendingColumn; wire = unconnected.wires[0]; linking = { column, wire }; render(); focusCell();
         cell()?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-      } else if (!draft.weights.some(Boolean)) {
-        get('editor-target-0').focus(); get('editor-target-0').scrollIntoView({ block: 'nearest', inline: 'nearest' });
       }
       onPlay(validatePlayablePuzzle(puzzleFromDraft(draft)));
     });

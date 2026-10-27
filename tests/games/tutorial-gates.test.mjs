@@ -58,3 +58,19 @@ test('Instructions replace previous tokens and never interpret prose as HTML', c
   renderCircuitInstruction(node, '');
   assert.equal(node.children.filter(child => child.attrs['data-gate']).length, 0);
 });
+
+test('NOTC instructions show the lower control rather than the ordinary CNOT direction', context => {
+  const node = fixture(context);
+  renderCircuitInstruction(node, 'Apply NOTC, then CNOT.');
+  const gates = node.children.filter(child => child.attrs['data-gate']);
+  assert.deepEqual(gates.map(gate => gate.attrs['data-gate']), ['XC', 'CX']);
+  assert.equal(gates[0].attrs['aria-label'], 'CNOT: lower control');
+  assert.deepEqual(gates[0].children[0].children.map(glyph => glyph.children.length), [2, 1],
+    'The X target is above the Z control');
+  assert.deepEqual(gates[1].children[0].children.map(glyph => glyph.children.length), [1, 2],
+    'The existing CNOT orientation stays unchanged');
+  renderCircuitInstruction(node, 'Apply NOTC.', { singleWire: true });
+  const endpoint = node.children.find(child => child.attrs['data-gate']);
+  assert.equal(endpoint.attrs['data-gate'], 'XD');
+  assert.equal(endpoint.children[0].children[0].attrs.d, 'M22 0V22', 'The connector continues above the lower endpoint');
+});

@@ -7,6 +7,8 @@ import { getBoard as signalsBoard, validateSubmission as signalsCompletion, MAX_
 import { DAILY_START as GRAPH_START, dailyPuzzle as graphDaily } from '../graph-states/puzzles.js';
 import { getBoard as graphBoard, validateSubmission as graphSubmission, MAX_SUBMISSION_BYTES as GRAPH_BYTES } from '../graph-states/leaderboard.js';
 import { optimalShots } from '../graph-states/engine.js';
+import { getBoard as zxBoard, validateSubmission as zxSubmission, MAX_SUBMISSION_BYTES as ZX_BYTES,
+  DAILY_START as ZX_START, dailyPuzzle as zxDaily } from '../zx-calculus/leaderboard.js';
 import { MAX_SUBMISSION_BYTES, SubmissionError } from './submission.js';
 import { createLevelLeaderboard } from '../categorical-circuits/leaderboard.js';
 
@@ -36,8 +38,8 @@ const games = {
     getBoard: signalsBoard, validateSubmission: signalsCompletion, completionOnly: true,
     startDate: SIGNALS_START, maxBytes: SIGNALS_BYTES,
     dailyPuzzle(date) {
-      const { wires, columns, target } = signalsDaily(date);
-      return { wires, columns, target };
+      const { wires, columns } = signalsDaily(date);
+      return { wires, columns };
     },
   },
   'graph-states': {
@@ -46,6 +48,14 @@ const games = {
     dailyPuzzle(date) {
       const graph = graphDaily(date), { vertices, edges } = graph;
       return { vertices, edges, optimalMoves: optimalShots(graph) };
+    },
+  },
+  'zx-calculus': {
+    getBoard: zxBoard, validateSubmission: zxSubmission,
+    startDate: ZX_START, maxBytes: ZX_BYTES,
+    dailyPuzzle(date) {
+      const { nodes, edges } = zxDaily(date).diagram;
+      return { nodes, edges };
     },
   },
 };

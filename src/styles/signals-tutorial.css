@@ -1,0 +1,8 @@
+@media (max-width: 600px) {
+  .signals-game[data-signal-tutorial-view="paths"] #signal-scroll,
+  .signals-game[data-signal-tutorial-view="circuit"] #flow-panel {
+    visibility: hidden; height: 0; min-height: 0; max-height: 0; overflow: hidden; margin: 0; padding: 0; border: 0;
+  }
+  .signals-game[data-signal-tutorial-view] #flow-panel { max-height: 340px; }
+  .signals-game[data-signal-tutorial-view] .signal-palette { margin-top: .45rem; }
+}

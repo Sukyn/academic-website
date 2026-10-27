@@ -10,7 +10,7 @@ export function createLevelLeaderboard(kind, profile) {
   const levels = getLevels(profile, kind), signals = kind === 'signals';
   const game = `${signals ? 'quantum-signals' : 'circuit-reduction'}-${profile}`;
   // Bump the campaign version when changing or reordering official levels.
-  const campaign = `${game}-levels-v1`, maxBytes = signals ? 8_000 : 128_000;
+  const campaign = `${game}-levels-v${signals ? 3 : 1}`, maxBytes = signals ? 8_000 : 128_000;
 
   function getBoard(selector) {
     if (!object(selector) || Object.hasOwn(selector, 'date')) throw new SubmissionError('Choose a campaign level.');

@@ -389,12 +389,13 @@ async function animatedMoves(name, options) {
     assert.equal(await page.locator('#tutorial-next').isDisabled(), true, 'The guide waits for the entire local complementation');
     await page.waitForFunction(count => document.getElementById('tutorial-heading').textContent === `Step 2 of ${count}`, TUTORIAL.steps.length);
     assert.equal(await board.locator('[data-tutorial-focus]').count(), 1);
+    assert.equal(await board.locator('[data-tutorial-focus]').isDisabled(), true, 'The highlighted vertex remains read-only');
     const tutorialGraph = await edges(page);
     await tap(page.locator('#tutorial-next'));
     await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating === 'true');
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
-    await page.waitForFunction(() => !document.getElementById('tutorial-next').disabled);
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+    await page.waitForFunction(() => !document.getElementById('tutorial-next').disabled);
     assert.equal(await page.locator('#tutorial-heading').innerText(), `Step 2 of ${TUTORIAL.steps.length}`, 'A suspended animation does not advance the tutorial');
     assert.deepEqual(await edges(page), tutorialGraph);
     assert.equal(await board.locator('[data-tutorial-focus]').count(), 1);
@@ -474,10 +475,12 @@ try {
     assert.equal(await page.locator('.graph-circuit-panel').isVisible(), false, 'Clifford corrections are hidden until Advanced is opened');
     await fits(page);
     await tap(page.locator('#tutorial-start'));
+    await page.locator('#tutorial-next').waitFor({ state: 'visible' });
     let tutorialStep = 0;
     for (let guard = 0; guard < 16 && await page.locator('#tutorial-next').isVisible(); guard++) {
       const focus = page.locator('[data-tutorial-focus]');
       assert.equal(await focus.count(), 1, 'The guide highlights one real control');
+      assert.equal(await focus.isDisabled(), true, 'Graph operations are demonstrated only through Next step');
       const final = tutorialStep === TUTORIAL.steps.length - 1;
       if (final) {
         assert.notEqual(await focus.getAttribute('data-edge'), null, 'The final tutorial step demonstrates an actual pivot');
@@ -488,7 +491,9 @@ try {
         assert.equal(await focus.getAttribute('data-edge'), null, 'Pivoting is introduced only at the end');
       }
       assert.match(await page.locator('#tutorial-heading').innerText(), new RegExp(`^Step ${++tutorialStep} of `));
-      await tap(focus);
+      await tap(page.locator('#tutorial-next'));
+      await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text,
+        tutorialStep === TUTORIAL.steps.length ? 'Tutorial complete' : `Step ${tutorialStep + 1} of ${TUTORIAL.steps.length}`);
     }
     assert.equal(tutorialStep, TUTORIAL.steps.length);
     assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
@@ -504,7 +509,8 @@ try {
     }, { level: 1 }, 1);
     assert.deepEqual(firstScore.sequence, [{ vertex: 1 }], 'A local complementation contributes one shot');
     await closeWin(page, tap);
-    await tap(page.locator('#undo'));
+    if (name === 'desktop') await page.keyboard.press('Control+z');
+    else await tap(page.locator('#undo'));
     assert.deepEqual(await edges(page), LEVELS[0].edges, 'Undo restores the starting graph');
     assert.equal(await page.locator('.graph-circuit-panel').isVisible(), false);
     await tap(page.locator('#advanced-features > summary'));
@@ -637,6 +643,11 @@ try {
     assert.equal(dailyPuzzle.acceptingScores, true);
     assert.equal(dailyPuzzle.puzzle.optimalMoves, optimalShots(dailyPuzzle.puzzle), 'The daily payload publishes the exact shot benchmark');
     await savedScore(page, () => solve(page, tap, dailyPuzzle.puzzle), { date: '2026-10-17' }, sequenceCost(solutionForGraph(dailyPuzzle.puzzle)));
+    await tap(page.locator('#share-result'));
+    await page.locator('#share-preview').waitFor({ state: 'visible' });
+    await page.locator('#share-preview').evaluate(image => image.decode());
+    assert.equal(await page.locator('#share-status').innerText(), '', 'Daily results can generate their dated share image');
+    await tap(page.locator('#close-share'));
     await closeWin(page, tap);
     await tap(page.locator('#daily-toggle'));
     await page.locator('#daily-date').selectOption('2026-10-16');

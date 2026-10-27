@@ -1,65 +1,175 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyPlacement, getHoles, simulate, stateEqual, validatePlayablePuzzle } from '../../src/lib/quantum-signals/engine.js';
+import { applyPlacement, getHoles, goalState, simulate, stateEqual, validatePlayablePuzzle } from '../../src/lib/quantum-signals/engine.js';
 import { LEVELS } from '../../src/lib/quantum-signals/puzzles.js';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
-import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
+import { TUTORIAL_PUZZLE, TUTORIAL_PUZZLES, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
 
-test('the worked tutorial fills the three-qubit circuit and reaches its complete target', () => {
-  const puzzle = TUTORIAL_PUZZLE, saved = structuredClone(puzzle), official = structuredClone(LEVELS);
-  const actions = TUTORIAL_STEPS.filter(step => step.hole);
-  assert.equal(puzzle.wires, 3);
-  assert.deepEqual(validatePlayablePuzzle(puzzle), puzzle, 'The tutorial has a fixed prefix followed only by holes');
-  assert.deepEqual(actions.map(({ hole, gate }) => [hole, gate]), [['a', 'H'], ['b', 'CX'], ['c', 'CZ'], ['d', 'H'], ['f', 'H'], ['e', 'Z']]);
-  assert.equal(actions.length, getHoles(puzzle).length);
-  let placements = {};
-  assert.equal(stateEqual(simulate(puzzle).state, puzzle.target), false);
-  for (const [index, { hole, gate, text }] of actions.entries()) {
-    assert.ok(text.length > 0 && text.length < 150);
-    placements = applyPlacement(puzzle, placements, { hole, gate });
-    const result = simulate(puzzle, placements), complete = index === actions.length - 1;
-    assert.equal(result.solved, complete);
-    assert.equal(stateEqual(result.state, puzzle.target), complete, 'Earlier prefixes do not already match the target');
-  }
-  assert.ok(TUTORIAL_STEPS.every(step => step.text.length > 0 && step.text.length < 150));
-  assert.equal(TUTORIAL_STEPS.at(-2).target, '.signal-flow-cancellation');
-  assert.equal(TUTORIAL_STEPS.at(-1).hole, 'e', 'A final gate demonstrates that canceled paths stop before later gates');
-  assert.deepEqual(puzzle, saved);
-  assert.deepEqual(LEVELS, official, 'The tutorial never changes official levels');
-});
+const stepsFor = chapter => TUTORIAL_STEPS.filter(step => step.chapter === chapter);
+const fillingFor = chapter => Object.fromEntries(stepsFor(chapter).filter(step => step.hole).map(({ hole, gate }) => [hole, gate]));
+const close = (actual, expected) => {
+  assert.equal(actual.length, expected.length);
+  actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < 1e-9, 'Amplitude at basis ' + index));
+};
 
-test('the tutorial shows destructive interference before a final gate, with no amplitude beyond its walls', () => {
-  const solution = Object.fromEntries(TUTORIAL_STEPS.filter(step => step.hole).map(({ hole, gate }) => [hole, gate]));
-  const before = { ...solution }; delete before.f; delete before.e;
-  assert.equal(flowTrace(TUTORIAL_PUZZLE, before).snapshots.at(-1).filter(value => Math.abs(value) > 1e-9).length, 8);
-  for (const placements of [{ ...before, f: 'H' }, solution]) {
-    const { columns, snapshots, cancellations } = flowTrace(TUTORIAL_PUZZLE, placements);
-    const recombination = TUTORIAL_PUZZLE.columns.findIndex(column => column.some(entry => entry.id === 'f'));
-    assert.ok(recombination < columns.length - 1);
-    assert.deepEqual(cancellations[recombination], [2, 3, 4, 5]);
-    for (const basis of cancellations[recombination]) {
-      const incoming = columns[recombination].filter(edge => edge.to === basis);
-      assert.equal(incoming.length, 2);
-      assert.ok(incoming.some(edge => edge.amplitude > 0) && incoming.some(edge => edge.amplitude < 0));
-      assert.ok(Math.abs(incoming.reduce((sum, edge) => sum + edge.amplitude, 0)) < 1e-9);
-      assert.ok(Math.abs(snapshots[recombination + 1][basis]) < 1e-9);
-      assert.ok(!columns[recombination + 1].some(edge => edge.from === basis), 'The later gate receives no canceled amplitude');
-      assert.ok(Math.abs(snapshots.at(-1)[basis]) < 1e-9);
+test('the tutorial has at most fifteen steps and solves three circuits without changing official levels', () => {
+  const saved = structuredClone(TUTORIAL_PUZZLES), official = structuredClone(LEVELS);
+  assert.equal(TUTORIAL_PUZZLE, TUTORIAL_PUZZLES[0]);
+  assert.deepEqual(TUTORIAL_PUZZLES.map(puzzle => puzzle.wires), [2, 2, 3]);
+  assert.ok(TUTORIAL_STEPS.length <= 15);
+  assert.ok(TUTORIAL_STEPS.every(step => Number.isInteger(step.chapter) && step.chapter >= 0 && step.chapter < TUTORIAL_PUZZLES.length));
+  for (const [chapter, puzzle] of TUTORIAL_PUZZLES.entries()) {
+    assert.deepEqual(validatePlayablePuzzle(puzzle), puzzle, 'Every worked example remains playable');
+    assert.deepEqual(puzzle.target, goalState(puzzle.wires));
+    const steps = stepsFor(chapter), actions = steps.filter(step => step.hole);
+    assert.deepEqual(new Set(actions.map(step => step.hole)), new Set(getHoles(puzzle).map(hole => hole.id)));
+    let placements = {};
+    assert.equal(simulate(puzzle).solved, false);
+    for (const step of steps) {
+      assert.ok(step.text.length > 0 && step.text.length < 200);
+      assert.ok(['circuit', 'paths'].includes(step.view));
+      assert.ok(step.focus.wires.every(wire => Number.isInteger(wire) && wire >= 0 && wire < puzzle.wires));
+      assert.ok(Number.isInteger(step.focus.column) && step.focus.column >= 0 && step.focus.column < puzzle.columns.length);
+      if (step.hole) placements = applyPlacement(puzzle, placements, step);
     }
+    assert.equal(simulate(puzzle, placements).solved, true, 'Chapter ' + chapter);
+    assert.equal(stateEqual(simulate(puzzle, placements).state, puzzle.target), true);
   }
-  assert.equal(simulate(TUTORIAL_PUZZLE, { ...before, f: 'H' }).solved, false, 'The wall explanation precedes completion');
+  assert.deepEqual(TUTORIAL_PUZZLES, saved);
+  assert.deepEqual(LEVELS, official);
 });
 
-test('CZ explains and highlights the actual first two bits, regardless of the third bit', () => {
-  const step = TUTORIAL_STEPS.find(step => step.gate === 'CZ');
-  const hole = getHoles(TUTORIAL_PUZZLE).find(hole => hole.id === step.hole);
-  assert.deepEqual(step.bits, hole.wires);
-  assert.deepEqual(step.bits, [0, 1]);
-  assert.match(step.text, /first two wires.*first two bits.*11/);
-  const before = simulate(TUTORIAL_PUZZLE, { a: 'H', b: 'CX' }).state;
-  const after = simulate(TUTORIAL_PUZZLE, { a: 'H', b: 'CX', c: 'CZ' }).state;
-  assert.ok(Math.abs(before[6]) > 0 && Math.abs(before[7]) > 0);
+test('each bubble refers to existing bits, a gate, an amplitude, a wall, the goal or the memo', () => {
+  let chapter = -1, placements = {};
+  for (const step of TUTORIAL_STEPS) {
+    if (step.chapter !== chapter) { chapter = step.chapter; placements = {}; }
+    const puzzle = TUTORIAL_PUZZLES[chapter], trace = flowTrace(puzzle, placements);
+    for (const anchor of [step.anchor, ...(step.gate ? [step.animationAnchor] : [])]) {
+      assert.ok(anchor, step.text);
+      assert.ok(['bits', 'gate', 'node', 'wall', 'goal', 'memo'].includes(anchor.kind));
+      if (anchor.kind === 'gate') {
+        if (anchor.hole) assert.ok(getHoles(puzzle).some(hole => hole.id === anchor.hole));
+        else assert.ok(puzzle.columns[anchor.column].some(entry => entry.gate && entry.wires.every((wire, index) => wire === anchor.wires[index])));
+      }
+      else if (anchor.kind === 'bits') {
+        assert.ok(anchor.basis >= 0 && anchor.basis < 2 ** puzzle.wires);
+        assert.ok(anchor.wires.length && anchor.wires.every(wire => wire >= 0 && wire < puzzle.wires));
+      } else if (anchor.kind === 'node') assert.ok(Math.abs(trace.snapshots[anchor.boundary][anchor.basis]) > 1e-9, step.text);
+      else if (anchor.kind === 'wall') assert.ok(trace.cancellations[anchor.boundary - 1].includes(anchor.basis));
+    }
+    if (step.hole) placements = applyPlacement(puzzle, placements, step);
+  }
+});
+
+test('the first two lessons connect qubit positions, basis labels and relative phases', () => {
+  assert.ok(TUTORIAL_PUZZLES[0].columns.flat().every(entry => entry.id), 'The first circuit has no imposed gates');
+  close(simulate(TUTORIAL_PUZZLES[0]).state, [1, 0, 0, 0]);
+  close(simulate(TUTORIAL_PUZZLES[0], { a: 'X' }).state, [0, 0, 1, 0]);
+  close(simulate(TUTORIAL_PUZZLES[0], { a: 'X', b: 'X' }).state, [0, 0, 0, 1]);
+  const [introduction, observation] = stepsFor(0);
+  assert.match(introduction.text, /goal of the game.*start at 00.*reach 11/);
+  assert.deepEqual([introduction.hole, introduction.gate], ['a', 'X'], 'Next from the opening places the first NOT');
+  assert.equal(introduction.view, 'paths');
+  assert.deepEqual(introduction.animationAnchor, introduction.anchor, 'The first animation does not create a transient, relocated bubble');
+  assert.match(observation.text, /10 instead of 00/);
+  assert.equal(observation.gate, undefined, 'The result is a separate observation step, with no automatic next move');
+  assert.equal(observation.view, 'paths');
+  assert.deepEqual(observation.anchor, { kind: 'node', basis: 2, boundary: 1 });
+  assert.deepEqual(stepsFor(0).at(-1).anchor, { kind: 'memo' }, 'The completed 11 pause introduces the gate memo');
+  assert.equal(stepsFor(0).at(-1).gate, undefined);
+  const fixedIntroduction = stepsFor(1)[0];
+  assert.match(fixedIntroduction.text, /fixed/);
+  assert.equal(fixedIntroduction.view, 'circuit');
+  assert.deepEqual(fixedIntroduction.anchor, { kind: 'gate', column: 0, wires: [0] });
+  const phase = TUTORIAL_PUZZLES[1], a = Math.SQRT1_2;
+  close(flowTrace(phase).snapshots[1], [a, 0, a, 0]);
+  close(simulate(phase, { a: 'Z' }).state, [a, 0, -a, 0]);
+  const recombination = stepsFor(1).find(step => step.gate === 'H');
+  assert.equal(recombination.view, 'paths');
+  assert.deepEqual(recombination.anchor, { kind: 'node', basis: 2, boundary: 2 });
+  close(simulate(phase, { a: 'Z', b: 'H' }).state, [0, 0, 1, 0]);
+  close(simulate(phase, fillingFor(1)).state, [0, 0, 0, 1]);
+});
+
+test('tutorial gate animations leave time to follow each change, especially interference', () => {
+  const actions = TUTORIAL_STEPS.filter(step => step.gate);
+  assert.ok(actions.every(step => Number.isFinite(step.duration) && step.duration >= 650 && step.duration <= 1500));
+  assert.ok(actions.filter(step => step.gate === 'H').every(step => step.duration > actions.find(step => step.gate === 'X').duration));
+  assert.ok(TUTORIAL_STEPS.filter(step => !step.gate).every(step => !Object.hasOwn(step, 'duration')));
+});
+
+test('Step 5 explains the H rule once, before its later application', () => {
+  const puzzle = TUTORIAL_PUZZLES[1], steps = stepsFor(1);
+  assert.equal(steps[0], TUTORIAL_STEPS[4], 'The explanation is in Step 5');
+  assert.match(steps[0].text, /input bit 0, both keep its colour/);
+  assert.match(steps[0].text, /input bit 1, the lower branch swaps colour/);
+  const phase = steps.findIndex(step => step.gate === 'Z');
+  const whiteExample = steps[phase + 1];
+  assert.equal(whiteExample.gate, 'H', 'The next action uses the newly white input');
+  assert.match(whiteExample.text, /apply H again on the upper wire/);
+  assert.deepEqual(whiteExample.anchor, { kind: 'node', basis: 2, boundary: 2 });
+  const trace = flowTrace(puzzle, { a: 'Z', b: 'H' });
+  assert.ok(trace.snapshots[2][2] < 0, 'The bubble points to a white input branch');
+  for (const [input, signs] of [[0, [1, 1]], [2, [-1, 1]]]) {
+    const branches = trace.columns[2].filter(edge => edge.from === input).sort((a, b) => a.to - b.to);
+    assert.deepEqual(branches.map(edge => edge.to), [0, 2]);
+    assert.deepEqual(branches.map(edge => Math.sign(edge.amplitude)), signs);
+    close(branches.map(edge => Math.abs(edge.amplitude)), [0.5, 0.5]);
+  }
+});
+
+test('the cancellation wall is explained before a later gate and has no outgoing amplitude', () => {
+  const puzzle = TUTORIAL_PUZZLES[1], steps = stepsFor(1), solution = fillingFor(1);
+  const wall = steps.findIndex(step => step.anchor.kind === 'wall');
+  assert.ok(wall > steps.findIndex(step => step.gate === 'H'));
+  assert.ok(wall < steps.findIndex(step => step.hole === 'c'));
+  for (const placements of [{ a: 'Z', b: 'H' }, solution]) {
+    const { columns, snapshots, cancellations } = flowTrace(puzzle, placements);
+    assert.ok(cancellations[2].includes(0));
+    const incoming = columns[2].filter(edge => edge.to === 0);
+    assert.equal(incoming.length, 2);
+    assert.ok(incoming.some(edge => edge.amplitude > 0) && incoming.some(edge => edge.amplitude < 0));
+    assert.ok(Math.abs(incoming.reduce((sum, edge) => sum + edge.amplitude, 0)) < 1e-9);
+    assert.ok(Math.abs(snapshots[3][0]) < 1e-9);
+    assert.ok(!columns[3].some(edge => edge.from === 0));
+  }
+});
+
+test('the last circuit demonstrates both CNOT directions and anchors CZ on its two bits', () => {
+  const puzzle = TUTORIAL_PUZZLES[2], steps = stepsFor(2);
+  close(simulate(puzzle).state, [0, 0, 0, 1, 0, 0, 0, 0]);
+  close(simulate(puzzle, { a: 'CX' }).state, simulate(puzzle).state);
+  assert.deepEqual(getHoles(puzzle)[0].wires, [0, 1]);
+  close(simulate(puzzle, { a: 'CX', b: 'CX' }).state, [0, 0, 1, 0, 0, 0, 0, 0]);
+  close(simulate(puzzle, { a: 'CX', b: 'CX', c: 'XC' }).state, [0, 0, 0, 0, 0, 0, 1, 0]);
+  assert.match(steps.find(step => step.gate === 'XC').text, /NOTC on the first and second wires/);
+  const cz = steps.find(step => step.gate === 'CZ');
+  assert.deepEqual(cz.focus.wires, getHoles(puzzle).find(entry => entry.id === cz.hole).wires);
+  assert.deepEqual(cz.anchor, { kind: 'bits', basis: 7, wires: [1, 2] });
+  assert.equal(cz.view, 'paths');
+  const before = simulate(puzzle, { a: 'CX', b: 'CX', c: 'XC', d: 'H' }).state;
+  const after = simulate(puzzle, { a: 'CX', b: 'CX', c: 'XC', d: 'H', e: 'CZ' }).state;
+  assert.ok(before[6] > 0 && before[7] > 0);
+  assert.ok(after[6] > 0 && after[7] < 0);
   for (let basis = 0; basis < before.length; basis++) {
-    assert.ok(Math.abs(after[basis] - before[basis] * (basis >= 6 ? -1 : 1)) < 1e-9);
+    assert.ok(Math.abs(after[basis] - before[basis] * ((basis & 3) === 3 ? -1 : 1)) < 1e-9);
+  }
+  const all = fillingFor(2);
+  assert.equal(simulate(puzzle, all).solved, true);
+  assert.equal(steps.at(-1).gate, 'H', 'Final interference reaches the goal without a finishing X');
+  assert.ok(steps.every(step => step.gate !== 'X'));
+  assert.ok(flowTrace(puzzle, all).cancellations.at(-1).includes(6), 'The final Hadamard cancels 110');
+  delete all.f;
+  close(simulate(puzzle, all).state, [0, 0, 0, 0, 0, 0, Math.SQRT1_2, -Math.SQRT1_2]);
+});
+
+test('the final worked circuit reaches the goal only after its last gate', () => {
+  const puzzle = TUTORIAL_PUZZLES[2], steps = stepsFor(2);
+  let placements = {};
+  assert.equal(simulate(puzzle, placements).solved, false);
+  for (const [index, step] of steps.entries()) {
+    placements = applyPlacement(puzzle, placements, step);
+    assert.equal(simulate(puzzle, placements).solved, index === steps.length - 1,
+      `The third example must stay unfinished after action ${index + 1} until the final H`);
   }
 });

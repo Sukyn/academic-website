@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { games as navigationGames } from '../../src/data/games.js';
 import { dailyPuzzle as reductionDaily } from '../circuit-reduction/witnesses.js';
 import { layoutMoves } from '../circuit-reduction/layout-moves.js';
 import { RULES, applyMove as reduceMove } from '../../src/lib/circuit-reduction/engine.js';
@@ -20,7 +21,7 @@ const { chromium } = require('playwright');
 const quality = createRequire(resolve(process.env.QUALITY_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const axe = await readFile(quality.resolve('axe-core/axe.min.js'), 'utf8');
 const base = process.env.GAME_BASE_URL ?? 'http://127.0.0.1:4323';
-const now = '2026-10-17T10:00:00Z', date = '2026-10-17';
+const now = '2026-10-25T10:00:00Z', date = '2026-10-25';
 const games = ['circuit-reduction', 'quantum-golf', 'quantum-signals', 'graph-states'];
 const titles = ['Circuit simplification', 'Quantum golf', 'Quantum signals', 'Graph states'];
 const output = resolve('tmp/daily-games-browser');
@@ -111,11 +112,11 @@ async function solve(frame, game, activate) {
 async function cards(page, current) {
   const links = page.locator('#daily-games a');
   assert.deepEqual(await links.evaluateAll(nodes => nodes.map(node => node.getAttribute('href'))),
-    games.map(game => `/games/${game}/?daily=1`));
-  assert.deepEqual(await links.evaluateAll(nodes => nodes.map(node => node.textContent.trim())), titles);
-  assert.equal(await links.locator('img').count(), 4, 'Every game has its gameplay illustration');
+    navigationGames.map(game => `/games/${game.path}/?daily=1`));
+  assert.deepEqual(await links.evaluateAll(nodes => nodes.map(node => node.textContent.trim())), navigationGames.map(game => game.title));
+  assert.equal(await links.locator('img').count(), navigationGames.length, 'Every game has its gameplay illustration');
   assert.equal(await page.locator('#daily-games [aria-current="page"]').count(), current === undefined ? 0 : 1);
-  if (current !== undefined) assert.equal(await links.nth(current).getAttribute('aria-current'), 'page');
+  if (current !== undefined) assert.equal(await page.locator('#daily-games [aria-current="page"]').getAttribute('href'), `/games/${current}/?daily=1`);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'The daily navigation fits the viewport');
 }
 
@@ -250,7 +251,7 @@ try {
     assert.equal(await page.locator('iframe').count(), 0, 'Daily puzzles use normal page navigation');
     await accessibility(page, 'The daily-puzzles menu has no automated accessibility violations');
     await page.screenshot({ path: resolve(output, `${profile}-intro.png`), fullPage: true });
-    await activate(page.locator('#daily-games a').first());
+    await activate(page.locator(`#daily-games a[href="/games/${games[0]}/?daily=1"]`));
     for (const [index, game] of games.entries()) {
       await page.waitForURL(url => url.pathname === `/games/${game}/` && url.searchParams.get('daily') === '1');
       await page.locator('#mode-daily[aria-pressed="true"]').waitFor({ state: 'attached' });
@@ -259,8 +260,8 @@ try {
       const dates = await page.locator('#daily-date option').evaluateAll(options => options.map(option => option.value));
       assert.equal(dates[0], date);
       assert.equal(dates.at(-1), fixture.getDaily(game).startDate, 'Archives stop at each game’s own launch date');
-      if (game === 'circuit-reduction') assert.deepEqual(dates, [date], 'The retired Circuit simplification dailies are absent');
-      await cards(page, index);
+      if (game === 'quantum-signals') assert.deepEqual(dates, [date], 'Signals archives start with the fixed-goal puzzle version');
+      await cards(page, game);
       assert.equal(await page.locator('.mode-menu').isVisible(), true);
       assert.equal(await page.locator('iframe').count(), 0);
       await page.screenshot({ path: resolve(output, `${profile}-${game}.png`), fullPage: true });
@@ -306,7 +307,7 @@ try {
       assert.equal(await page.evaluate(() => document.activeElement.id), 'daily-games', 'Completion focuses the game chooser');
       const navigation = await page.locator('#daily-games').boundingBox();
       assert.ok(navigation.y >= -1 && navigation.y + navigation.height <= options.viewport.height + 1, 'The game chooser is fully visible');
-      await cards(page, index);
+      await cards(page, game);
       await page.screenshot({ path: resolve(output, `${profile}-${game}-chooser.png`), fullPage: true });
       await activate(page.locator('#mode-campaign'));
       await page.locator('#mode-campaign[aria-pressed="true"]').waitFor({ state: 'attached' });
@@ -314,7 +315,7 @@ try {
       if (index < games.length - 1) {
         await activate(page.locator('#mode-daily'));
         await page.locator('#mode-daily[aria-pressed="true"]').waitFor({ state: 'attached' });
-        await activate(page.locator('#daily-games a').nth(index + 1));
+        await activate(page.locator(`#daily-games a[href="/games/${games[index + 1]}/?daily=1"]`));
       }
       console.log(`${profile}: ${titles[index]} daily completed; logo navigation and popup verified.`);
     }

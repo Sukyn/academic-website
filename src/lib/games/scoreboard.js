@@ -15,12 +15,11 @@ function checkBoard(data, submitted = false, completionOnly = false) {
     (completionOnly ? entry.completed === true && !['rank', 'moves', 'optimalMoves', 'score'].some(key => Object.hasOwn(entry, key)) :
       positive(entry.rank) && entry.rank <= data.total && positive(entry.moves));
   const ids = new Set();
-  let previousRank = 0;
-  for (const entry of data.entries) {
-    if (!validEntry(entry) || ids.has(entry.id) || (!completionOnly && entry.rank !== previousRank + 1)) {
+  for (let index = 0; index < data.entries.length; index++) {
+    const entry = data.entries[index];
+    if (!validEntry(entry) || ids.has(entry.id) || (!completionOnly && entry.rank !== index + 1)) {
       throw new Error('Invalid leaderboard response.');
     }
-    if (!completionOnly) previousRank = entry.rank;
     ids.add(entry.id);
   }
   const player = data.currentPlayer;

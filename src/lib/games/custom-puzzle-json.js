@@ -1,15 +1,25 @@
-const MAX_LENGTH = 65_536;
+import { downloadBlob } from '../browser/files.js';
+
+const MAX_BYTES = 65_536;
+const SIZE_ERROR = 'Use a puzzle JSON smaller than 64 KB.';
+const encoder = new TextEncoder();
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+function checkSize(source) {
+  if (typeof source !== 'string' || source.length > MAX_BYTES || encoder.encode(source).length > MAX_BYTES) {
+    throw new RangeError(SIZE_ERROR);
+  }
+}
 
 export function encodeCustomPuzzle(puzzle) {
   if (!object(puzzle)) throw new RangeError('Use a puzzle JSON object.');
   const source = JSON.stringify(puzzle, null, 2);
-  if (source.length > MAX_LENGTH) throw new RangeError('Use a puzzle JSON smaller than 64 KB.');
+  checkSize(source);
   return source;
 }
 
 export function decodeCustomPuzzle(source) {
-  if (typeof source !== 'string' || source.length > MAX_LENGTH) throw new RangeError('Use a puzzle JSON smaller than 64 KB.');
+  checkSize(source);
   let value;
   try { value = JSON.parse(source); }
   catch { throw new RangeError('Use valid puzzle JSON.'); }
@@ -53,9 +63,10 @@ export function createCustomPuzzleJson({ get, game, exportPuzzle, importPuzzle }
     event.target.value = '';
     if (!file) return;
     try {
-      if (file.size > MAX_LENGTH) throw new RangeError('Use a puzzle JSON smaller than 64 KB.');
+      if (file.size > MAX_BYTES) throw new RangeError(SIZE_ERROR);
       const source = await file.text();
       if (ticket !== generation || !dialog.open || kind !== 'input') return;
+      checkSize(source);
       text.value = inputText = source; status.textContent = '';
     } catch (error) { if (ticket === generation && dialog.open) status.textContent = error.message; }
   });
@@ -70,9 +81,7 @@ export function createCustomPuzzleJson({ get, game, exportPuzzle, importPuzzle }
     }
   });
   get('puzzle-json-download').addEventListener('click', () => {
-    const url = URL.createObjectURL(new Blob([text.value], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = game + '.json'; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadBlob(new Blob([text.value], { type: 'application/json' }), game + '.json');
   });
   return {
     close,

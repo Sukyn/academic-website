@@ -1,0 +1,21 @@
+.quantum-game .signal-memo { max-width: 37rem; margin: .8rem auto; font: .85rem var(--font-ui); }
+.quantum-game .signal-memo > summary { width: fit-content; min-height: 44px; margin-inline: auto; padding: .6rem; color: var(--color-text); }
+.signal-memo-tabs, .signal-memo-key { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .4rem; margin: .5rem 0 .8rem; }
+.quantum-game .signal-memo-tabs button { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; min-height: 48px; padding: 3px; border: 1px solid var(--color-border); border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.quantum-game .signal-memo-tabs button[aria-selected="true"] { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.signal-memo-tabs button > .gate-glyph { width: 34px; height: 34px; }
+.signal-memo-map { max-height: 24rem; overflow: auto; border: 1px solid var(--color-border-strong); border-radius: 4px; background: var(--color-surface-2); scrollbar-width: thin; }
+.signal-memo-map:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.signal-memo-circuit { position: relative; width: 100%; max-width: 22rem; margin-inline: auto; }
+.signal-memo-paths { display: block; width: 100%; height: auto; }
+.signal-memo-lane { stroke: var(--color-border-strong); stroke-width: 1; opacity: .45; }
+.signal-memo-path[data-active="false"] { opacity: .24; }
+.signal-memo-colour-swap[data-active="false"] { opacity: .24; }
+.signal-memo-key > svg { width: 40px; height: 28px; }
+.signal-memo-node[data-active="false"] { opacity: .35; }
+.signal-memo-bits { fill: var(--color-text); font: 16px var(--font-mono); }
+.signal-memo-circuit-gate { position: absolute; left: 50%; top: 0; transform: translateX(-50%); display: grid; place-items: center; width: 44px; height: 44px; }
+.signal-memo-circuit-gate > .gate-glyph { width: 44px; height: 44px; }
+.quantum-game .signal-memo-input-lane { position: absolute; left: 0; width: 28.57%; min-height: 0; padding: 0; transform: translateY(-50%); border: 0; border-radius: 3px; background: transparent; cursor: pointer; }
+.quantum-game .signal-memo-input-lane:hover { background: transparent; }
+.quantum-game .signal-memo-input-lane:focus-visible { outline-offset: -2px; }

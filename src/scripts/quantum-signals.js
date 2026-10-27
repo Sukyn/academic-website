@@ -1,7 +1,8 @@
 import { getHoles, applyPlacement, simulate, validatePuzzle, validateCustomPuzzle, puzzleData } from '../lib/quantum-signals/engine.js';
 import { createPuzzleEditor } from '../lib/quantum-signals/puzzle-editor.js';
 import { LEVELS, generatePuzzle, DAILY_START } from '../lib/quantum-signals/puzzles.js';
-import { gateIcon, gateLabel, renderBoard, renderFlow, highlightFlow, highlightFlowBits, pinFlowLabels } from '../lib/quantum-signals/rendering.js';
+import { gateIcon, gateLabel, renderBoard, renderFlow, highlightFlow, highlightSignalFocus, pinFlowLabels } from '../lib/quantum-signals/rendering.js';
+import { createGateMemo } from '../lib/quantum-signals/gate-memo.js';
 import { animateFlow, flowElements } from '../lib/quantum-signals/animation.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
 import { createDailySession } from '../lib/games/daily-session.js';
@@ -14,19 +15,21 @@ import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { TUTORIAL_PUZZLE, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/quantum-signals/tutorial.js';
-import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
+import { TUTORIAL_PUZZLE, TUTORIAL_PUZZLES, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/quantum-signals/tutorial.js';
+import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, updateLevelControls, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'quantum-signals', get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 let mode = 'tutorial', campaignIndex = 0, puzzle = TUTORIAL_PUZZLE, placements = {}, sequence = [], states = [placements];
 let selected = getHoles(puzzle)[0].id;
-let tutorialBits = [], autofocus = false, flowAnimation = null;
+let tutorialStep = null, tutorialChapter = -1, tutorialView = 'paths', autofocus = false, flowAnimation = null;
 const evaluate = createPuzzleResult((puzzle, placements) => simulate(puzzle, placements).solved);
 const isWon = () => evaluate(puzzle, placements);
 const choices = [...document.querySelectorAll('[data-choice]')];
 const paletteWires = new WeakMap();
+const memo = createGateMemo({ get });
+const mobileTutorial = window.matchMedia('(max-width: 600px)');
 const tutorialBlocked = () => tutorial.active && !tutorial.executing;
 const canRecord = () => mode === 'campaign' || mode === 'daily';
 const selector = () => mode === 'tutorial' || mode === 'random' ? null : { game: GAME, ...(mode === 'daily' ? { date: puzzle.date } : { level: campaignIndex + 1 }) };
@@ -63,6 +66,59 @@ const viewport = createCircuitViewport(get('signal-scroll'), get('flow-scroll'),
 function followProgress(hole, finished) {
   viewport.follow(holeButton(hole), finished);
 }
+function syncTutorialFocus() {
+  const active = tutorial.active && !tutorial.finished && tutorialStep;
+  // Returning from an interrupted movie restores the step's original view.
+  if (active && !tutorial.executing) tutorialView = tutorialStep.view;
+  const content = get('signal-scroll').closest('.game-content');
+  if (active) content.dataset.signalTutorialView = tutorialView;
+  else delete content.dataset.signalTutorialView;
+  get('signal-scroll').inert = Boolean(active && mobileTutorial.matches && tutorialView !== 'circuit');
+  get('flow-panel').inert = Boolean(active && mobileTutorial.matches && tutorialView !== 'paths');
+  highlightSignalFocus(get('signal-board'), get('signal-flow'), active ? tutorialStep.focus : {});
+}
+function tutorialAnchor() {
+  if (!tutorialStep) return null;
+  const inPaths = tutorialView === 'paths';
+  const anchor = inPaths && tutorial.executing ? tutorialStep.animationAnchor ?? tutorialStep.anchor : tutorialStep.anchor;
+  const flow = get('signal-flow');
+  let elements;
+  if (anchor.kind === 'gate') elements = [anchor.hole ? holeButton(anchor.hole) :
+    get('signal-board').querySelector(`.signal-fixed[data-column="${anchor.column}"]`)];
+  else if (anchor.kind === 'goal') elements = [get('signal-target').querySelector('.signal-flow-target')];
+  else if (anchor.kind === 'memo') elements = [get('signal-memo').querySelector('summary')];
+  else if (anchor.kind === 'bits') elements = anchor.wires.map(wire => flow.querySelector(`.signal-flow-label[data-basis="${anchor.basis}"] tspan[data-wire="${wire}"]`));
+  else if (anchor.kind === 'node' && tutorialStep.focus.phase) elements = (tutorialStep.focus.bases ?? [anchor.basis])
+    .map(basis => flow.querySelector(`.signal-flow-node[data-basis="${basis}"][data-boundary="${anchor.boundary}"]`));
+  else elements = [flow.querySelector(`.${anchor.kind === 'wall' ? 'signal-flow-cancellation' : 'signal-flow-node'}[data-basis="${anchor.basis}"][data-boundary="${anchor.boundary}"]`)];
+  elements = elements.filter(Boolean);
+  const region = get(inPaths ? 'flow-panel' : 'signal-scroll'), panel = region.getBoundingClientRect();
+  const memo = anchor.kind === 'memo' ? get('signal-memo') : null;
+  const speaker = anchor.kind === 'node' ? elements.find(node => Number(node.dataset.basis) === anchor.basis) : elements[0];
+  const speakerBounds = speaker?.getBoundingClientRect();
+  return { elements, ...(anchor.kind === 'node' ? { rect: speakerBounds } : {}),
+    avoid: memo ? [memo, memo.open ? get('signal-target').querySelector('.signal-flow-target') : region] : [region],
+    preferredSide: memo?.open || speakerBounds?.top < panel.top + panel.height / 2 ? 'above' : 'below' };
+}
+function revealTutorialFocus() {
+  syncTutorialFocus();
+  if (!tutorialStep || tutorial.finished) return;
+  const column = tutorialStep.focus.column;
+  get('signal-scroll').scrollTop = 0;
+  viewport.follow(holeButton(tutorialStep.hole) ?? get('signal-board').querySelector('.signal-gate-focus') ?? get('signal-board').querySelector('[data-column="' + column + '"]'));
+  if (tutorialView === 'paths') {
+    const panel = get('flow-panel'), bounds = panel.getBoundingClientRect();
+    const focused = [...get('signal-flow').querySelectorAll('.signal-flow-focus.signal-flow-node, .signal-flow-focus.signal-flow-cancellation')];
+    if (focused.length) {
+      const rects = focused.map(node => node.getBoundingClientRect());
+      const top = Math.min(...rects.map(rect => rect.top)), bottom = Math.max(...rects.map(rect => rect.bottom));
+      panel.scrollTop += (top + bottom - bounds.top - bounds.bottom) / 2;
+    }
+  }
+  const region = get(tutorialView === 'paths' ? 'flow-panel' : 'signal-scroll');
+  region.scrollIntoView({ block: 'center', inline: 'nearest' });
+}
+mobileTutorial.addEventListener('change', () => { revealTutorialFocus(); tutorial.reposition(); });
 function selectHole(id) {
   if (tutorialBlocked() || daily.loading || review.step !== null || selected === id) return;
   selected = id;
@@ -95,7 +151,6 @@ function update({ board = true, follow = false, animateFrom = null } = {}) {
     for (const button of get('signal-board').querySelectorAll('[data-hole]')) button.disabled = locked;
     highlightFlow(get('signal-flow'), puzzle, activeHole);
   }
-  highlightFlowBits(get('signal-flow'), tutorialBits);
   const hole = holes.find(entry => entry.id === (activeHole ?? selected));
   const wires = hole?.wires.join(':');
   const focusedControl = document.activeElement?.closest('.signal-palette button');
@@ -118,17 +173,16 @@ function update({ board = true, follow = false, animateFrom = null } = {}) {
   get('erase-gate').disabled = locked || !Object.hasOwn(placements, selected);
   get('autofocus').setAttribute('aria-pressed', String(autofocus)); get('autofocus').disabled = locked;
   if (focusedControl?.hidden) focusSelected();
+  memo.update(hole);
   updateModeMenu(get, mode, false, completions.submitting);
-  get('campaign-controls').hidden = mode !== 'campaign'; get('custom-controls').hidden = mode !== 'random';
+  get('custom-controls').hidden = mode !== 'random';
   get('circuit-editor-controls').hidden = mode !== 'random';
   customJson.update({ visible: mode === 'random', disabled: daily.loading });
   get('leaderboard-section').hidden = mode === 'random' || mode === 'tutorial';
   get('daily-heading').hidden = mode !== 'daily';
-  get('daily-date').disabled = !daily.info; get('level').disabled = daily.loading;
-  get('level').value = String(campaignIndex + 1);
-  get('previous-level').disabled = daily.loading || mode !== 'campaign' || campaignIndex === 0;
-  get('next-level').disabled = daily.loading || completions.submitting || mode !== 'campaign' || !won || campaignIndex === LEVELS.length - 1;
-  get('result-next').disabled = get('next-level').disabled; get('result-next').hidden = mode !== 'campaign' || campaignIndex === LEVELS.length - 1;
+  get('daily-date').disabled = !daily.info;
+  updateLevelControls(get, { mode, level: campaignIndex + 1, count: LEVELS.length, loading: daily.loading,
+    canAdvance: !completions.submitting && won });
   get('undo').disabled = daily.loading || !sequence.length; get('restart').disabled = daily.loading;
   get('show-results').hidden = mode === 'tutorial' || !won;
   for (const id of ['replay', 'replay-result']) get(id).disabled = daily.loading || !sequence.length || review.playing;
@@ -149,7 +203,8 @@ function update({ board = true, follow = false, animateFrom = null } = {}) {
   tutorial.render();
   if (follow) followProgress(activeHole, won && (review.step === null || review.step === sequence.length));
   if (previousFlow) {
-    const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom);
+    const job = flowAnimation = animateFlow(get('signal-flow'), previousFlow, animateFrom,
+      { duration: tutorial.active ? tutorialStep?.duration : undefined });
     job.finished.then(() => { if (flowAnimation === job) flowAnimation = null; });
   }
 }
@@ -187,12 +242,13 @@ function place(gate) {
     if (autofocus && gate !== null) selected = getHoles(puzzle).find(hole => !Object.hasOwn(next, hole.id))?.id ?? selected;
     const column = puzzle.columns.findIndex(entries => entries.some(entry => entry.id === move.hole));
     get('status').textContent = ''; update({ follow: autofocus, animateFrom: column });
+    const job = flowAnimation;
     if (isWon()) {
-      const job = flowAnimation;
       if (job) job.finished.then(completed => { if (completed && placements === next && review.step === null) openWin(); });
       else openWin();
     }
-  } catch (error) { get('status').textContent = error.message; }
+    return job ? job.finished.then(completed => completed && placements === next) : true;
+  } catch (error) { get('status').textContent = error.message; return false; }
 }
 function share(source) {
   if (tutorial.active || daily.loading || !isWon() || !sequence.length) return;
@@ -264,16 +320,27 @@ const customJson = createCustomPuzzleJson({ get, game: GAME, exportPuzzle: () =>
 const tutorial = createTutorial({
   renderText: renderCircuitInstruction,
   get, isBlocked: () => daily.loading, intro: TUTORIAL_INTRO,
+  onRender: syncTutorialFocus, revealTarget: revealTutorialFocus, getAnchor: tutorialAnchor,
   controls: '#signal-board button, .signal-palette button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #circuit-editor-controls button, #custom-details select',
-  steps: TUTORIAL_STEPS.map(({ hole, gate, text, target, bits }) => ({
-    text, target: target ?? '[data-choice="' + gate + '"]', prepare() {
-      tutorialBits = bits ?? [];
-      if (hole) selectHole(hole);
-      highlightFlowBits(get('signal-flow'), tutorialBits);
+  steps: TUTORIAL_STEPS.map(step => ({
+    text: step.text, target: step.gate ? '[data-choice="' + step.gate + '"]' : '#tutorial-next',
+    prepare() {
+      tutorialStep = step; tutorialView = step.view;
+      if (tutorialChapter !== step.chapter) {
+        tutorialChapter = step.chapter;
+        if (puzzle !== TUTORIAL_PUZZLES[step.chapter]) setPuzzle('tutorial', TUTORIAL_PUZZLES[step.chapter]);
+      }
+      if (step.hole) selectHole(step.hole);
+      syncTutorialFocus();
     },
-    action: () => { if (gate) place(gate); },
+    action() {
+      if (!step.gate) return true;
+      tutorialView = 'paths'; revealTutorialFocus(); tutorial.reposition();
+      return place(step.gate);
+    },
   })),
-  onReset: () => setPuzzle('tutorial', TUTORIAL_PUZZLE),
-  onLeave() { tutorialBits = []; highlightFlowBits(get('signal-flow'), tutorialBits); },
+  onReset: () => { tutorialChapter = -1; setPuzzle('tutorial', TUTORIAL_PUZZLE); },
+  onLeave() { tutorialStep = null; syncTutorialFocus(); },
 });
+for (const type of ['toggle', 'click', 'keydown']) get('signal-memo').addEventListener(type, tutorial.reveal);
 if (!startDailyFromLink(daily)) tutorial.enter();

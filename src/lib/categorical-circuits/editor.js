@@ -1,5 +1,6 @@
-import { holeOperation, touchedWires, validateCircuit, validateOperation, simulate } from './engine.js';
-import { fillSignals, signalsSolved, solveSignals, validateSignals } from './puzzles.js';
+import { holeOperation, touchedWires, validateCircuit, validateOperation } from './engine.js';
+import { signalsSolved, solveSignals, validateSignals } from './puzzles.js';
+import { goalState } from '../quantum-signals/engine.js';
 
 const clone = value => structuredClone(value);
 const choicesFor = entry => entry.wires.length === 2 ? ['I', 'SWAP'] : ['I', 'H', 'X', 'Z'];
@@ -7,9 +8,8 @@ const bounded = (value, maximum) => Number.isInteger(value) && value >= 1 && val
 const toolNames = new Set(['select', 'H', 'X', 'Z', 'SWAP', 'control', 'hole', 'erase']);
 
 // The visible gates in hole columns form a witness, not extra puzzle metadata.
-// Capturing a target freezes that circuit; editing the puzzle never moves it.
 export function createCircuitEditor({ get, profile, onChange }) {
-  let active = false, draft, reference, target, selected, pending, tool = 'select';
+  let active = false, draft, target, selected, pending, tool = 'select';
   const currentProfile = () => typeof profile === 'function' ? profile() : profile ?? 'controlled';
   const element = id => get?.(id);
   const fullCircuit = model => ({ wires: model.wires, columns: [...model.columns,
@@ -56,16 +56,9 @@ export function createCircuitEditor({ get, profile, onChange }) {
 
   function commit(next) { draft = checked(next); pending = null; return render(); }
 
-  function capture() {
-    if (!active) return;
-    if (pending) throw new RangeError('Connect the selected gate first.');
-    reference = clone(fullCircuit(draft)); target = simulate(reference, undefined, currentProfile());
-    return render();
-  }
-
   function open(input) {
     const mode = currentProfile();
-    let next, nextReference;
+    let next;
     if (input) {
       const puzzle = validateSignals(input, mode);
       const witness = Array.isArray(input.solution) && signalsSolved(puzzle, input.solution, mode) ? input.solution :
@@ -73,13 +66,11 @@ export function createCircuitEditor({ get, profile, onChange }) {
       if (!witness) throw new RangeError('This puzzle has no reachable target.');
       next = { wires: puzzle.wires, columns: clone(puzzle.columns),
         holes: puzzle.holes.map((hole, index) => ({ ...clone(hole), witness: witness[index] ?? 'I' })) };
-      nextReference = puzzle.targetCircuit ?? fillSignals(puzzle, witness, mode);
     } else {
       next = { wires: 3, columns: [[], [], [], []], holes: [] };
-      nextReference = fullCircuit(next);
     }
     checked(next);
-    reference = clone(nextReference); target = simulate(reference, undefined, mode);
+    target = goalState(next.wires);
     draft = next; active = true; pending = selected = null; tool = 'select';
     return render();
   }
@@ -94,9 +85,7 @@ export function createCircuitEditor({ get, profile, onChange }) {
     const next = clone(draft); next.wires = wires;
     next.columns = Array.from({ length: fixed }, (_, index) => next.columns[index] ?? []);
     checked(next);
-    const resizedReference = { ...reference, wires };
-    const nextTarget = simulate(resizedReference, undefined, currentProfile());
-    draft = next; reference = resizedReference; target = nextTarget;
+    draft = next; target = goalState(wires);
     pending = selected = null; return render();
   }
 
@@ -189,10 +178,10 @@ export function createCircuitEditor({ get, profile, onChange }) {
 
   function puzzle() {
     if (!active || pending) throw new RangeError('Connect every gate before playing.');
-    const input = { wires: draft.wires, columns: draft.columns, holes: draft.holes, targetCircuit: reference, target };
+    const input = { wires: draft.wires, columns: draft.columns, holes: draft.holes };
     const normalized = validateSignals(input, currentProfile());
     if (!solveSignals(normalized, { profile: currentProfile(), limit: 1 }).length) {
-      throw new RangeError('The captured target cannot be reached. Capture a new target or restore the offered gates.');
+      throw new RangeError('The goal cannot be reached with these holes.');
     }
     return normalized;
   }
@@ -209,7 +198,6 @@ export function createCircuitEditor({ get, profile, onChange }) {
   });
   for (const id of ['editor-wires', 'editor-columns']) element(id)?.addEventListener('change', () =>
     safely(() => resize(Number(element('editor-wires').value), Number(element('editor-columns').value))));
-  element('capture-target')?.addEventListener('click', () => safely(capture));
 
   return { open, close: () => { active = false; pending = selected = null; },
     get active() { return active; }, circuit: () => clone(fullCircuit(draft)), puzzle, render, handleCell, setTool };

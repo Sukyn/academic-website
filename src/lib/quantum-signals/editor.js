@@ -1,4 +1,4 @@
-import { GATES, stateFromWeights, targetWeights, validatePuzzle } from './engine.js';
+import { GATES, validatePuzzle } from './engine.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const identifier = value => typeof value === 'string' && /^[a-zA-Z][\w-]{0,39}$/.test(value);
@@ -32,8 +32,7 @@ function copyEntry(entry, wireCount) {
 
 function copyDraft(draft) {
   if (!object(draft) || !bounded(draft.wires, 1, 4) ||
-      !Array.isArray(draft.columns) || !bounded(draft.columns.length, 1, 16) || !Array.isArray(draft.weights) ||
-      draft.weights.length !== 2 ** draft.wires) throw new RangeError('Use 1–4 wires and 1–16 columns.');
+      !Array.isArray(draft.columns) || !bounded(draft.columns.length, 1, 16)) throw new RangeError('Use 1–4 wires and 1–16 columns.');
   const ids = new Set();
   const columns = Array.from(draft.columns, column => {
     if (!Array.isArray(column) || column.length > draft.wires) throw new RangeError('Invalid circuit column.');
@@ -50,13 +49,12 @@ function copyDraft(draft) {
     });
   });
   if (ids.size > 6) throw new RangeError('Use at most six holes.');
-  return { wires: draft.wires, columns, weights: [...draft.weights] };
+  return { wires: draft.wires, columns };
 }
 
 export function draftFromPuzzle(input) {
-  const puzzle = validatePuzzle(input), weights = targetWeights(puzzle.target);
-  if (!weights) throw new RangeError('The visual editor needs equal chances for each selected target state.');
-  return copyDraft({ wires: puzzle.wires, columns: puzzle.columns, weights });
+  const puzzle = validatePuzzle(input);
+  return copyDraft({ wires: puzzle.wires, columns: puzzle.columns });
 }
 
 export function resizeDraft(draft, options = {}) {
@@ -66,7 +64,6 @@ export function resizeDraft(draft, options = {}) {
   if (!bounded(wires, 1, 4) || !bounded(columns, 1, 16)) throw new RangeError('Use 1–4 wires and 1–16 columns.');
   copy.columns = Array.from({ length: columns }, (_, index) =>
     (copy.columns[index] ?? []).filter(entry => entry.wires.every(wire => wire < wires)));
-  if (wires !== copy.wires) copy.weights = [1, ...Array(2 ** wires - 1).fill(0)];
   copy.wires = wires;
   return copy;
 }
@@ -125,6 +122,5 @@ export function connectDraftEntry(draft, column, fromWire, toWire, otherEndpoint
 export function puzzleFromDraft(draft) {
   const copy = copyDraft(draft);
   if (copy.columns.some(column => column.some(entry => entry.endpoint))) throw new RangeError('Connect or remove every unconnected endpoint before playing.');
-  return validatePuzzle({ wires: copy.wires, columns: copy.columns,
-    target: stateFromWeights(copy.weights) });
+  return validatePuzzle({ wires: copy.wires, columns: copy.columns });
 }

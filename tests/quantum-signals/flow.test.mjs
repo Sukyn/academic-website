@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
-import { simulate, solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
+import { goalState, simulate, solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
 import { LEVELS, generatePuzzle } from '../../src/lib/quantum-signals/puzzles.js';
 
 const fixed = (gate, ...wires) => ({ gate, wires });
@@ -12,7 +12,7 @@ const close = (actual, expected) => {
 };
 function fixture(wires, columns) {
   return { wires, columns: [...columns, [{ id: 'spare', wires: [0], choices: ['I', 'X'] }]],
-    target: [1, ...Array(2 ** wires - 1).fill(0)] };
+    target: goalState(wires) };
 }
 const run = (wires, columns) => flowTrace(fixture(wires, columns));
 
@@ -70,12 +70,12 @@ test('Controlled paths use declared control order, including reversed and separa
 
 test('A reverse CNOT hole routes coherent branches using the second declared wire as control', () => {
   const puzzle = { wires: 3, columns: [[fixed('H', 2)], [{ id: 'a', wires: [0, 2], choices: ['I', 'CX', 'XC', 'CZ'] }]],
-    target: [Math.SQRT1_2, 0, 0, 0, 0, Math.SQRT1_2, 0, 0] };
+    target: goalState(3) };
   const flow = flowTrace(puzzle, { a: 'XC' });
   assert.deepEqual(flow.columns[1], [
     { from: 0, to: 0, amplitude: Math.SQRT1_2 }, { from: 1, to: 5, amplitude: Math.SQRT1_2 },
   ]);
-  close(flow.snapshots.at(-1), puzzle.target);
+  close(flow.snapshots.at(-1), [Math.SQRT1_2, 0, 0, 0, 0, Math.SQRT1_2, 0, 0]);
 });
 
 test('Joint paths distinguish correlated and anticorrelated Bell states', () => {

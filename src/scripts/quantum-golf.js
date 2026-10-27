@@ -1,5 +1,5 @@
 import { createScoreboard } from '../lib/games/scoreboard.js';
-import { formatPuzzleDate as dateLabel, bindDailyControls } from '../lib/games/daily-ui.js';
+import { formatPuzzleDate as dateLabel, updateDailyHeading, bindDailyControls } from '../lib/games/daily-ui.js';
 import { createDailySession } from '../lib/games/daily-session.js';
 import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
@@ -81,6 +81,7 @@ const customJson = createCustomPuzzleJson({
 });
 tutorial = createTutorial({
   get,
+  getAnchor: focus => ({ element: focus, avoid: [get('sphere')], preferredSide: 'below' }),
   renderText: renderGolfInstruction,
   intro: TUTORIAL_INTRO,
   isBlocked: () => daily.loading,
@@ -128,13 +129,8 @@ function update(visibleState) {
   if (isCampaign) get('level').value = String(level.id);
   get('level').disabled = locked;
   get('campaign-controls').hidden = !isCampaign;
-  get('daily-heading').hidden = !isDaily;
-  if (isDaily) {
-    get('daily-title').textContent = `Daily puzzle · ${dateLabel(level.date)}`;
-    get('daily-note').textContent = scorable ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
-  }
+  updateDailyHeading(get, { mode: currentMode, date: level?.date, available: !busy && daily.info, acceptingScores: scorable });
   updateModeMenu(get, currentMode, busy && !tutorialMode, scores.submitting);
-  get('daily-date').disabled = busy || !daily.info;
   get('show-rules').disabled = busy && !tutorialMode;
   get('previous-level').disabled = locked || !isCampaign || level.id === 1;
   for (const id of ['next-level', 'result-next']) get(id).disabled = locked || scores.submitting || !isCampaign || !won;

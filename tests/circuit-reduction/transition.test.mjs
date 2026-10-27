@@ -63,7 +63,7 @@ test('all twenty rules and their reverse preserve exactly the glyphs and adjacen
 });
 
 test('HH, XX and ZZ cancellation pairs meet, shrink and fade; the reverse emerges from that midpoint', () => {
-  assert.equal(REWRITE_DURATION, 400);
+  assert.ok(REWRITE_DURATION >= 700 && REWRITE_DURATION <= 1000);
   for (const cell of ['H', 'X', 'Z']) {
     const before = [[cell, cell]], after = [['.', '.']], move = { rule: `cancel-${cell.toLowerCase()}`, row: 0, column: 0 };
     const out = createRewriteTransition(before, after, move).gates;
@@ -73,7 +73,9 @@ test('HH, XX and ZZ cancellation pairs meet, shrink and fade; the reverse emerge
     assert.deepEqual(incoming.map(item => item.fromColumn), [.5, .5]);
     for (let index = 0; index < 2; index++) {
       assert.equal(transitionSample(out[index], 0).opacity, 1);
+      assert.deepEqual(transitionSample(out[index], .125), transitionSample(out[index], 0), 'Hold the matched source before applying the equation');
       assert.equal(transitionSample(out[index], 1).opacity, 0);
+      assert.deepEqual(transitionSample(out[index], .875), transitionSample(out[index], 1), 'Hold the complete result at the end');
       assert.ok(transitionSample(out[index], .6).scale < 1);
       assert.ok(transitionSample(out[index], .6).opacity < 1);
       for (const progress of [0, .25, .5, .75, 1]) {
@@ -99,6 +101,23 @@ test('basis changes retain linked partners outside the window and corner connect
   assert.equal(plan.links.filter(item => item.phase === 'move').length, 0, 'A stationary top and sliding bottom crossfade their connectors');
   assert.equal(plan.links.filter(item => item.phase === 'in').length, 2);
   assert.equal(plan.links.filter(item => item.phase === 'out').length, 2);
+});
+
+test('conjugation changes its middle gate at the cancellation moment instead of revealing it early', () => {
+  const before = [['H', 'Z', 'H']];
+  const rule = RULES.find(rule => JSON.stringify(rule.left) === JSON.stringify(before));
+  assert.ok(rule);
+  const move = { rule: rule.id, row: 0, column: 0 };
+  const plan = createRewriteTransition(before, applyMove(before, move), move);
+  const source = plan.gates.find(gate => gate.replacement && gate.phase === 'out');
+  const result = plan.gates.find(gate => gate.replacement && gate.phase === 'in');
+  assert.ok(source && result);
+  assert.equal(transitionSample(source, .5).opacity, 1); assert.equal(transitionSample(result, .5).opacity, 0);
+  const old = transitionSample(source, .7), next = transitionSample(result, .7);
+  assert.ok(old.opacity > 0 && old.opacity < 1); assert.ok(next.opacity > 0 && next.opacity < 1);
+  assert.equal(old.opacity + next.opacity, 1); assert.equal(old.scale, 1); assert.equal(next.scale, 1);
+  assert.equal(old.column, next.column);
+  assert.ok(plan.gates.filter(gate => gate.cell === 'H').every(gate => transitionSample(gate, .7).column === old.column));
 });
 
 test('layout operations, invalid snapshots and unchanged circuits have no rewrite transition', () => {

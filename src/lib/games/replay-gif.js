@@ -1,3 +1,15 @@
+/** Keep the static header while writing cropped frames with one global palette. */
+export function writeReplayFrame(gif, indexed, width, height, { palette, delay, top = 0 }) {
+  const start = gif.bytesView().length;
+  gif.writeFrame(indexed, width, height, { palette, delay, dispose: 1 });
+  if (!top) return;
+  // gifenc emits the image descriptor after its eight-byte graphic control block.
+  const bytes = gif.bytesView(), descriptor = start + 8;
+  if (bytes[descriptor] !== 0x2c) throw new Error('Could not encode the replay frame.');
+  bytes[descriptor + 3] = top & 255;
+  bytes[descriptor + 4] = top >> 8;
+}
+
 /** Run a game's synchronous encoder inside its worker and transfer the result. */
 export function installReplayEncoder(encodeReplay) {
   if (typeof WorkerGlobalScope === 'undefined' || !(globalThis instanceof WorkerGlobalScope)) return;

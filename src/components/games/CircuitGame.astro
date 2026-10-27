@@ -9,3 +9,10 @@ const { kind } = Astro.props;
 </div>
 
 <script>import '../../scripts/circuit-game.js';</script>
+
+<style>
+  @media (max-width: 600px) {
+    [data-circuit-game="simplification"] :global(.circuit-actions) { display: flex; flex-direction: column; }
+    [data-circuit-game="simplification"] :global(.circuit-actions > .round-controls) { order: -1; margin: .5rem 0 .75rem; }
+  }
+</style>

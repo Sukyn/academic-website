@@ -2,21 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyPlacement, controlWire, getHoles, puzzleData,
-  simulate, solvePuzzle, stateEqual, stateFromWeights, targetWeights, validateCustomPuzzle,
+  simulate, solvePuzzle, stateEqual, goalState, validateCustomPuzzle,
   validatePlacements, validatePlayablePuzzle, validatePuzzle,
 } from '../../src/lib/quantum-signals/engine.js';
-import { LEVELS, DAILY_START, DAILY_VERSION, dailyPuzzle, generatePuzzle } from '../../src/lib/quantum-signals/puzzles.js';
-import { seededRandom } from '../../src/lib/games/random.js';
-import { seededRandom as legacyRandom } from '../../src/lib/circuit-reduction/engine.js';
+import { LEVELS } from '../../src/lib/quantum-signals/puzzles.js';
 
 const fixed = (gate, ...wires) => ({ gate, wires });
 const hole = (id, wires, choices = ['I', 'H', 'X', 'Z']) => ({ id, wires, choices });
 function fixture(wires, columns) {
-  return { wires, columns: [...columns, [hole('spare', [0], ['I', 'X'])]],
-    target: [1, ...Array(2 ** wires - 1).fill(0)] };
+  return { wires, columns: [...columns, [hole('spare', [0], ['I', 'X'])]] };
 }
 const run = (wires, columns) => simulate(fixture(wires, columns), { spare: 'I' });
-const geometry = puzzle => puzzle.columns.map(column => column.map(({ id, ...entry }) => entry));
 
 // Independent dense operators provide a second evaluator, including arbitrary
 // control directions. The game evaluates pairs in place; this multiplies a full
@@ -84,298 +80,99 @@ test('CX and XC truth tables cover both directions on reversed and nonadjacent w
   }
 });
 
-test('XC can fill a hole, survives custom serialization and reverses a CNOT without changing the wire array', () => {
-  const input = { wires: 3,
-    columns: [[fixed('H', 2)], [hole('a', [0, 2], ['I', 'CX', 'XC', 'CZ'])]],
-    target: [Math.SQRT1_2, 0, 0, 0, 0, Math.SQRT1_2, 0, 0] };
-  const puzzle = validateCustomPuzzle(puzzleData(input)), id = getHoles(puzzle)[0].id;
-  const placements = applyPlacement(puzzle, {}, { hole: id, gate: 'XC' });
-  assert.deepEqual(puzzle.columns[1][0].wires, [0, 2]);
-  assert.equal(simulate(puzzle, placements).solved, true);
-  assert.equal(simulate(puzzle, { [id]: 'CX' }).solved, false);
-  assert.deepEqual(solvePuzzle(puzzle, { limit: 1 }), [{ [id]: 'XC' }]);
-  assert.ok(stateEqual(run(3, [[fixed('H', 2)], [fixed('XC', 0, 2)], [fixed('XC', 0, 2)]]).state,
-    run(3, [[fixed('H', 2)]]).state));
-});
-
-test('All gate matrices agree with an independent dense evaluator in random four-wire contexts', () => {
-  const random = seededRandom('matrix-contexts');
-  for (let trial = 0; trial < 96; trial++) {
-    const columns = Array.from({ length: 12 }, () => {
-      const first = Math.floor(random() * 4), second = (first + 1 + Math.floor(random() * 3)) % 4;
-      const gate = ['H', 'X', 'Z', 'CX', 'XC', 'CZ'][Math.floor(random() * 6)];
-      return [fixed(gate, ...(['CX', 'XC', 'CZ'].includes(gate) ? [first, second] : [first]))];
-    });
-    const puzzle = fixture(4, columns), result = simulate(puzzle, { spare: 'I' });
-    assert.ok(stateEqual(result.state, reference(puzzle, { spare: 'I' })), `matrix context ${trial}`);
-    assert.ok(Math.abs(result.state.reduce((sum, value) => sum + value * value, 0) - 1) < 1e-9);
+test('the fixed goal is the all-ones computational basis state for every supported wire count', () => {
+  for(let wires=1;wires<=4;wires++) {
+    const goal=goalState(wires);
+    assert.equal(goal.length,2**wires);
+    assert.deepEqual(goal.slice(0,-1),Array(2**wires-1).fill(0));
+    assert.equal(goal.at(-1),1);
+    goal[0]=99; assert.equal(goalState(wires)[0],0);
   }
+  for(const wires of [0,5,1.5,'2',null])assert.throws(()=>goalState(wires),RangeError);
 });
 
-test('Gate edits and simulated states remain independent', () => {
-  const puzzle = LEVELS[0], empty = simulate(puzzle);
-  assert.equal(empty.solved, false);
-  const chosen = applyPlacement(puzzle, {}, { hole: 'a', gate: 'X' });
-  assert.deepEqual(chosen, { a: 'X' });
-  assert.equal(simulate(puzzle, chosen).solved, true);
-  assert.deepEqual(applyPlacement(puzzle, chosen, { hole: 'a', gate: null }), {});
-  assert.deepEqual(chosen, { a: 'X' }, 'Edits do not mutate the undo snapshot.');
-  assert.throws(() => applyPlacement(puzzle, {}, { hole: 'unknown', gate: 'X' }), RangeError);
-  assert.throws(() => applyPlacement(puzzle, {}, { hole: 'a', gate: 'H' }), RangeError);
-  assert.throws(() => validatePlacements(puzzle, { a: null }), RangeError);
-  const result = simulate(puzzle, chosen);
-  result.state[0] = 20;
-  assert.deepEqual(simulate(puzzle, chosen).state, [0, 1]); assert.equal(puzzle.target[0], 0);
+test('placements can be changed and erased, while the derived goal never moves', () => {
+  const puzzle=validatePuzzle({wires:1,columns:[[hole('a',[0],['I','X'])]]}), saved=structuredClone(puzzle);
+  assert.equal(simulate(puzzle).solved,false);
+  const chosen=applyPlacement(puzzle,{}, {hole:'a',gate:'X'});
+  assert.equal(simulate(puzzle,chosen).solved,true);
+  assert.equal(simulate(puzzle,applyPlacement(puzzle,chosen,{hole:'a',gate:'I'})).solved,false);
+  assert.deepEqual(applyPlacement(puzzle,chosen,{hole:'a',gate:null}),{});
+  assert.deepEqual(puzzle,saved);
+  const already={wires:1,columns:[[fixed('X',0)],[hole('bait',[0],['I','Z'])]]};
+  assert.equal(simulate(already).solved,true,'An optional hole is the identity by default.');
 });
 
-test('Unfilled holes use offered identity, including after erasing a wrong gate', () => {
-  const puzzle = { wires: 1, columns: [[hole('a', [0], ['I', 'X'])], [hole('b', [0], ['I', 'H'])]], target: [0, 1] };
-  const solution = { a: 'X' };
-  assert.equal(simulate(puzzle, solution).solved, true);
-  assert.deepEqual(simulate(puzzle, solution), simulate(puzzle, { ...solution, b: 'I' }));
-  const wrong = applyPlacement(puzzle, solution, { hole: 'b', gate: 'H' });
-  assert.equal(simulate(puzzle, wrong).solved, false);
-  const erased = applyPlacement(puzzle, wrong, { hole: 'b', gate: null });
-  assert.equal(simulate(puzzle, erased).solved, true);
-  assert.deepEqual(wrong, { a: 'X', b: 'H' }, 'Undo snapshots keep the wrong gate until an actual undo');
-  const required = { wires: 1, columns: [[hole('required', [0], ['X', 'H'])]], target: [1, 0] };
-  assert.equal(simulate(required).solved, false, 'A missing gate cannot bypass choices that exclude identity');
-  const matched = { ...required, columns: [[hole('optional', [0], ['I', 'H'])]] };
-  assert.equal(simulate(matched).solved, true, 'An already matched custom identity needs no artificial action');
+test('paired holes preserve reversed control direction through minimal custom JSON', () => {
+  const puzzle={wires:2,columns:[[fixed('X',0)],[hole('a',[1,0],['I','CX','XC','CZ'])]]};
+  assert.equal(simulate(puzzle,{a:'XC'}).solved,true);
+  assert.equal(simulate(puzzle,{a:'CX'}).solved,false);
+  const source=puzzleData(puzzle), saved=structuredClone(source), restored=validateCustomPuzzle(source);
+  assert.deepEqual(Object.keys(source),['wires','columns']);
+  assert.deepEqual(source.columns[1][0],{wires:[1,0],choices:['I','CX','XC','CZ']});
+  assert.equal(simulate(restored,solvePuzzle(restored,{limit:1})[0]).solved,true);
+  restored.columns[1][0].choices.push('X');restored.target[0]=99;
+  assert.deepEqual(source,saved);
 });
 
-test('State comparison distinguishes basis outcomes and rejects invalid states', () => {
-  assert.equal(stateEqual([1, 0], [0, 1]), false);
-  assert.equal(stateEqual([1, 0], [NaN, 0]), false);
-  assert.equal(stateEqual([0, 0], [0, 0]), false);
-});
-
-test('Malformed canonical circuits and incompatible placements are rejected before simulation', () => {
-  const base = LEVELS[0];
-  const variants = [
-    null, {}, { ...base, wires: 0 }, { ...base, wires: 5 },
-    { ...base, columns: [] }, { ...base, columns: Array(17).fill([]) },
-    { ...base, columns: [[hole('a', [0]), fixed('H', 0)]] },
-    { ...base, columns: [[hole('a', [1])]] },
-    { ...base, columns: [[hole('__proto__', [0])]] },
-    { ...base, columns: [[hole('a', [0], ['I', 'CX'])]] },
-    { ...base, columns: [[hole('a', [0], ['I', 'XC'])]] },
-    { ...base, columns: [[hole('a', [0], ['X', 'X'])]] },
-    { ...base, columns: [[hole('a', [0])], [hole('a', [0])]] },
-    { ...base, columns: [[fixed('Y', 0)], [hole('a', [0])]] },
-    { ...base, columns: [[hole('a', [0])], [fixed('CX', 0, 0)]] },
-    { ...base, columns: [[hole('a', [0])], [fixed('XC', 0)]] },
-    { ...base, columns: Array(1) }, { ...base, columns: [Array(1)] },
-    { ...base, target: [1, Infinity] }, { ...base, target: [1, .1] },
-    { ...base, target: [1, ,] },
-    { ...base, target: { '1': 1 } },
-    { ...base, columns: [[{ wires: [0], choices: ['I', 'X'] }]] },
-  ];
-  for (const value of variants) assert.throws(() => validatePuzzle(value), RangeError);
-  assert.throws(() => simulate(base, { unexpected: 'X' }), RangeError);
-  assert.throws(() => simulate(base, []), RangeError);
-  assert.throws(() => solvePuzzle(base, { limit: Infinity }), RangeError);
-  const impossible = { ...base, target: [Math.sqrt(.3), Math.sqrt(.7)] };
-  assert.throws(() => validatePlayablePuzzle(impossible), /cannot be reached/);
-});
-
-test('Custom holes get deterministic internal IDs and remain independent of the imported data', () => {
-  const source = { wires: 2, columns: [
-    [{ wires: [0], choices: ['I', 'X'] }, { wires: [1], choices: ['I', 'X'] }],
-    [{ wires: [0], choices: ['I', 'H'] }, { wires: [1], choices: ['I', 'Z'] }],
-    [{ wires: [0], choices: ['I', 'Z'] }],
-  ], target: { '00': 1 } };
-  const before = structuredClone(source), puzzle = validateCustomPuzzle(source);
-  assert.deepEqual(getHoles(puzzle).map(entry => entry.id), ['h1', 'h2', 'h3', 'h4', 'h5']);
-  assert.deepEqual(validateCustomPuzzle(source), puzzle);
-  assert.deepEqual(validatePuzzle(puzzle), puzzle);
-  assert.deepEqual(Object.keys(puzzle), ['wires', 'columns', 'target']);
-  const placements = solvePuzzle(puzzle, { limit: 1 })[0];
-  assert.equal(simulate(puzzle, placements).solved, true);
-  assert.deepEqual(source, before);
-  puzzle.columns[0][0].choices.push('Z'); puzzle.target[0] = 5;
-  assert.deepEqual(source, before);
-});
-
-test('Playable circuits reject imposed gates in or after the editable suffix', () => {
-  for (const input of [
-    { wires: 1, columns: [[hole('a', [0])], [fixed('H', 0)]], target: [1, 0] },
-    { wires: 2, columns: [[hole('a', [0]), fixed('X', 1)]], target: [0, 1, 0, 0] },
-  ]) {
-    assert.doesNotThrow(() => validatePuzzle(input), 'Structural simulation still accepts arbitrary gate sequences');
-    assert.ok(solvePuzzle(input, { limit: 1 }).length, 'The rejected layout has a reachable target');
-    assert.throws(() => validatePlayablePuzzle(input), RangeError);
-    assert.throws(() => validateCustomPuzzle(puzzleData(input)), RangeError);
+test('custom files omit targets and stable hole identifiers and reject target overrides', () => {
+  const source={wires:1,columns:[[{wires:[0],choices:['I','X']}]]};
+  const puzzle=validateCustomPuzzle(source);
+  assert.deepEqual(puzzle.target,[0,1]);
+  assert.equal(getHoles(puzzle)[0].id,'h1');
+  assert.deepEqual(puzzleData(puzzle),source);
+  for(const target of [{1:1},[0,1],[1,0],[Math.SQRT1_2,Math.SQRT1_2],null]){
+    assert.throws(()=>validateCustomPuzzle({...source,target}),RangeError);
   }
+  assert.throws(()=>validateCustomPuzzle({wires:1,columns:[[{wires:[0],choices:['I','Z']}]]}),/cannot be reached/);
 });
 
-test('Custom targets use sparse signed binary labels and reject unreachable states', () => {
-  const base = LEVELS[7], human = puzzleData(base);
-  const puzzle = validateCustomPuzzle(human);
-  assert.ok(Array.isArray(puzzle.target), 'Imported targets keep the numeric engine and network representation.');
-  assert.ok(stateEqual(puzzle.target, base.target));
-  const chosen = solvePuzzle(puzzle, { limit: 1 })[0];
-  assert.equal(simulate(puzzle, chosen).solved, true);
-  assert.deepEqual(puzzleData(puzzle).target, { '11': -1, '00': 1 });
-  assert.deepEqual(human.target, { '00': 1, '11': -1 });
-  const impossible = { wires: 1, columns: [[{ wires: [0], choices: ['I', 'Z'] }]], target: { '1': 1 } };
-  assert.throws(() => validateCustomPuzzle(impossible), /cannot be reached/);
-  assert.deepEqual(validatePlayablePuzzle(base), validatePuzzle(base), 'The visual editor validates circuit data without lesson metadata.');
+test('playable and custom circuits allow fixed gates around holes and on other wires in the same column', () => {
+  const input = { wires: 2, columns: [
+    [fixed('H', 0), fixed('X', 1)],
+    [hole('phase', [0], ['I', 'Z']), fixed('Z', 1)],
+    [fixed('H', 0)],
+  ] };
+  const saved = structuredClone(input), puzzle = validatePlayablePuzzle(input);
+  assert.deepEqual(solvePuzzle(puzzle, { limit: 2 }), [{ phase: 'Z' }]);
+  assert.equal(simulate(puzzle).solved, false);
+  assert.equal(simulate(puzzle, { phase: 'Z' }).solved, true);
+  assert.ok(stateEqual(reference(puzzle, { phase: 'Z' }), puzzle.target));
+  const data = puzzleData(puzzle), restored = validateCustomPuzzle(data);
+  assert.deepEqual(puzzleData(restored), data);
+  assert.equal(simulate(restored, { h1: 'Z' }).solved, true);
+  assert.deepEqual(input, saved);
+  const unreachable = { wires: 1, columns: [[fixed('H', 0)], [hole('a', [0], ['I', 'X'])], [fixed('H', 0)]] };
+  assert.throws(() => validatePlayablePuzzle(unreachable), /cannot be reached/);
+  assert.throws(() => validateCustomPuzzle(puzzleData(unreachable)), /cannot be reached/);
 });
 
-test('Sign target helpers preserve phase and probabilities without mutating state', () => {
-  const weights = Object.freeze([1, 0, 0, -1]), state = stateFromWeights(weights);
-  assert.ok(stateEqual(state, [Math.SQRT1_2, 0, 0, -Math.SQRT1_2]));
-  assert.ok(Math.abs(state.reduce((norm, amplitude) => norm + amplitude ** 2, 0) - 1) < 1e-12);
-  assert.deepEqual(targetWeights(state), [1, 0, 0, -1]);
-  assert.deepEqual(targetWeights(state.map(value => -value)), [-1, 0, 0, 1]);
-  assert.deepEqual(weights, [1, 0, 0, -1]);
-  assert.deepEqual(targetWeights(Array(16).fill(.25)), Array(16).fill(1));
-  assert.equal(targetWeights([.6, .8]), null, 'Unequal target amplitudes must not be rounded to equal weights.');
-  assert.equal(targetWeights([0, 0]), null);
-  assert.equal(targetWeights([1, NaN]), null);
-  assert.equal(targetWeights(null), null);
+test('puzzle and placement validation reject malformed, oversized and forged inputs', () => {
+  const base={wires:1,columns:[[hole('a',[0])]]};
+  for(const input of [null,[],{}, {...base,wires:0},{...base,wires:5},{...base,columns:[]},
+    {...base,columns:Array(17).fill([])}, {...base,columns:[[fixed('BAD',0)],[hole('a',[0])]]},
+    {...base,columns:[[hole('a',[1])]]}, {...base,columns:[[hole('a',[0]),hole('b',[0])]]},
+    {...base,columns:[[hole('a',[0],['I','I'])]]}, {...base,columns:[[hole('a',[0],['I','CX'])]]},
+    {...base,columns:Array.from({length:7},(_,i)=>[hole('h'+i,[0])])},
+    {...base,target:[1,0]}, {...base,target:[NaN,1]}, {...base,target:Array(2).fill(Math.SQRT1_2)},
+  ])assert.throws(()=>validatePuzzle(input),RangeError);
+  for(const placements of [null,[],{unknown:'X'},{a:'CZ'},{a:42}])assert.throws(()=>validatePlacements(validatePuzzle(base),placements),RangeError);
+  for(const move of [null,{}, {hole:'unknown',gate:'X'},{hole:'a',gate:'CZ'}])assert.throws(()=>applyPlacement(validatePuzzle(base),{},move),RangeError);
+  for(const limit of [0,-1,4097,1.5,Infinity])assert.throws(()=>solvePuzzle(base,{limit}),RangeError);
 });
 
-test('Custom targets reject malformed labels, non-sign weights and empty states', () => {
-  const base = puzzleData(LEVELS[7]);
-  for (const target of [
-    null, [1, 0, 0, 0], {}, { '00': 0, '11': 0 }, { '0': 1 }, { '000': 1 }, { '02': 1 },
-    { '00': '1' }, { '00': .5 }, { '00': Infinity }, { '00': NaN }, { '00': 2 },
-    JSON.parse('{"__proto__":1}'), { constructor: 1 }, Object.create({ '00': 1 }),
-  ]) assert.throws(() => validateCustomPuzzle({ ...base, target }), RangeError);
-  for (const weights of [null, [], [0, 0], [1, 0, 0], [1, ,], [1, Infinity], [1, '1'], [1, .5], [1, 2]]) {
-    assert.throws(() => stateFromWeights(weights), RangeError);
-  }
-  const sparse = Object.create(null); sparse['00'] = 1;
-  const reachable = { wires: 2, columns: [[{ wires: [0], choices: ['I', 'Z'] }]], target: sparse };
-  assert.deepEqual(validateCustomPuzzle(reachable).target, [1, 0, 0, 0]);
-});
-
-test('Custom exports contain only circuit data and preserve playable Clifford states through JSON', () => {
-  for (const puzzle of [...LEVELS, ...Array.from({ length: 12 }, (_, seed) => generatePuzzle(`readable-${seed}`, seed % 3 + 1))]) {
-    const before = structuredClone(puzzle), exported = puzzleData(puzzle);
-    assert.deepEqual(Object.keys(exported), ['wires', 'columns', 'target']);
-    assert.ok(exported.columns.flat().every(entry => !Object.hasOwn(entry, 'id')));
-    assert.equal(Array.isArray(exported.target), false);
-    assert.ok(Object.values(exported.target).every(weight => weight === 1 || weight === -1));
-    assert.ok(Object.keys(exported.target).every(bits => bits.length === puzzle.wires && /^[01]+$/.test(bits)));
-    const restored = validateCustomPuzzle(JSON.parse(JSON.stringify(exported)));
-    assert.ok(stateEqual(restored.target, puzzle.target));
-    assert.deepEqual(geometry(restored), geometry(puzzle));
-    assert.equal(simulate(restored, solvePuzzle(restored, { limit: 1 })[0]).solved, true);
-    assert.deepEqual(puzzle, before);
-  }
-  assert.throws(() => puzzleData({ ...LEVELS[0], target: [.6, .8] }), /equal chances/);
-});
-
-test('Object prototype names are ordinary hole IDs and redundant gate fields cannot override a hole', () => {
-  for (const id of ['constructor', 'toString', 'hasOwnProperty']) {
-    const input = { ...LEVELS[0], columns: [[{ ...hole(id, [0], ['I', 'X']), gate: 'H' }]] };
-    const puzzle = validatePuzzle(input);
-    assert.equal(Object.hasOwn(puzzle.columns[0][0], 'gate'), false);
-    assert.equal(simulate(puzzle).solved, false);
-    assert.deepEqual(simulate(puzzle).state, [1, 0]);
-    const placements = applyPlacement(puzzle, {}, { hole: id, gate: 'X' });
-    assert.equal(Object.hasOwn(placements, id), true);
-    assert.equal(simulate(puzzle, placements).solved, true);
-    assert.deepEqual(applyPlacement(puzzle, placements, { hole: id, gate: null }), {});
-  }
-});
-
-test('Reachability search respects its solution limit and gate choice order', () => {
-  const holes = Array.from({ length: 6 }, (_, index) => hole(`h${index}`, [0], ['Z', 'I']));
-  const puzzle = { wires: 1, columns: holes.map(entry => [entry]), target: [1, 0] };
-  const first = Object.fromEntries(holes.map(entry => [entry.id, 'Z']));
-  assert.deepEqual(solvePuzzle(puzzle, { limit: 1 }), [first]);
-  assert.deepEqual(solvePuzzle(puzzle), [first, { ...first, h5: 'I' }]);
-  const all = solvePuzzle(puzzle, { limit: 4096 });
-  assert.equal(all.length, 64);
-  assert.deepEqual(all.at(-1), Object.fromEntries(holes.map(entry => [entry.id, 'I'])));
-  assert.equal(simulate(puzzle, first).solved, true);
-  for (const limit of [0, -1, 4097, 1.5]) assert.throws(() => solvePuzzle(puzzle, { limit }), RangeError);
-});
-
-test('All campaign puzzles are reachable, and later lessons exercise interference and entanglement', () => {
-  assert.equal(LEVELS.length, 12);
-  assert.equal(new Set(LEVELS.map(puzzle => puzzle.title)).size, LEVELS.length);
-  for (const [index, puzzle] of LEVELS.entries()) {
-    assert.ok(typeof puzzle.title === 'string' && puzzle.title.length > 0 && puzzle.title.length <= 40);
-    const solutions = solvePuzzle(puzzle, { limit: 4096 });
-    assert.ok(solutions.length > 0, `level ${index + 1} is reachable`);
-    assert.equal(Object.hasOwn(puzzle, 'optimalMoves'), false);
-    assert.deepEqual(Object.keys(puzzle), ['title', 'wires', 'columns', 'target']);
-    for (const hole of getHoles(puzzle).filter(entry => entry.wires.length === 2)) {
-      assert.deepEqual(hole.choices, ['I', 'CX', 'XC', 'CZ']);
-    }
-    for (const solution of solutions) {
-      assert.equal(simulate(puzzle, solution).solved, true);
-      assert.ok(stateEqual(reference(puzzle, solution), puzzle.target));
+test('every named lesson reaches all ones and has no identity bait', () => {
+  assert.equal(LEVELS.length,12);
+  assert.equal(new Set(LEVELS.map(level=>level.title)).size,12);
+  for(const puzzle of LEVELS) {
+    assert.deepEqual(puzzle.target,goalState(puzzle.wires));
+    assert.equal(simulate(puzzle).solved,false,puzzle.title);
+    const solutions=solvePuzzle(puzzle,{limit:4096});
+    assert.ok(solutions.length,puzzle.title);
+    for(const solution of solutions) {
+      assert.ok(Object.values(solution).every(gate=>gate!=='I'),puzzle.title);
+      assert.equal(simulate(puzzle,solution).solved,true);
+      assert.ok(stateEqual(reference(puzzle,solution),goalState(puzzle.wires)));
     }
   }
-  assert.equal(LEVELS[10].wires, 3);
-  assert.ok(stateEqual(LEVELS[7].target, [Math.SQRT1_2, 0, 0, -Math.SQRT1_2]));
-});
-
-test('Campaign, random and daily circuits leave the entire editable suffix free of fixed gates', () => {
-  const samples = [...LEVELS];
-  for (let difficulty = 1; difficulty <= 3; difficulty++) for (let seed = 0; seed < 64; seed++) {
-    samples.push(generatePuzzle(`suffix-${seed}`, difficulty));
-  }
-  for (let day = 15; day <= 31; day++) samples.push(dailyPuzzle(`2026-10-${day}`));
-  for (const puzzle of samples) {
-    const firstHole = puzzle.columns.findIndex(column => column.some(entry => entry.id));
-    assert.ok(firstHole >= 0);
-    assert.ok(puzzle.columns.slice(0, firstHole).flat().every(entry => entry.gate), 'Preparation is entirely fixed');
-    assert.ok(puzzle.columns.slice(firstHole).flat().every(entry => entry.id), 'No fixed gate shares or follows a hole column');
-    assert.ok(puzzle.columns.length <= 16);
-    assert.ok(getHoles(puzzle).length <= 6);
-    assert.equal(simulate(puzzle).solved, false, 'Leaving the editable circuit untouched does not win');
-    const filling = solvePuzzle(puzzle, { limit: 1 })[0];
-    assert.ok(filling, 'Every generated target is reachable');
-    assert.equal(simulate(puzzle, filling).solved, true);
-    assert.ok(stateEqual(reference(puzzle, filling), puzzle.target), 'Independent gate matrices confirm the solution');
-  }
-});
-
-test('Random puzzles are bounded, deterministic, solvable and require changing the empty circuit', () => {
-  for (let difficulty = 1; difficulty <= 3; difficulty++) for (let seed = 0; seed < 24; seed++) {
-    const puzzle = generatePuzzle(seed, difficulty);
-    assert.deepEqual(puzzle, generatePuzzle(seed, difficulty));
-    assert.equal(puzzle.wires, difficulty);
-    assert.ok(getHoles(puzzle).length <= 6);
-    for (const hole of getHoles(puzzle).filter(entry => entry.wires.length === 2)) {
-      assert.deepEqual(hole.choices, ['I', 'CX', 'XC', 'CZ']);
-    }
-    const [solution] = solvePuzzle(puzzle, { limit: 1 });
-    assert.equal(simulate(puzzle, solution).solved, true);
-    assert.equal(Object.hasOwn(puzzle, 'optimalMoves'), false);
-    assert.deepEqual(Object.keys(puzzle), ['wires', 'columns', 'target']);
-    assert.equal(stateEqual(puzzle.target, simulate(puzzle).state), false);
-  }
-  assert.throws(() => generatePuzzle('x', 4), RangeError);
-  assert.throws(() => generatePuzzle({}, 2), RangeError);
-  assert.throws(() => generatePuzzle('x'.repeat(101), 2), RangeError);
-});
-
-test('Daily seeds use validated civil dates, stay reproducible and cannot leak mutable cached state', () => {
-  const first = dailyPuzzle(DAILY_START);
-  assert.deepEqual(first, dailyPuzzle(DAILY_START));
-  assert.equal(first.date, DAILY_START);
-  assert.deepEqual(Object.keys(first), ['wires', 'columns', 'target', 'date']);
-  assert.equal(Object.hasOwn(first, 'optimalMoves'), false);
-  assert.equal(DAILY_VERSION, 'quantum-signals-daily-v5');
-  assert.deepEqual(first.target, generatePuzzle(`${DAILY_VERSION}:${DAILY_START}`, 3).target);
-  first.columns[0][0].gate = first.columns[0][0].gate === 'X' ? 'H' : 'X';
-  assert.notDeepEqual(first, dailyPuzzle(DAILY_START));
-  assert.throws(() => dailyPuzzle('2026-02-30'), RangeError);
-  assert.throws(() => dailyPuzzle('2026-10-14'), RangeError);
-});
-
-test('Extracting the shared RNG preserves the previous circuit reduction sequence', () => {
-  assert.equal(seededRandom, legacyRandom);
-  const random = seededRandom('unchanged');
-  assert.deepEqual(Array.from({ length: 4 }, () => random()), [
-    0.3745188496541232, 0.9536303554195911, 0.11760481004603207, 0.6100607628468424,
-  ]);
 });

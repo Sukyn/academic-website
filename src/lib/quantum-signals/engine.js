@@ -4,7 +4,6 @@ import { applyRealGate } from '../games/real-gates.js';
 
 export const GATES = Object.freeze(['I', 'H', 'X', 'Z', 'CX', 'XC', 'CZ']);
 const EPSILON = 1e-9;
-const stateSize = size => size >= 2 && size <= 16 && Number.isInteger(Math.log2(size));
 const arity = gate => gate === 'CX' || gate === 'XC' || gate === 'CZ' ? 2 : 1;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const identifier = value => typeof value === 'string' && /^[a-zA-Z][\w-]{0,39}$/.test(value);
@@ -12,28 +11,12 @@ const identifier = value => typeof value === 'string' && /^[a-zA-Z][\w-]{0,39}$/
 export const getHoles = puzzle => puzzle.columns.flat().filter(entry => entry.id);
 export const controlWire = (gate, wires) => gate === 'XC' ? wires[1] : wires[0];
 
-export function stateFromWeights(weights) {
-  if (!Array.isArray(weights) || !stateSize(weights.length) ||
-      Array.from(weights).some(weight => weight !== -1 && weight !== 0 && weight !== 1)) {
-    throw new RangeError('Use 2, 4, 8 or 16 target weights: −1, 0 or 1.');
-  }
-  const norm = Math.hypot(...weights);
-  if (!norm) throw new RangeError('Select at least one target state.');
-  return weights.map(weight => weight === 0 ? 0 : weight / norm);
+export function goalState(wires) {
+  if (!Number.isInteger(wires) || wires < 1 || wires > 4) throw new RangeError('Use 1–4 wires.');
+  return Array.from({ length: 2 ** wires }, (_, basis) => basis === 2 ** wires - 1 ? 1 : 0);
 }
 
-// Real Clifford states have equal populated amplitudes. Keep only their signs
-// for editing; return null rather than round an arbitrary unequal target.
-export function targetWeights(state) {
-  if (!Array.isArray(state) || !stateSize(state.length) ||
-      Array.from(state).some(amplitude => !Number.isFinite(amplitude))) return null;
-  const magnitude = Math.abs(state.find(amplitude => Math.abs(amplitude) > EPSILON) ?? 0);
-  if (!magnitude || state.some(amplitude => Math.abs(amplitude) > EPSILON && Math.abs(Math.abs(amplitude) - magnitude) > EPSILON)) return null;
-  return state.map(amplitude => Math.abs(amplitude) <= EPSILON ? 0 : amplitude < 0 ? -1 : 1);
-}
-
-// Custom files use sparse signs and no hole IDs; engine and replay records use
-// normalized amplitudes and stable IDs. Both share the same circuit checks.
+// Custom files omit hole IDs and the fixed goal. Runtime records have both.
 function readPuzzle(input, custom = false) {
   if (!object(input) || !Number.isInteger(input.wires) || input.wires < 1 || input.wires > 4 ||
       !Array.isArray(input.columns) || input.columns.length < 1 || input.columns.length > 16) {
@@ -66,26 +49,9 @@ function readPuzzle(input, custom = false) {
     });
   });
   if (ids.size < 1 || ids.size > 6) throw new RangeError('Use 1–6 holes.');
-  let target = input.target;
-  if (custom) {
-    if (!object(target)) throw new RangeError('Use signed binary labels for the target.');
-    const weights = Array(2 ** input.wires).fill(0);
-    for (const [bits, weight] of Object.entries(target)) {
-      if (bits.length !== input.wires || !/^[01]+$/.test(bits) || (weight !== -1 && weight !== 1)) {
-        throw new RangeError('Use binary target labels matching the number of wires, with signs −1 or 1.');
-      }
-      weights[parseInt(bits, 2)] = weight;
-    }
-    target = stateFromWeights(weights);
-  }
-  if (!Array.isArray(target) || target.length !== 2 ** input.wires ||
-      Array.from(target).some(amplitude => typeof amplitude !== 'number' || !Number.isFinite(amplitude)) ||
-      Math.abs(target.reduce((norm, amplitude) => norm + amplitude * amplitude, 0) - 1) > EPSILON) {
-    throw new RangeError('The target must be a normalized real quantum state.');
-  }
-  return {
-    wires: input.wires, columns, target: [...target],
-  };
+  const target = goalState(input.wires);
+  if (Object.hasOwn(input, 'target') && (custom || !stateEqual(input.target, target))) throw new RangeError('The goal is fixed: make every bit 1.');
+  return { wires: input.wires, columns, target };
 }
 
 export const validatePuzzle = input => readPuzzle(input);
@@ -166,21 +132,13 @@ export function solvePuzzle(input, { limit = 2 } = {}) {
 }
 
 export function puzzleData(input) {
-  const puzzle = validatePuzzle(input), weights = targetWeights(puzzle.target);
-  if (!weights) throw new RangeError('Custom targets need equal chances for each selected state.');
-  puzzle.columns = puzzle.columns.map(column => column.map(entry => entry.id ? { wires: entry.wires, choices: entry.choices } : entry));
-  puzzle.target = Object.fromEntries(weights.flatMap((weight, index) => weight === 0 ? [] :
-    [[index.toString(2).padStart(puzzle.wires, '0'), weight]]));
-  return puzzle;
+  const puzzle = validatePuzzle(input);
+  return { wires: puzzle.wires, columns: puzzle.columns.map(column => column.map(entry =>
+    entry.id ? { wires: entry.wires, choices: entry.choices } : entry)) };
 }
 
 function validateReachable(input, custom = false) {
   const puzzle = readPuzzle(input, custom);
-  let editable = false;
-  for (const column of puzzle.columns) {
-    if (column.some(entry => entry.id)) editable = true;
-    if (editable && column.some(entry => !entry.id)) throw new RangeError('Place fixed gates before the holes.');
-  }
   if (!findSolutions(puzzle, 1).length) throw new RangeError('This target cannot be reached with the offered gates.');
   return puzzle;
 }

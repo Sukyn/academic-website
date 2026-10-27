@@ -1,0 +1,85 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import GameShell from '../../components/games/GameShell.astro';
+import GameModeMenu from '../../components/games/GameModeMenu.astro';
+import GameToolbar from '../../components/games/GameToolbar.astro';
+import GameTutorial from '../../components/games/GameTutorial.astro';
+import GameRoundControls from '../../components/games/GameRoundControls.astro';
+import GameReviewControls from '../../components/games/GameReviewControls.astro';
+import GameLeaderboard from '../../components/games/GameLeaderboard.astro';
+import GameDialogs from '../../components/games/GameDialogs.astro';
+import GameJsonActions from '../../components/games/GameJsonActions.astro';
+import { LEVELS } from '../../lib/zx-calculus/engine.js';
+import '../../styles/zx-calculus.css';
+---
+
+<BaseLayout title="ZX simplification" description="Simplify ZX diagrams using spider fusion, colour change and the Hopf rule.">
+  <GameShell>
+    <a class="back" href="/games/">← Games</a>
+    <h1>ZX simplification</h1>
+    <div class="game-layout">
+      <GameModeMenu />
+      <div class="game-content zx-game">
+        <GameToolbar levels={LEVELS} />
+        <GameTutorial intro="ZX-calculus rules reduce this diagram to the two-wire identity." />
+        <section aria-label="ZX simplification">
+          <div class="zx-editor-bar"><button class="button" id="play-diagram" type="button" hidden>Play puzzle</button></div>
+          <div class="zx-workspace">
+            <div class="zx-board-panel">
+              <div id="zx-board" role="region" tabindex="0" aria-label="Playable ZX diagram"></div>
+            </div>
+            <div class="zx-target-panel">
+              <h2>Target</h2>
+              <div id="zx-target" role="img" aria-label="Two straight identity wires"></div>
+            </div>
+          </div>
+          <div class="zx-rules" id="zx-rules" role="group" aria-label="ZX rules"></div>
+          <GameRoundControls resultLabel="Results" />
+          <div class="custom-controls" id="custom-controls" hidden>
+            <div class="generator-controls" id="zx-generator">
+              <label for="difficulty">Difficulty</label>
+              <select id="difficulty"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select>
+              <button class="button ghost" id="new-puzzle" type="button">New puzzle</button>
+              <button class="button ghost" id="new-diagram" type="button">Create puzzle</button>
+            </div>
+          </div>
+          <details class="advanced-features" id="advanced-features">
+            <summary>Advanced</summary>
+            <div class="replay-actions" id="replay-actions">
+              <button class="button ghost" id="replay" type="button" hidden>See the replay</button>
+              <button class="button ghost" id="share-replay" type="button" hidden>Share your replay</button>
+            </div>
+            <div id="sequence" role="group" aria-label="Rewrites in chronological order"></div>
+            <GameJsonActions />
+          </details>
+          <GameReviewControls />
+          <p class="message" id="move-count" role="status"></p>
+          <p class="message" id="status" role="status"></p>
+          <noscript>Enable JavaScript to play.</noscript>
+        </section>
+        <GameLeaderboard />
+      </div>
+    </div>
+    <GameDialogs gameTitle="ZX simplification">
+      <Fragment slot="rules">
+        <p>Reach the two straight wires. Select spiders or a wire, then choose an equation.</p>
+        <p>Changing colour adds a Hadamard on every attached wire. HH cancels neighbouring pairs.</p>
+        <p>Count clockwise in quarter turns. After a full turn, the fill resets.</p>
+        <div class="zx-phase-cycle" id="zx-phase-cycle" role="img" aria-label="Quarter turns cycle from empty, through a quarter, half and three quarters, back to empty"></div>
+        <div class="zx-phase-examples" id="zx-phase-examples" aria-label="Examples of adding turns"></div>
+        <ul class="zx-rule-guide" id="zx-rule-guide"></ul>
+        <p>Crossing wires are not joined.</p>
+        <p>This game uses a subset of the ZX rules, ignoring nonzero scalar factors.</p>
+        <p>Drag nodes to move them, or use arrow keys on a focused node.</p>
+        <p>Undo: Ctrl/Cmd+Z. Reset: R. In Custom/Random, choose Create puzzle to build from the identity, then Play puzzle.</p>
+        <p><a href="https://zxcalculus.com/intro.html" target="_blank" rel="noopener noreferrer">An introduction to ZX-calculus</a></p>
+      </Fragment>
+    </GameDialogs>
+    <dialog class="game-dialog zx-choice-dialog" id="zx-rule-options" aria-labelledby="zx-option-title">
+      <button class="close-dialog" id="zx-option-close" type="button" aria-label="Cancel rule">×</button>
+      <h2 id="zx-option-title"></h2>
+      <div id="zx-option-choices" class="zx-option-choices"></div>
+    </dialog>
+  </GameShell>
+</BaseLayout>
+<script>import '../../scripts/zx-calculus.js';</script>

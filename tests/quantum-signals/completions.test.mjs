@@ -8,7 +8,7 @@ import { solvePuzzle } from '../../src/lib/quantum-signals/engine.js';
 const valid = changes => ({ level: 1, name: 'Ada', sequence: [{ hole: 'a', gate: 'X' }], ...changes });
 
 test('redesigned campaign completions use a fresh board identity', () => {
-  assert.equal(CAMPAIGN, 'signals-completions-v2');
+  assert.equal(CAMPAIGN, 'signals-completions-v4');
   assert.equal(getBoard({ level: 1 }).campaign, CAMPAIGN);
   assert.equal(validateSubmission(valid()).campaign, CAMPAIGN);
 });

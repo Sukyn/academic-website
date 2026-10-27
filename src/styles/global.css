@@ -73,6 +73,16 @@ button {
   font: inherit;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 :where(h2, h3, h4, h5, h6)[id] {
   scroll-margin-top: 1rem;
 }

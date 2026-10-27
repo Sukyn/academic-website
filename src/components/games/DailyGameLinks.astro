@@ -1,5 +1,5 @@
 ---
-import { games } from '../../data/games.js';
+import { games, gameImage } from '../../data/games.js';
 interface Props { current?: string; hidden?: boolean }
 const { current, hidden = false } = Astro.props;
 ---
@@ -7,14 +7,14 @@ const { current, hidden = false } = Astro.props;
 <nav class="daily-games" id="daily-games" tabindex="-1" aria-label="Today’s daily puzzles" hidden={hidden}>
   {games.map(game => (
     <a href={`/games/${game.path}/?daily=1`} data-astro-prefetch="viewport" aria-current={current === game.path ? 'page' : undefined}>
-      <img src={`/images/games/${game.image}.webp`} width="64" height="48" alt="" decoding="async" />
+      <img src={gameImage(game)} width="64" height="48" alt="" decoding="async" />
       <span>{game.title}</span>
     </a>
   ))}
 </nav>
 
 <style>
-  .daily-games { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; margin: 1.5rem 0; font-family: var(--font-ui); }
+  .daily-games { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: .6rem; margin: 1.5rem 0; font-family: var(--font-ui); }
   .daily-games[hidden] { display: none; }
   .daily-games a { display: grid; justify-items: center; align-content: center; gap: .5rem; padding: .8rem .5rem; border: 1px solid var(--color-border); border-radius: .6rem; background: var(--color-surface-2); color: var(--color-text); text-align: center; text-decoration: none; font-size: .9rem; }
   .daily-games a:hover { border-color: var(--color-accent); }

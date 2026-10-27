@@ -4,13 +4,14 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { getHoles, solvePuzzle, puzzleData, validateCustomPuzzle, simulate, stateEqual } from '../../src/lib/quantum-signals/engine.js';
-import { LEVELS, dailyPuzzle } from '../../src/lib/quantum-signals/puzzles.js';
+import { getHoles, solvePuzzle, puzzleData, validatePuzzle, validateCustomPuzzle, simulate, stateEqual } from '../../src/lib/quantum-signals/engine.js';
+import { LEVELS, dailyPuzzle, generatePuzzle } from '../../src/lib/quantum-signals/puzzles.js';
 import { flowTrace } from '../../src/lib/quantum-signals/flow.js';
 import { gateLabel } from '../../src/lib/quantum-signals/rendering.js';
-import { phaseColor, phasePathColor, PHASE_COLORS, CANCELLATION_WALL, grayBasis, basisRow } from '../../src/lib/quantum-signals/state-visuals.js';
-import { TUTORIAL_PUZZLE, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
+import { phaseColor, phasePathColor, PHASE_COLORS, GOAL_COLOR, GOAL_RADIUS, CANCELLATION_WALL } from '../../src/lib/quantum-signals/state-visuals.js';
+import { TUTORIAL_PUZZLES, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { CIRCUIT_COLORS } from '../../src/lib/games/circuit-graphics.js';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const { chromium } = require('playwright');
@@ -18,7 +19,8 @@ const qualityRequire = createRequire(resolve(process.env.QUALITY_MODULE_DIR ?? '
 const axeSource = await readFile(qualityRequire.resolve('axe-core/axe.min.js'), 'utf8');
 const base = process.env.GAME_BASE_URL ?? 'http://127.0.0.1:4323';
 const output = resolve('tmp/quantum-signals-browser');
-const fixture = createBrowserApi({ now: Date.parse(process.env.GAME_TEST_TIME ?? '2026-10-15T10:00:00Z') });
+const testTime = process.env.GAME_TEST_TIME ?? '2026-10-25T10:00:00Z';
+const fixture = createBrowserApi({ now: Date.parse(testTime) });
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
 const errors = [], boardResponses = [], touchPages = new WeakSet();
@@ -30,7 +32,7 @@ async function drainBoardResponses() {
   while (boardResponses.length) await Promise.all(boardResponses.splice(0));
 }
 
-async function pageFor(options, { blockedStorage = false, api = fixture, now = process.env.GAME_TEST_TIME ?? '2026-10-15T10:00:00Z' } = {}) {
+async function pageFor(options, { blockedStorage = false, api = fixture, now = testTime } = {}) {
   const context = await browser.newContext({ reducedMotion: 'reduce', ...options });
   if (blockedStorage) await context.addInitScript(() => {
     for (const method of ['getItem', 'setItem', 'removeItem']) Storage.prototype[method] = () => { throw new DOMException('Storage is blocked.', 'SecurityError'); };
@@ -91,10 +93,13 @@ async function pageFor(options, { blockedStorage = false, api = fixture, now = p
   assert.equal(await page.locator('#autofocus').isVisible(), false);
   assert.equal(await page.locator('#circuit-editor-controls').evaluate(node => node.hidden), true, 'The tutorial hides custom editing controls');
   assert.equal(await page.locator('#leaderboard-section').isVisible(), false, 'The tutorial has no completion list');
+  assert.equal(await page.locator('#signal-memo').isVisible(), true, 'The gate memo is available in the tutorial');
+  assert.equal(await page.locator('#signal-memo').evaluate(node => node.open), false, 'The gate memo starts collapsed');
   assert.equal(pageCompletions, 0, 'Opening the tutorial never requests a completion list');
   await activate(page, page.locator('#mode-campaign'));
   await page.waitForFunction(() => document.getElementById('mode-campaign').getAttribute('aria-pressed') === 'true' && document.querySelectorAll('[data-hole]').length === 1);
   assert.equal(await page.locator('#tutorial-panel').isVisible(), false, 'Levels leave the tutorial');
+  assert.equal(await page.locator('#signal-memo').isVisible(), true, 'Levels retain the gate memo');
   assert.equal(await page.locator('#move-count').count(), 0, 'The game displays no gate counter');
   await completionBoard(page);
   assert.equal(await page.locator('#custom-puzzle, #custom-form').count(), 0, 'Custom JSON uses the shared dialog');
@@ -292,17 +297,17 @@ async function basisFlow(page, puzzle, placements = undefined) {
     labels: [...svg.querySelectorAll('.signal-flow-label')].map(node => ({ basis: Number(node.dataset.basis), text: node.textContent,
       bits: [...node.querySelectorAll('tspan')].map(bit => ({ wire: Number(bit.dataset.wire), value: bit.dataset.bit })) })),
     targets: [...document.querySelectorAll('#signal-target .signal-flow-target')].map(node => ({ basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
-      x: node.cx.baseVal.value, y: node.cy.baseVal.value, ...style(node) })),
+      x: node.cx.baseVal.value, y: node.cy.baseVal.value, radius: node.r.baseVal.value, ...style(node), fill: node.getAttribute('fill') })),
     cancellations: [...svg.querySelectorAll('.signal-flow-cancellation')].map(node => ({ boundary: Number(node.dataset.boundary),
       basis: Number(node.dataset.basis), path: node.getAttribute('d'), ...style(node), fill: node.getAttribute('fill') })),
   }; });
-  const order = Array.from({ length: 2 ** puzzle.wires }, (_, row) => grayBasis(row));
-  assert.deepEqual(actual.lanes.map(lane => lane.basis), order, 'Every complete basis state has its own Gray-ordered lane');
+  const order = Array.from({ length: 2 ** puzzle.wires }, (_, row) => row);
+  assert.deepEqual(actual.lanes.map(lane => lane.basis), order, 'Every complete basis state has its own binary-ordered lane');
   assert.deepEqual(actual.labels.map(label => label.text), order.map(basis => basis.toString(2).padStart(puzzle.wires, '0')),
-    'Pinned basis labels follow the same Gray order');
+    'Pinned basis labels follow the same binary order');
   for (const label of actual.labels) assert.deepEqual(label.bits, [...label.text].map((value, wire) => ({ wire, value })),
     'Every label bit identifies the corresponding circuit wire');
-  for (const lane of actual.lanes) assert.equal(lane.y, 44 + basisRow(lane.basis) * 34);
+  for (const lane of actual.lanes) assert.equal(lane.y, 44 + lane.basis * 34);
   assert.deepEqual(actual.cancellations.map(({ boundary, basis }) => ({ boundary, basis })),
     expected.cancellations.flatMap((bases, column) => bases.map(basis => ({ boundary: column + 1, basis }))),
     'Walls mark exactly the outcomes whose opposite contributions cancel');
@@ -311,33 +316,38 @@ async function basisFlow(page, puzzle, placements = undefined) {
     assert.equal(wall.fill, 'none');
     assert.equal(wall.strokeWidth, 2);
     assert.equal(wall.path, CANCELLATION_WALL.map(([dx, dy], index) =>
-      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (44 + basisRow(wall.basis) * 34 + dy)).join(' '));
+      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (44 + wall.basis * 34 + dy)).join(' '));
     assert.ok(wall.label.includes('opposite phases cancel'));
     assert.ok(!actual.nodes.some(node => node.boundary === wall.boundary && node.basis === wall.basis),
       'Canceled outcomes have a wall instead of a photon dot');
     assert.ok(!actual.edges.some(edge => edge.column === wall.boundary && edge.from === wall.basis),
       'No amplitude leaves a wall in the next column');
   }
-  for (const item of [...actual.nodes, ...actual.targets]) {
-    assert.equal(item.y, 44 + basisRow(item.basis) * 34, 'Intermediate and target amplitudes occupy the same Gray-ordered lane');
+  for (const item of actual.nodes) {
+    assert.equal(item.y, 44 + item.basis * 34, 'Intermediate and target amplitudes occupy the same binary-ordered lane');
     assert.equal(item.fill, phaseColor(item.amplitude), 'Positive phases have black dots; negative phases have white dots');
     assert.ok(item.strokeWidth > 0, 'The phase outline remains visible, including matched targets');
   }
   for (const node of actual.nodes) assert.equal(node.stroke, PHASE_COLORS.negative, 'Both intermediate phases have white outlines');
-  for (const target of actual.targets) assert.equal(target.stroke, PHASE_COLORS.negative, 'Both target phases have white outlines');
+  assert.equal(actual.targets.length, 1, 'There is one fixed goal marker');
+  const goal = actual.targets[0];
+  assert.deepEqual([goal.basis, goal.amplitude, goal.radius, goal.fill, goal.stroke], [2 ** puzzle.wires - 1, 1, GOAL_RADIUS, 'none', GOAL_COLOR]);
+  assert.equal(goal.y, 44 + goal.basis * 34);
+  assert.ok(goal.label.includes('1'.repeat(puzzle.wires)), 'The goal names the all-ones label');
   for (const edge of actual.edges) {
     assert.equal(edge.stroke, phasePathColor(edge.amplitude), 'Negative paths are white; positive paths are darker');
-    const start = 48 + edge.column * 88, fromY = 44 + basisRow(edge.from) * 34, toY = 44 + basisRow(edge.to) * 34;
+    const start = 48 + edge.column * 88, fromY = 44 + edge.from * 34, toY = 44 + edge.to * 34;
     assert.equal(edge.path, `M${start},${fromY} C${start + 44},${fromY} ${start + 44},${toY} ${start + 88},${toY}`,
-      'Amplitude paths connect the original basis states at their Gray-ordered positions');
+      'Amplitude paths connect the original basis states at their binary-ordered positions');
   }
   for (const item of [...actual.nodes, ...actual.edges, ...actual.targets]) assert.equal(item.dash, 'none', 'Paths and markers use solid strokes');
-  for (const item of [...actual.nodes, ...actual.targets]) assert.ok(item.label.includes(item.amplitude < 0 ? '− phase' : '+ phase'),
+  for (const item of actual.nodes) assert.ok(item.label.includes(item.amplitude < 0 ? '− phase' : '+ phase'),
     'Accessible descriptions state the signed phase');
   const outputX = actual.nodes.find(node => node.boundary === puzzle.columns.length).x;
   assert.ok(actual.lanes.every(lane => Math.abs(lane.end - outputX) < 1e-8), 'Basis lane lines end at Output before the separate target column');
   await fixedTarget(page);
-  assert.equal(await page.locator('#signal-board svg text, #signal-board .signal-output, .signal-vessel').count(), 0, 'The regular circuit has no repeated state labels or separate vessels');
+  assert.equal(await page.locator('#signal-board .signal-output, .signal-vessel').count(), 0, 'The regular circuit has no repeated state diagrams');
+  assert.equal(await page.locator('#signal-board .signal-wire-label').count(), 0, 'Circuit wires have no numeric labels');
   const epsilon = 1e-8;
   const nodes = new Map(actual.nodes.map(node => [`${node.boundary}:${node.basis}`, node.amplitude]));
   for (const [boundary, state] of expected.snapshots.entries()) {
@@ -366,10 +376,11 @@ async function basisFlow(page, puzzle, placements = undefined) {
   const diagram = await flow.boundingBox(), circuit = await page.locator('#signal-board').boundingBox();
   const targetBox = await page.locator('#signal-target').boundingBox();
   assert.ok(Math.abs(diagram.width + targetBox.width - circuit.width) < 0.1, 'The mirror and separate target keep the circuit’s horizontal scale');
-  assert.ok(Math.abs(diagram.x - circuit.x) < 0.2, 'Circuit columns and mirrored transitions align on screen');
+  const bothPanesVisible = await page.locator('#signal-scroll').isVisible() && await page.locator('#flow-panel').isVisible();
+  if (bothPanesVisible) assert.ok(Math.abs(diagram.x - circuit.x) < 0.2, 'Circuit columns and mirrored transitions align on screen');
   const marker = await page.locator('.signal-flow-selection').boundingBox();
   const selected = await page.locator('[data-hole][aria-pressed="true"]').boundingBox();
-  if (marker && selected) assert.ok(Math.abs(marker.x + marker.width / 2 - selected.x - selected.width / 2) < 0.2,
+  if (bothPanesVisible && marker && selected) assert.ok(Math.abs(marker.x + marker.width / 2 - selected.x - selected.width / 2) < 0.2,
     'The selected-hole highlight is centered below its circuit gate');
   return expected.snapshots.at(-1).flatMap((amplitude, basis) => Math.abs(amplitude) <= epsilon ? [] : [basis.toString(2).padStart(puzzle.wires, '0')]);
 }
@@ -425,7 +436,7 @@ async function fixedTarget(page) {
   assert.equal(report.separate, true, 'The target is outside the horizontally scrolling paths');
   assert.ok(report.width > 0 && report.width <= 56, 'The fixed target column stays compact');
   assert.equal(report.visible, true, 'Horizontal navigation keeps the complete target column visible');
-  assert.equal(report.aligned, true, 'Each target stays aligned with its corresponding Gray-ordered lane');
+  assert.equal(report.aligned, true, 'Each target stays aligned with its corresponding binary-ordered lane');
   assert.equal(report.duplicates, false, 'There is one target vector rather than a scrolling duplicate');
 }
 
@@ -502,34 +513,25 @@ async function keyboardAndMouse(page) {
 }
 
 async function horizontalNavigation(page) {
-  await autofocus(page, true);
-  await page.locator('#level').selectOption('12');
-  await page.locator('[data-hole="a"]').focus();
-  await page.locator('#signal-scroll').evaluate(element => { element.scrollLeft = 0; });
-  const scrollY = await page.evaluate(() => window.scrollY);
-  for (const hole of ['b', 'd', 'e']) {
+  await activate(page, page.locator('#mode-random')); await openDetails(page, '#advanced-features');
+  const puzzle = phaseExperiment(); await importPuzzle(page, puzzleData(puzzle)); await autofocus(page, true);
+  await page.locator('[data-hole="h1"]').focus(); await page.locator('#signal-scroll').evaluate(node => { node.scrollLeft = 0; });
+  const top = await page.evaluate(() => scrollY);
+  for (const hole of ['h2', 'h3']) {
     await page.keyboard.press('ArrowRight');
-    assert.equal(await page.evaluate(() => document.activeElement?.dataset.hole), hole, 'Right follows the nearest aligned slot');
-    await selectedInView(page);
-    assert.equal(await page.evaluate(() => window.scrollY), scrollY, 'Revealing a slot does not move the page vertically');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.hole), hole);
+    await selectedInView(page); assert.equal(await page.evaluate(() => scrollY), top);
   }
-  await numberedGate(page, 'Z');
-  assert.equal(await page.locator('[data-hole="a"]').getAttribute('aria-pressed'), 'true', 'Placement advances to the next empty slot');
-  await selectedInView(page);
-  assert.equal(await page.evaluate(() => window.scrollY), scrollY, 'Auto-advance only scrolls the circuit horizontally');
+  await numberedGate(page, 'I');
+  assert.equal(await page.locator('[data-hole="h1"]').getAttribute('aria-pressed'), 'true');
+  await selectedInView(page); assert.equal(await page.evaluate(() => scrollY), top);
+  await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = node.scrollWidth; node.dispatchEvent(new Event('scroll')); });
   await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
-  await page.locator('#flow-scroll').evaluate(element => { element.scrollLeft = element.scrollWidth; element.dispatchEvent(new Event('scroll')); });
-  await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
-  await pinnedBasisLabels(page);
-  assert.equal(await page.evaluate(() => window.scrollY), scrollY, 'Scrolling the mirror does not move the whole page');
-  await page.locator('[data-hole="d"]').focus();
-  const column = LEVELS.at(-1).columns.findIndex(entries => entries.some(entry => entry.id === 'd'));
-  assert.equal(await page.locator('.signal-flow-selection').getAttribute('data-column'), String(column), 'The selected circuit slot highlights the corresponding mirror column');
-  await selectedInView(page);
-  await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
-  await pinnedBasisLabels(page);
-  await targetScrollPositions(page);
-  await autofocus(page, false);
+  await pinnedBasisLabels(page); assert.equal(await page.evaluate(() => scrollY), top);
+  await page.locator('[data-hole="h2"]').focus();
+  assert.equal(await page.locator('.signal-flow-selection').getAttribute('data-column'), '5');
+  await selectedInView(page); await pinnedBasisLabels(page); await targetScrollPositions(page);
+  await autofocus(page, false); await activate(page, page.locator('#mode-campaign'));
 }
 
 async function autofocus(page, enabled) {
@@ -548,11 +550,12 @@ const scrollPositions = page => page.evaluate(() => ['signal-scroll', 'flow-scro
 
 function phaseExperiment() {
   const columns = Array.from({ length: 10 }, () => []);
-  columns[0] = [{ gate: 'X', wires: [0] }, { gate: 'H', wires: [1] }];
+  columns[0] = [{ gate: 'X', wires: [0] }, { gate: 'X', wires: [1] }];
+  columns[1] = [{ gate: 'H', wires: [1] }];
   columns[2] = [{ id: 'h1', wires: [0], choices: ['I', 'H', 'Z'] }];
   columns[5] = [{ id: 'h2', wires: [0], choices: ['I', 'X'] }];
-  columns[8] = [{ id: 'h3', wires: [1], choices: ['I', 'Z'] }];
-  return { wires: 2, columns, target: [Math.SQRT1_2, -Math.SQRT1_2, 0, 0] };
+  columns[8] = [{ id: 'h3', wires: [1], choices: ['I', 'H'] }];
+  return validatePuzzle({ wires: 2, columns });
 }
 
 async function stableTargetAndAutofocus(page) {
@@ -571,7 +574,7 @@ async function stableTargetAndAutofocus(page) {
   const puzzle = phaseExperiment();
   await importPuzzle(page, puzzleData(puzzle));
   const target = await targetMarkers(page), scroll = await scrollPositions(page);
-  assert.equal(target.length, 2, 'The target has both a positive and a negative phase');
+  assert.equal(target.length, 1, 'The fixed goal occupies only the all-ones basis lane');
   for (const gate of ['Z', 'H', 'Z']) {
     await activate(page, page.locator(`[data-choice="${gate}"]`));
     assert.equal(await page.locator('[data-hole="h1"]').getAttribute('aria-pressed'), 'true', 'Trying a gate keeps the same selected hole by default');
@@ -622,16 +625,16 @@ async function flowAnimations(page) {
   await settled();
   assert.equal(await page.locator('#signal-flow .signal-flow-ghost, #signal-flow clipPath').count(), 0, 'Undo followed by reset removes every animation overlay');
   await basisFlow(page, puzzle);
-  for (const [hole, gate] of [['h1', 'Z'], ['h2', 'X']]) {
+  for (const [hole, gate] of [['h1', 'Z'], ['h2', 'I']]) {
     await place(page, hole, gate); await settled();
   }
-  await place(page, 'h3', 'Z');
+  await place(page, 'h3', 'H');
   assert.equal(await active.count(), 1);
   assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Completion waits until the final paths have arrived');
   await page.locator('#win-dialog[open]').waitFor();
   assert.equal(await active.count(), 0);
   assert.deepEqual(await targetMarkers(page), target, 'A globally reversed winning state still leaves the target unchanged');
-  await closeWin(page); await basisFlow(page, puzzle, { h1: 'Z', h2: 'X', h3: 'Z' });
+  await closeWin(page); await basisFlow(page, puzzle, { h1: 'Z', h2: 'I', h3: 'H' });
   await noOverflow(page); await accessibility(page);
 }
 
@@ -714,10 +717,11 @@ async function progressNavigation(page) {
   await activate(page, page.locator('#mode-random'));
   await openDetails(page, '#advanced-features');
   const columns = Array.from({ length: 16 }, () => []);
-  columns[0] = [0, 1, 2, 3].map(wire => ({ gate: 'H', wires: [wire] }));
+  columns[0] = [0, 1, 2, 3].map(wire => ({ gate: 'X', wires: [wire] }));
+  columns[1] = [{ gate: 'H', wires: [0] }];
   for (const [index, column] of [3, 6, 9, 12].entries()) columns[column] = [{ id: 'h' + (index + 1), wires: [0], choices: ['I', 'X'] }];
-  columns[12][0].choices = ['I', 'Z'];
-  const puzzle = { wires: 4, columns, target: Array.from({ length: 16 }, (_, basis) => basis < 8 ? .25 : -.25) };
+  columns[12][0].choices = ['I', 'H'];
+  const puzzle = validatePuzzle({ wires: 4, columns });
   const load = () => importPuzzle(page, puzzleData(puzzle));
   await load();
   await centeredProgress(page, 'h1', 3);
@@ -735,14 +739,14 @@ async function progressNavigation(page) {
   await centeredProgress(page, 'h3', 9);
   await actionKeepsPage(page, page.locator('[data-choice="I"]'));
   await centeredProgress(page, 'h4', 12);
-  await activate(page, page.locator('[data-choice="Z"]'));
+  await activate(page, page.locator('[data-choice="H"]'));
   await page.locator('#win-dialog[open]').waitFor();
   await closeWin(page);
   await completionInView(page, columns.length);
   await page.locator('[data-hole="h2"]').evaluate(node => node.focus({ preventScroll: true }));
   await centeredProgress(page, 'h2', 6);
 
-  await page.clock.pauseAt(new Date(process.env.GAME_TEST_TIME ?? '2026-10-15T10:00:00Z'));
+  await page.clock.pauseAt(new Date(testTime));
   await activate(page, page.locator('#replay'));
   assert.equal(await page.locator('#review-note').innerText(), 'Placement 0 / 4');
   assert.equal(await page.locator('.signal-flow-selection').count(), 0, 'Replay starts with no selected gate');
@@ -795,7 +799,7 @@ async function importPuzzle(page, puzzle) {
 async function exportedPuzzle(page, download = false) {
   await openJsonDialog(page, 'share-json');
   const data = JSON.parse(await page.locator('#puzzle-json-text').inputValue());
-  assert.deepEqual(Object.keys(data).sort(), ['columns', 'target', 'wires'], 'Custom files contain only the circuit and its target');
+  assert.deepEqual(Object.keys(data).sort(), ['columns', 'wires'], 'Custom files contain only the circuit; the all-ones goal is fixed');
   noBenchmark(data, 'An exported custom circuit');
   noPuzzleMetadata(data);
   if (download) {
@@ -967,6 +971,8 @@ async function customAndRandom(page) {
     await page.locator('#difficulty').selectOption(difficulty);
     await activate(page, page.locator('#new-puzzle'));
     const puzzle = await currentPuzzle(page);
+    assert.equal(await page.locator('#signal-memo').isVisible(), true, 'Random puzzles retain the gate memo');
+    if (difficulty === '1') await gateMemo(page, puzzle);
     await noOverflow(page);
     await finish(page, puzzle);
     await completionBoard(page);
@@ -986,6 +992,7 @@ async function customAndRandom(page) {
   await page.keyboard.press('Digit2');
   assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), filled, 'Number keys in the editor do not place gates');
   const custom = await importPuzzle(page, puzzleData(LEVELS.at(-1)));
+  await gateMemo(page, custom);
   await finish(page, custom);
   await completionBoard(page);
   await closeWin(page);
@@ -993,48 +1000,39 @@ async function customAndRandom(page) {
 }
 
 async function visualEditor(page) {
-  await activate(page, page.locator('#mode-campaign'));
-  await page.locator('#level').selectOption('1');
-  await openDetails(page, '#advanced-features');
-  for (const selector of ['#circuit-editor-controls', '#edit-circuit', '#new-circuit']) {
-    assert.equal(await page.locator(selector).isVisible(), false, 'Levels hide custom editing controls');
+  for (const selector of ['#circuit-editor-controls', '#edit-circuit', '#new-circuit', '#custom-details', '#puzzle-editor-form']) {
+    assert.equal(await page.locator(selector).isVisible(), false, 'Levels contain no custom editor actions');
   }
   await activate(page, page.locator('#mode-random'));
+  await openDetails(page, '#advanced-features');
   await importPuzzle(page, puzzleData(LEVELS[0]));
   const originalBoard = await page.locator('#signal-board').innerHTML();
-  assert.equal(await page.locator('#copy-puzzle, details#custom-details').count(), 0, 'The editor opens with explicit actions');
   await activate(page, page.locator('#new-circuit'));
-  assert.equal(await page.locator('#custom-details').evaluate(editor => editor.tagName), 'DIV');
+  assert.equal(await page.locator('#custom-details').evaluate(node => node.tagName), 'DIV');
   assert.equal(await page.locator('#custom-details').isVisible(), true);
   assert.equal(await page.locator('#editor-wires').inputValue(), '2');
   assert.equal(await page.locator('#editor-columns').inputValue(), '4');
   assert.equal(await page.locator('[data-editor-cell]').count(), 8);
-  assert.ok(await page.locator('[data-editor-cell]').evaluateAll(buttons => buttons.every(button => button.getAttribute('aria-label').endsWith('Empty wire'))), 'Scratch starts with empty wires');
-  assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => button.dataset.sign)), ['1', '0', '0', '0'], 'Scratch starts at the all-zero basis state');
-  assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => Number(button.dataset.editorTarget))),
-    [0, 1, 3, 2], 'The two-wire target editor follows Gray order without changing target indices');
+  assert.ok(await page.locator('[data-editor-cell]').evaluateAll(nodes => nodes.every(node => node.getAttribute('aria-label').endsWith('Empty wire'))));
+  assert.equal(await page.locator('[data-editor-target], #editor-targets, #capture-target').count(), 0, 'The fixed all-ones goal has no target editor');
   await activate(page, page.locator('[data-editor-cell="0:0"]'));
   await activate(page, page.locator('[data-editor-tool="X"]'));
   await activate(page, page.locator('#new-circuit'));
-  assert.ok((await page.locator('[data-editor-cell]').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).every(label => label.endsWith('Empty wire')), 'Start from scratch clears a previous draft');
-  assert.equal(await page.locator('#signal-board').innerHTML(), originalBoard, 'Editing a scratch draft does not change the active game');
+  assert.ok(await page.locator('[data-editor-cell]').evaluateAll(nodes => nodes.every(node => node.getAttribute('aria-label').endsWith('Empty wire'))));
+  assert.equal(await page.locator('#signal-board').innerHTML(), originalBoard, 'A scratch draft leaves the active puzzle unchanged');
   await activate(page, page.locator('#edit-circuit'));
-  assert.equal(await page.locator('#editor-wires').inputValue(), String(LEVELS[0].wires), 'Edit this circuit reloads the active original puzzle');
+  assert.equal(await page.locator('#editor-wires').inputValue(), String(LEVELS[0].wires));
   assert.equal(await page.locator('#editor-columns').inputValue(), String(LEVELS[0].columns.length));
   assert.match(await page.locator('[data-editor-cell="0:0"]').getAttribute('aria-label'), /Hole$/);
-  assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => button.dataset.sign)), ['0', '1']);
-  assert.equal(await page.locator('#editor-kind, #editor-partner, #editor-targets select').count(), 0, 'Editing gates and target phases uses icons');
   const requests = completionRequests;
   const submit = () => activate(page, page.locator('#puzzle-editor-form > button[type="submit"]'));
   const cell = async (column, row, tool) => {
+    if (await page.locator('#editor-menu').isVisible()) await page.keyboard.press('Escape');
     await activate(page, page.locator(`[data-editor-cell="${column}:${row}"]`));
     if (tool) {
       const bounds = await page.locator('#editor-menu').boundingBox(), viewport = page.viewportSize();
-      if (!bounds) {
-        console.log('Editor menu hidden after cell click:', JSON.stringify(await page.evaluate(() => ({ scrollY, focused: document.activeElement?.id, menuHidden: document.querySelector('#editor-menu').hidden }))));
-        await page.screenshot({ path: resolve(output, 'editor-menu-failure.png'), fullPage: true });
-      }
-      assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width + 1 && bounds.y + bounds.height <= viewport.height + 1, 'The contextual palette stays inside the viewport');
+      assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width + 1 && bounds.y + bounds.height <= viewport.height + 1,
+        'The contextual gate palette stays inside the viewport');
       await activate(page, page.locator(`[data-editor-tool="${tool}"]`));
     }
   };
@@ -1042,188 +1040,130 @@ async function visualEditor(page) {
     await cell(column, row);
     for (const button of await page.locator('[data-editor-choice]').all()) {
       const gate = await button.getAttribute('data-editor-choice');
-      if ((await button.getAttribute('aria-pressed') === 'true') !== gates.includes(gate)) {
-        await activate(page, button);
-      }
-    }
-  };
-  const target = async (basis, sign) => {
-    const button = page.locator('#editor-target-' + basis);
-    for (let clicks = 0; await button.getAttribute('data-sign') !== String(sign) && clicks < 3; clicks++) await activate(page, button);
-    assert.equal(await button.getAttribute('data-sign'), String(sign), 'Target dots cycle off, positive, negative');
-    if (sign) {
-      const appearance = await button.locator('.editor-target-dot').evaluate(dot => {
-        const context = document.createElement('canvas').getContext('2d');
-        const style = getComputedStyle(dot);
-        context.fillStyle = style.backgroundColor; const fill = context.fillStyle;
-        context.fillStyle = style.borderTopColor;
-        return { fill, outline: context.fillStyle, width: parseFloat(style.borderTopWidth) };
-      });
-      assert.equal(appearance.fill, phaseColor(sign), 'Editor phase dots use the shared black and white fills');
-      assert.equal(appearance.outline, PHASE_COLORS.negative, 'Both editor target phases have white outlines');
-      assert.ok(appearance.width > 0, 'Editor phase outlines remain visible');
+      if ((await button.getAttribute('aria-pressed') === 'true') !== gates.includes(gate)) await activate(page, button);
     }
   };
   const connect = async (column, from, to, tool) => {
     await cell(column, from, tool);
-    assert.equal(await page.locator(`[data-editor-cell="${column}:${from}"][data-endpoint]`).count(), 1, 'A first endpoint remains visible before linking');
+    assert.equal(await page.locator(`[data-editor-cell="${column}:${from}"][data-endpoint]`).count(), 1);
     assert.equal(await page.locator(`[data-editor-cell="${column}:${to}"][data-connectable]`).count(), 1);
     await cell(column, to);
-    assert.equal(await page.locator(`[data-editor-cell^="${column}:"][data-endpoint]`).count(), 0, 'A second wire completes the link');
+    assert.equal(await page.locator(`[data-editor-cell^="${column}:"][data-endpoint]`).count(), 0);
   };
-
-  await cell(0, 0);
-  assert.equal(await page.locator('#editor-menu').isVisible(), true, 'Selecting a cell opens its gate icons');
-  await page.keyboard.press('Escape');
+  await cell(0, 0); await page.keyboard.press('Escape');
   assert.equal(await page.locator('#editor-menu').isVisible(), false);
-  assert.equal(await page.evaluate(() => document.activeElement?.dataset.editorCell), '0:0', 'Escape returns focus to the edited cell');
-  await page.keyboard.press('Enter');
-  assert.equal(await page.locator('#editor-menu').isVisible(), true, 'Keyboard activation opens the same gate palette');
-  await activate(page, page.locator('#editor-targets').locator('..').locator('legend'));
-  assert.equal(await page.locator('#editor-menu').isVisible(), false, 'Clicking outside closes the palette');
-
-  await target(1, 0); await submit();
-  assert.match(await page.locator('#custom-status').innerText(), /at least one target/i, 'An empty target remains an editable draft');
-  await target(0, 1); await target(1, 1); await submit();
-  assert.match(await page.locator('#custom-status').innerText(), /cannot be reached/i, 'The GUI rejects unreachable target choices');
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.editorCell), '0:0');
+  await page.keyboard.press('Enter'); assert.equal(await page.locator('#editor-menu').isVisible(), true);
+  if (touchPages.has(page)) await page.touchscreen.tap(2, 2); else await page.mouse.click(2, 2);
+  assert.equal(await page.locator('#editor-menu').isVisible(), false, 'Clicking outside closes the gate palette');
+  await offered(0, 0, ['I', 'H']); await submit();
+  assert.match(await page.locator('#custom-status').innerText(), /cannot be reached/i, 'The editor checks reachability of the fixed goal');
   await offered(0, 0, ['H']); await submit();
-  assert.match(await page.locator('#custom-status').innerText(), /gate choices/i, 'A temporarily incomplete hole cannot be played');
-  await offered(0, 0, ['I', 'H']);
-  await submit();
-  const superposition = await currentPuzzle(page);
-  assert.ok(stateEqual(superposition.target, [Math.SQRT1_2, Math.SQRT1_2]), 'Signed target selections normalize automatically');
-  await finish(page, superposition); await closeWin(page);
-  assert.equal(await page.locator('#mode-random').getAttribute('aria-pressed'), 'true', 'Playing a visual draft starts an unranked custom round');
-  assert.equal(completionRequests, requests, 'Editing and playing a custom puzzle does not request completion records');
+  assert.match(await page.locator('#custom-status').innerText(), /gate choices/i);
+  await offered(0, 0, ['I', 'X']); await submit();
+  const simple = await currentPuzzle(page);
+  assert.deepEqual(simple.target, [0, 1]);
+  await finish(page, simple); await closeWin(page);
+  assert.equal(completionRequests, requests, 'Custom drafts and play never request completion records');
 
-  await page.locator('#editor-wires').selectOption('2');
-  await page.locator('#editor-columns').selectOption('2');
+  await page.locator('#editor-wires').selectOption('2'); await page.locator('#editor-columns').selectOption('2');
   await cell(0, 0, 'empty'); await cell(0, 1, 'X');
-  await page.locator('[data-editor-cell="0:0"]').focus();
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await page.evaluate(() => document.activeElement?.dataset.editorCell), '0:1', 'Arrow keys navigate editor cells');
+  await page.locator('[data-editor-cell="0:0"]').focus(); await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.editorCell), '0:1');
   await page.keyboard.press('r');
-  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 1, 'Editor keyboard input does not reset the active game');
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 1, 'Editor typing does not reset the active round');
   await page.keyboard.press('Delete');
-  assert.match(await page.locator('[data-editor-cell="0:1"]').getAttribute('aria-label'), /Empty wire/, 'Delete clears the editor cell without changing gameplay');
-  await cell(0, 1, 'X'); await cell(1, 0, 'control');
-  await submit();
-  assert.match(await page.locator('#custom-status').innerText(), /unconnected endpoint/i, 'Play reports unfinished links');
-  assert.equal(await page.locator('[data-editor-cell="1:0"]').getAttribute('data-endpoint'), 'control', 'A failed Play preserves the unfinished endpoint');
-  assert.match(await page.locator('[data-editor-cell="0:1"]').getAttribute('aria-label'), /: X$/, 'A failed Play preserves unrelated gates');
-  await page.keyboard.press('Escape');
-  assert.equal(await page.locator('[data-connectable]').count(), 0, 'Escape pauses linking without erasing its endpoint');
+  assert.match(await page.locator('[data-editor-cell="0:1"]').getAttribute('aria-label'), /Empty wire/);
+  await cell(0, 1, 'X'); await cell(1, 0, 'control'); await submit();
+  assert.match(await page.locator('#custom-status').innerText(), /unconnected endpoint/i);
+  assert.equal(await page.locator('[data-editor-cell="1:0"]').getAttribute('data-endpoint'), 'control');
+  await page.keyboard.press('Escape'); assert.equal(await page.locator('[data-connectable]').count(), 0);
   await cell(1, 0); await cell(1, 1);
-  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /upper control/, 'An upper control links to a lower target');
+  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /upper control/);
   await connect(1, 1, 0, 'control');
-  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /lower control/, 'Starting from the lower control preserves CNOT direction');
+  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /lower control/);
   await connect(1, 1, 0, 'target');
-  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /upper control/, 'Starting at the target connects the complementary control');
+  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /upper control/);
   await connect(1, 0, 1, 'phase');
-  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /CZ/, 'Two phase endpoints form a CZ');
-  await page.keyboard.press('Delete');
-  assert.equal(await page.locator('.editor-link').count(), 0, 'Delete removes an entire paired gate');
-  await connect(1, 0, 1, 'hole-pair');
-  await offered(1, 0, ['I', 'CX', 'XC']);
-  await target(0, 0); await target(3, 1);
-  await submit();
+  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /CZ/);
+  await page.keyboard.press('Delete'); assert.equal(await page.locator('.editor-link').count(), 0);
+  await connect(1, 0, 1, 'hole-pair'); await offered(1, 0, ['I', 'CX', 'XC']); await submit();
   const reverseData = await exportedPuzzle(page), reverse = await importPuzzle(page, reverseData);
-  assert.deepEqual(reverseData.target, { '11': 1 }, 'GUI export uses readable signed basis labels');
   const reverseHole = getHoles(reverse)[0];
   await place(page, reverseHole.id, 'CX');
-  assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'Upper control does not reach the lower-control target');
+  assert.equal(await page.locator('#win-dialog').evaluate(node => node.open), false);
   await gateGeometry(page, reverse, { [reverseHole.id]: 'CX' });
-  await place(page, reverseHole.id, 'XC');
-  await page.locator('#win-dialog[open]').waitFor(); await closeWin(page);
+  await place(page, reverseHole.id, 'XC'); await page.locator('#win-dialog[open]').waitFor(); await closeWin(page);
   await gateGeometry(page, reverse, { [reverseHole.id]: 'XC' });
 
   await page.locator('#editor-wires').selectOption('4');
   await cell(1, 0, 'empty'); await connect(1, 0, 3, 'hole-pair');
-  assert.match(await page.locator('[data-editor-cell="1:3"]').getAttribute('aria-label'), /Hole/, 'Paired holes can connect nonadjacent wires');
-  await page.locator('#editor-columns').selectOption('16');
-  await connect(15, 3, 0, 'phase');
-  assert.equal(await page.locator('[data-editor-cell]').count(), 64);
-  assert.equal(await page.locator('[data-editor-target]').count(), 16);
-  assert.deepEqual(await page.locator('[data-editor-target]').evaluateAll(buttons => buttons.map(button => Number(button.dataset.editorTarget))),
-    Array.from({ length: 16 }, (_, row) => grayBasis(row)), 'The four-wire target editor keeps adjacent states one bit apart');
-  const targetBounds = await page.locator('[data-editor-target]').evaluateAll(nodes => nodes.map(node => {
-    const bounds = node.getBoundingClientRect(); return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
-  }));
-  assert.ok(targetBounds.every((bounds, index) => Math.abs(bounds.x - targetBounds[0].x) < 1 && bounds.width >= 44 && bounds.height >= 44 && (index === 0 || bounds.y > targetBounds[index - 1].y)), 'Target states form a vertical column with touchable rows');
-  await target(15, 1); await target(15, -1); await target(15, 0);
-  await noOverflow(page);
+  assert.match(await page.locator('[data-editor-cell="1:3"]').getAttribute('aria-label'), /Hole/);
+  await page.locator('#editor-columns').selectOption('5');
+  assert.equal(await page.locator('[data-editor-cell]').count(), 20);
   await page.locator('#editor-wires').selectOption('2');
-  await page.locator('#editor-columns').selectOption('4');
-  assert.equal(await page.locator('[data-editor-cell]').count(), 8);
-  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /Empty wire/,
-    'Removing wires and columns removes affected paired gates without leaving endpoints');
-  assert.match(await page.locator('[data-editor-cell="0:1"]').getAttribute('aria-label'), /: X$/, 'Resizing preserves unaffected gates');
-  assert.equal(await page.locator('[data-editor-target]').count(), 4);
-
-  await cell(0, 1, 'empty'); await cell(0, 0, 'H'); await connect(1, 0, 1, 'control');
-  await cell(2, 0, 'Z'); await cell(2, 0, 'empty');
-  await cell(3, 1, 'hole'); await offered(3, 1, ['I', 'Z']);
-  await target(3, -1);
+  assert.match(await page.locator('[data-editor-cell="1:0"]').getAttribute('aria-label'), /Empty wire/);
+  assert.match(await page.locator('[data-editor-cell="0:1"]').getAttribute('aria-label'), /: X$/);
+  await cell(0, 1, 'empty'); await cell(0, 0, 'H'); await cell(1, 0, 'empty');
+  await connect(1, 0, 1, 'control');
+  await connect(2, 0, 1, 'hole-pair'); await offered(2, 0, ['I', 'CX']);
+  await cell(3, 0, 'hole'); await offered(3, 0, ['I', 'H']);
+  for (const row of [0, 1]) { await cell(4, row, 'hole'); await offered(4, row, ['I', 'X']); }
   await submit();
   const bellData = await exportedPuzzle(page, true), bell = validateCustomPuzzle(bellData);
-  assert.deepEqual(bellData.target, { '00': 1, '11': -1 });
-  assert.ok(stateEqual(bell.target, [Math.SQRT1_2, 0, 0, -Math.SQRT1_2]));
-  await target(0, 1); await target(3, -1);
-  await cell(3, 1);
+  assert.deepEqual(bell.target, [0, 0, 0, 1]);
+  assert.deepEqual(Object.keys(bellData).sort(), ['columns', 'wires']);
   await noOverflow(page); await accessibility(page);
   const viewport = page.viewportSize();
   await page.screenshot({ path: resolve(output, `editor-bell-${viewport.width}.png`), fullPage: true });
   if (touchPages.has(page)) {
-    await page.setViewportSize({ width: 320, height: 900 });
-    await noOverflow(page); await accessibility(page);
+    await page.setViewportSize({ width: 320, height: 900 }); await noOverflow(page); await accessibility(page);
     const hit = await page.locator('[data-editor-cell]').first().boundingBox();
-    assert.ok(hit.width >= 44 && hit.height >= 44, 'Editor cells remain touchable on narrow screens');
-    await page.screenshot({ path: resolve(output, 'editor-bell-320.png'), fullPage: true });
-    await page.setViewportSize(viewport);
+    assert.ok(hit.width >= 44 && hit.height >= 44);
+    await page.screenshot({ path: resolve(output, 'editor-bell-320.png'), fullPage: true }); await page.setViewportSize(viewport);
   }
-  await importPuzzle(page, bellData);
-  await finish(page, bell); await closeWin(page);
+  await importPuzzle(page, bellData); await finish(page, bell); await closeWin(page);
   await openJsonDialog(page);
   const currentBoard = await page.locator('#signal-board').innerHTML();
-  for (const invalid of ['{', JSON.stringify({ wires: 2, columns: [[{ wires: [0, 0], choices: ['I', 'CX'] }]], target: { '00': 1 } })]) {
-    await page.locator('#puzzle-json-text').fill(invalid);
-    await activate(page, page.locator('#puzzle-json-apply'));
+  for (const invalid of ['{', JSON.stringify({ wires: 2, columns: [[{ wires: [0, 0], choices: ['I', 'CX'] }]] }),
+    JSON.stringify({ ...bellData, target: { '11': 1 } })]) {
+    await page.locator('#puzzle-json-text').fill(invalid); await activate(page, page.locator('#puzzle-json-apply'));
     assert.ok(await page.locator('#puzzle-json-status').innerText());
-    assert.equal(await page.locator('#signal-board').innerHTML(), currentBoard, 'Rejected JSON imports preserve the active Signals circuit');
+    assert.equal(await page.locator('#signal-board').innerHTML(), currentBoard, 'Rejected imports preserve the active puzzle');
   }
-  await page.locator('#puzzle-json-text').fill('{');
-  await accessibility(page);
-  await page.keyboard.press('Escape');
-  await cell(3, 1); await page.keyboard.press('Escape'); await page.keyboard.press('ArrowLeft');
-  await cell(2, 1, 'X'); await cell(2, 1, 'empty');
-  await openJsonDialog(page);
-  assert.equal(await page.locator('#puzzle-json-text').inputValue(), '{', 'Closing the dialog and editing the visual draft preserves unimported JSON text');
-  await page.keyboard.press('Escape');
-  assert.ok(stateEqual(validateCustomPuzzle(await exportedPuzzle(page)).target, bell.target), 'Explicit Share JSON exports the active puzzle');
-  await importPuzzle(page, bellData);
-  assert.equal(await page.locator('#editor-target-3').getAttribute('data-sign'), '-1', 'Signed basis labels populate the visual target');
-  assert.deepEqual((await exportedPuzzle(page)).target, { '00': 1, '11': -1 }, 'Signed targets round trip unchanged');
-  await finish(page, bell); await closeWin(page);
-  await openDetails(page, '#advanced-features');
-  await activate(page, page.locator('#replay')); await page.locator('#review-controls:not([hidden])').waitFor();
-  await activate(page, page.locator('#resume-round'));
-  await openJsonDialog(page);
-  await page.locator('#mode-daily').evaluate(button => button.click());
+  await page.locator('#puzzle-json-text').fill('{'); await page.keyboard.press('Escape');
+  await cell(4, 1); await page.keyboard.press('Escape'); await page.keyboard.press('ArrowLeft');
+  await openJsonDialog(page); assert.equal(await page.locator('#puzzle-json-text').inputValue(), '{'); await page.keyboard.press('Escape');
+  assert.deepEqual(await exportedPuzzle(page), bellData, 'Sharing exports the active puzzle while a draft is open');
+  await importPuzzle(page, bellData); await finish(page, bell); await closeWin(page);
+  await openDetails(page, '#advanced-features'); await activate(page, page.locator('#replay'));
+  await page.locator('#review-controls:not([hidden])').waitFor(); await activate(page, page.locator('#resume-round'));
+  await openJsonDialog(page); await page.locator('#mode-daily').evaluate(button => button.click());
   await page.locator('#daily-heading:not([hidden])').waitFor();
-  assert.equal(await page.locator('#puzzle-json-dialog').isVisible(), false, 'Entering daily mode closes a stale JSON dialog');
-  await dailyEditorHidden(page);
+  assert.equal(await page.locator('#puzzle-json-dialog').isVisible(), false); await dailyEditorHidden(page);
   await activate(page, page.locator('#mode-campaign'));
   for (const selector of ['#circuit-editor-controls', '#edit-circuit', '#new-circuit', '#custom-details', '#puzzle-editor-form']) {
-    assert.equal(await page.locator(selector).isVisible(), false, 'Levels hide an existing custom draft');
+    assert.equal(await page.locator(selector).isVisible(), false);
   }
   await activate(page, page.locator('#mode-random'));
-  assert.equal(await page.locator('#edit-circuit').isVisible(), true);
-  assert.equal(await page.locator('#new-circuit').isVisible(), true);
   assert.equal(await page.locator('#puzzle-editor-form').isVisible(), true);
-  assert.equal(await page.locator('#editor-wires').inputValue(), '2', 'Changing game modes preserves the editable draft');
-  assert.equal(await page.locator('#editor-columns').inputValue(), '4');
-  assert.equal(await page.locator('#editor-target-3').getAttribute('data-sign'), '-1');
-  console.log('Visual editor: contextual icons, two-step links, unfinished endpoints, target-dot cycles, hole choices, validation, resizing, keyboard/touch, JSON/replay and daily visibility verified.');
+  assert.equal(await page.locator('#editor-wires').inputValue(), '2'); assert.equal(await page.locator('#editor-columns').inputValue(), '5');
+
+  const interleavedRequests = completionRequests;
+  await activate(page, page.locator('#new-circuit'));
+  await page.locator('#editor-wires').selectOption('1'); await page.locator('#editor-columns').selectOption('3');
+  await cell(0, 0, 'H');
+  await cell(1, 0, 'hole'); await offered(1, 0, ['I', 'Z']);
+  await cell(2, 0, 'H'); await submit();
+  assert.equal(await page.locator('#custom-status').innerText(), '', 'The editor accepts a fixed gate after a hole');
+  const constrainedData = await exportedPuzzle(page), constrained = await importPuzzle(page, constrainedData);
+  assert.deepEqual(constrainedData.columns.map(column => column.map(entry => entry.gate ?? entry.choices)), [['H'], [['I', 'Z']], ['H']],
+    'The GUI and JSON round-trip preserve the imposed closing Hadamard');
+  assert.deepEqual(Object.values(solutionFor(constrained)), ['Z'], 'The imposed suffix requires phase interference instead of final X flips');
+  await finish(page, constrained); await closeWin(page);
+  await basisFlow(page, constrained);
+  assert.equal(completionRequests, interleavedRequests, 'Interleaved custom puzzles never request completion lists');
+  console.log('Visual editor: fixed goal, contextual gates, two-step links, resize, keyboard/touch, reachability, JSON and replay verified.');
 }
 
 async function dailyEditorHidden(page) {
@@ -1233,99 +1173,72 @@ async function dailyEditorHidden(page) {
 }
 
 async function denseMirror(page) {
-  await activate(page, page.locator('#mode-random'));
-  await openDetails(page, '#advanced-features');
-  const puzzle = { wires: 4,
-    columns: [[0, 1, 2, 3].map(wire => ({ gate: 'H', wires: [wire] })),
-      [{ id: 'h1', wires: [0], choices: ['I', 'Z'] }]], target: Array(16).fill(0.25) };
-  const load = async value => {
-    await importPuzzle(page, puzzleData(value));
-    await page.locator('[data-hole="h1"]').waitFor();
-  };
-  await load(puzzle);
-  await basisFlow(page, puzzle);
-  await noOverflow(page);
-  await pinnedBasisLabels(page);
-  assert.equal(await page.locator('#signal-target .signal-flow-target').count(), 16, 'Four qubits show all sixteen populated outcomes in separate lanes');
-  const initial = (await finalAmplitudes(page, puzzle))[1];
-  assert.ok(initial.every(amplitude => Math.abs(amplitude - 0.25) < 1e-8));
-  const bounds = await page.locator('#signal-target .signal-flow-target').evaluateAll(nodes => nodes.map(node => {
-    const box = node.getBoundingClientRect();
-    return { width: box.width, height: box.height };
-  }));
-  assert.ok(bounds.every(box => box.width >= 3 && box.height >= 3), 'All sixteen target markers remain visible at a narrow viewport');
+  await activate(page, page.locator('#mode-random')); await openDetails(page, '#advanced-features');
+  const puzzle = validatePuzzle({ wires: 4, columns: [
+    [0, 1, 2, 3].map(wire => ({ gate: 'X', wires: [wire] })),
+    [0, 1, 2, 3].map(wire => ({ gate: 'H', wires: [wire] })),
+    [0, 1, 2, 3].map(wire => ({ id: 'h' + (wire + 1), wires: [wire], choices: ['I', 'H'] })),
+  ] });
+  await importPuzzle(page, puzzleData(puzzle)); await basisFlow(page, puzzle); await noOverflow(page); await pinnedBasisLabels(page);
+  assert.equal(await page.locator(`#signal-flow .signal-flow-node[data-boundary="${puzzle.columns.length}"]`).count(), 16,
+    'The expanded circuit retains all sixteen occupied output lanes');
+  assert.equal(await page.locator('#signal-target .signal-flow-target').count(), 1, 'The fixed target has only the all-ones marker');
+  assert.equal(await page.locator('#signal-target .signal-flow-target').getAttribute('data-basis'), '15');
+  const initial = await targetMarkers(page);
   await targetScrollPositions(page);
-  assert.ok(await page.locator('#flow-panel').evaluate(node => node.scrollHeight > node.clientHeight), 'The sixteen-lane mirror scrolls vertically inside its own bounded region');
+  assert.ok(await page.locator('#flow-panel').evaluate(node => node.scrollHeight > node.clientHeight));
   await page.locator('#flow-panel').evaluate(node => { node.scrollTop = node.scrollHeight; });
   const region = await page.locator('#flow-panel').boundingBox();
-  const lastLabel = await page.locator(`.signal-flow-label[data-basis="${grayBasis(15)}"]`).boundingBox();
-  assert.ok(lastLabel.y >= region.y && lastLabel.y + lastLabel.height <= region.y + region.height,
-    'The last basis lane and its fixed label can be reached through vertical scrolling');
-  const lastTarget = await page.locator(`#signal-target .signal-flow-target[data-basis="${grayBasis(15)}"]`).boundingBox();
-  assert.ok(lastTarget.y >= region.y && lastTarget.y + lastTarget.height <= region.y + region.height,
-    'Vertical navigation reveals the matching target beside the last basis lane');
-  await fixedTarget(page);
-  await targetScrollPositions(page);
-  await pinnedBasisLabels(page);
-  await accessibility(page);
+  const lastLabel = await page.locator(`.signal-flow-label[data-basis="${15}"]`).boundingBox();
+  assert.ok(lastLabel.y >= region.y && lastLabel.y + lastLabel.height <= region.y + region.height);
+  await fixedTarget(page); await targetScrollPositions(page); await pinnedBasisLabels(page); await accessibility(page);
   await page.screenshot({ path: resolve(output, `mobile-mirror-dense-${page.viewportSize().width}.png`), fullPage: true });
-  await load({ ...puzzle, target: puzzle.target.map(value => -value) });
-  const inverted = (await finalAmplitudes(page, puzzle))[1];
-  assert.deepEqual(inverted, initial, 'An irrelevant global sign leaves the target marker comparison unchanged');
+  await place(page, 'h1', 'H'); assert.deepEqual(await targetMarkers(page), initial);
   await finish(page, puzzle); await closeWin(page);
 }
 
 async function jointStateExamples(page) {
-  await activate(page, page.locator('#mode-random'));
-  await openDetails(page, '#advanced-features');
-  const hole = [{ id: 'h1', wires: [1], choices: ['I', 'Z'] }];
-  const root = { wires: 2 };
-  const half = Math.SQRT1_2;
+  await activate(page, page.locator('#mode-random')); await openDetails(page, '#advanced-features');
+  const fixed = (gate, ...wires) => ({ gate, wires });
+  const hole = (id, gate, ...wires) => ({ id, wires, choices: ['I', gate] });
   const cases = [
-    { ...root, columns: [[{ gate: 'H', wires: [0] }], [{ gate: 'CX', wires: [0, 1] }], hole],
-      target: [half, 0, 0, half], active: ['00', '11'], screenshot: 'bell-paths' },
-    { ...root, columns: [[{ gate: 'X', wires: [1] }], [{ gate: 'H', wires: [0] }], [{ gate: 'CX', wires: [0, 1] }], hole],
-      target: [0, half, half, 0], active: ['01', '10'], screenshot: 'opposite-bell-paths' },
-    { ...root, columns: [[{ gate: 'H', wires: [0] }], [{ gate: 'CX', wires: [0, 1] }], [{ gate: 'Z', wires: [0] }], hole],
-      target: [half, 0, 0, -half], active: ['00', '11'], screenshot: 'phase-paths' },
-    { ...root, columns: [[{ gate: 'H', wires: [0] }], [{ gate: 'H', wires: [0] }], hole],
-      target: [1, 0, 0, 0], active: ['00'], screenshot: 'interference-paths' },
+    { columns: [[fixed('H', 0)], [fixed('CX', 0, 1)], [hole('h1', 'CX', 0, 1)],
+      [hole('h2', 'H', 0)], [hole('h3', 'X', 0), hole('h4', 'X', 1)]], active: ['00', '11'], screenshot: 'bell-paths' },
+    { columns: [[fixed('X', 1)], [fixed('H', 0)], [fixed('CX', 0, 1)], [hole('h1', 'CX', 0, 1)],
+      [hole('h2', 'H', 0)], [hole('h3', 'X', 0)]], active: ['01', '10'], screenshot: 'opposite-bell-paths' },
+    { columns: [[fixed('H', 0)], [fixed('CX', 0, 1)], [fixed('Z', 0)], [hole('h1', 'Z', 0)],
+      [hole('h2', 'CX', 0, 1)], [hole('h3', 'H', 0)], [hole('h4', 'X', 0), hole('h5', 'X', 1)]],
+      active: ['00', '11'], screenshot: 'phase-paths' },
+    { columns: [[fixed('H', 0)], [fixed('H', 0)], [hole('h1', 'X', 0), hole('h2', 'X', 1)]],
+      active: ['00'], screenshot: 'interference-paths' },
   ];
-  for (const { active, screenshot, ...puzzle } of cases) {
+  for (const { active, screenshot, columns } of cases) {
+    const puzzle = validatePuzzle({ wires: 2, columns });
     await importPuzzle(page, puzzleData(puzzle));
-    assert.deepEqual(await basisFlow(page, puzzle), active, 'The mirror distinguishes correlated, anticorrelated and interfering joint outcomes');
-    const targetDots = await page.locator('.signal-flow-target').evaluateAll(nodes => nodes.map(node => [node.getAttribute('fill'), node.getAttribute('stroke')]));
-    const targetDot = sign => [phaseColor(sign), PHASE_COLORS.negative];
-    if (screenshot === 'bell-paths') assert.deepEqual(targetDots, [targetDot(1), targetDot(1)], 'The 00 + 11 outcomes share black dots with white outlines');
-    if (screenshot === 'phase-paths') assert.deepEqual(targetDots, [targetDot(1), targetDot(-1)], 'The 00 − 11 target distinguishes phase by black and white fills with white outlines');
-    await gateGeometry(page, puzzle);
-    await noOverflow(page);
+    assert.deepEqual(await basisFlow(page, puzzle), active, 'Initial paths distinguish correlation, phase and interference');
+    const dots = await page.locator(`#signal-flow .signal-flow-node[data-boundary="${columns.length}"]`).evaluateAll(nodes =>
+      nodes.map(node => [node.getAttribute('fill'), node.getAttribute('stroke')]));
+    const dot = sign => [phaseColor(sign), PHASE_COLORS.negative];
+    if (screenshot === 'bell-paths') assert.deepEqual(dots, [dot(1), dot(1)]);
+    if (screenshot === 'phase-paths') assert.deepEqual(dots, [dot(1), dot(-1)]);
+    assert.equal(await page.locator('#signal-target .signal-flow-target').count(), 1);
+    assert.equal(await page.locator('#signal-target .signal-flow-target').getAttribute('data-basis'), '3');
+    await gateGeometry(page, puzzle); await noOverflow(page);
     await page.locator('#flow-scroll').evaluate(node => { node.scrollLeft = node.scrollWidth; });
     await page.waitForFunction(() => Math.abs(document.querySelector('#flow-scroll').scrollLeft - document.querySelector('#signal-scroll').scrollLeft) < 1);
     await pinnedBasisLabels(page);
-    const region = await page.locator('#flow-panel').boundingBox();
-    const targets = await page.locator('.signal-flow-target').evaluateAll(nodes => nodes.map(node => {
-      const bounds = node.getBoundingClientRect(); return { left: bounds.left, right: bounds.right };
-    }));
-    assert.ok(targets.every(node => node.left >= region.x && node.right <= region.x + region.width), 'The phase comparison screenshot keeps target markers visible');
-    const width = await page.evaluate(() => innerWidth);
-    await page.screenshot({ path: resolve(output, `${width}-${screenshot}.png`), fullPage: true });
+    await page.screenshot({ path: resolve(output, `${page.viewportSize().width}-${screenshot}.png`), fullPage: true });
     await finish(page, puzzle); await closeWin(page);
   }
-  // Keep a real placement to review/export even when this custom target was
-  // already matched by its fixed gates and empty identity hole.
-  if (!await page.locator('#sequence button').count()) {
-    await place(page, 'h1', 'I'); await closeWin(page);
-  }
-  console.log('Joint-state mirror: Bell and opposite Bell states occupy different lanes; relative phase and destructive interference are preserved.');
+  console.log('Joint-state mirror: correlated, anticorrelated, signed and interfering inputs all resolve to the fixed all-ones goal.');
 }
 
 async function reverseCnot(page) {
   await activate(page, page.locator('#mode-random'));
   await openDetails(page, '#advanced-features');
   const hole = { id: 'h1', wires: [0, 1], choices: ['I', 'CX', 'XC', 'CZ'] };
-  const puzzle = { wires: 2,
-    columns: [[{ gate: 'X', wires: [1] }], [hole]], target: [0, 0, 0, 1] };
+  const puzzle = validatePuzzle({ wires: 2,
+    columns: [[{ gate: 'X', wires: [1] }], [hole]] });
   await importPuzzle(page, puzzleData(puzzle));
   await visibleChoices(page, hole);
   await place(page, hole.id, 'CX');
@@ -1354,16 +1267,17 @@ async function reverseCnot(page) {
 async function controlledGeometry(page, screenshot) {
   await activate(page, page.locator('#mode-random'));
   await openDetails(page, '#advanced-features');
-  const puzzle = { wires: 3,
+  const puzzle = validatePuzzle({ wires: 3,
     columns: [[{ gate: 'H', wires: [0] }, { gate: 'X', wires: [2] }],
       [{ gate: 'CX', wires: [2, 0] }],
       [{ gate: 'XC', wires: [2, 0] }],
       [{ gate: 'CZ', wires: [2, 0] }],
       [{ id: 'h1', wires: [2, 0], choices: ['I', 'CX', 'XC', 'CZ'] }],
       [{ id: 'h2', wires: [0, 2], choices: ['I', 'CX', 'XC', 'CZ'] }],
-      [{ id: 'h3', wires: [1], choices: ['I', 'X'] }]], target: [1, ...Array(7).fill(0)] };
-  const solution = { h1: 'XC', h2: 'XC', h3: 'X' };
-  puzzle.target = simulate(puzzle, solution).state;
+      [{ id: 'h3', wires: [1], choices: ['I', 'X'] }],
+      [{ id: 'h4', wires: [0], choices: ['I', 'H'] }],
+      [{ id: 'h5', wires: [0], choices: ['I', 'X'] }]] });
+  const solution = { h1: 'XC', h2: 'XC', h3: 'X', h4: 'H', h5: 'X' };
   await importPuzzle(page, puzzleData(puzzle));
   await gateGeometry(page, puzzle);
   await visibleChoices(page, getHoles(puzzle)[0]);
@@ -1380,6 +1294,7 @@ async function controlledGeometry(page, screenshot) {
   await place(page, 'h2', 'XC');
   await gateGeometry(page, puzzle, { h1: 'XC', h2: 'XC' });
   await place(page, 'h3', 'X');
+  await place(page, 'h4', 'H'); await place(page, 'h5', 'X');
   await page.locator('#win-dialog[open]').waitFor();
   await closeWin(page);
   await gateGeometry(page, puzzle, solution);
@@ -1394,6 +1309,132 @@ async function controlledGeometry(page, screenshot) {
   console.log('Gate geometry: fixed/filled and reversed/nonadjacent controls, free identity slots and review all align at exact signal junctions.');
 }
 
+async function gateMemo(page, puzzle) {
+  assert.equal(await page.locator('#signal-memo').isVisible(), true);
+  await openDetails(page, '#signal-memo');
+  const history = await page.locator('#sequence').innerHTML(), target = await targetMarkers(page);
+  const rgb = hex => 'rgb(' + [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)).join(', ') + ')';
+  assert.equal(await page.locator('#signal-memo-black, #signal-memo-white').count(),0,'The memo describes colour changes without separate input-colour switches');
+  for (const hole of getHoles(puzzle)) {
+    await activate(page, page.locator(`[data-hole="${hole.id}"]`));
+    const choices = hole.wires.length === 1 ? ['I', 'H', 'X', 'Z'] : ['I', 'CX', 'XC', 'CZ'];
+    assert.deepEqual(await page.locator('#signal-memo-tabs [data-memo-choice]').evaluateAll(nodes => nodes.map(node => node.dataset.memoChoice)), choices);
+    const wires = [...hole.wires].sort((a,b)=>a-b), bits = value => value.toString(2).padStart(wires.length,'0');
+    for (const gate of choices) {
+      await activate(page, page.locator(`#signal-memo-tabs [data-memo-choice="${gate}"]`));
+      assert.equal(await page.locator(`#signal-memo-tabs [data-memo-choice="${gate}"]`).getAttribute('aria-selected'),'true');
+      const expectedOutputs = basis => {
+        if (gate === 'H') return [{bits:'0',flipsColour:false},{bits:'1',flipsColour:Boolean(basis)}];
+        let output=basis,flipsColour=false;
+        const mask=wire=>1<<(wires.length-1-wires.indexOf(wire));
+        if (gate==='X') output^=mask(hole.wires[0]);
+        if (gate==='Z' && (basis&mask(hole.wires[0]))) flipsColour=true;
+        if ((gate==='CX'||gate==='XC') && (basis&mask(hole.wires[gate==='XC'?1:0]))) output^=mask(hole.wires[gate==='XC'?0:1]);
+        if (gate==='CZ' && hole.wires.every(wire=>basis&mask(wire))) flipsColour=true;
+        return [{bits:bits(output),flipsColour}];
+      };
+      const circuit = page.locator('#signal-memo-body > .signal-memo-circuit');
+      assert.equal(await circuit.count(),1,'The memo uses one expanded circuit with fixed basis lanes');
+      const read = () => circuit.evaluate(row => {
+        const paths = [...row.querySelectorAll('.signal-memo-path')].map(path => {
+          const start = path.getPointAtLength(0), end = path.getPointAtLength(path.getTotalLength());
+          return { role: path.dataset.role, from: path.dataset.from, to: path.dataset.to,
+            flipsColour: path.dataset.colourSwap === 'true', active: path.dataset.active,
+            stroke: getComputedStyle(path).stroke, startX: start.x, endX: end.x, startY: start.y, endY: end.y };
+        });
+        return {
+          input: row.dataset.input, label: row.querySelector('.signal-memo-paths').getAttribute('aria-label'),
+          gates: row.querySelector('.signal-memo-circuit-gate').children.length,
+          lanes: [...row.querySelectorAll('.signal-memo-lane')].map(lane => ({
+            basis: lane.dataset.basis, fromY: Number(lane.getAttribute('y1')), toY: Number(lane.getAttribute('y2')),
+          })),
+          buttons: [...row.querySelectorAll('[data-memo-input]')].map(button => ({ bits: button.dataset.memoInput, pressed: button.getAttribute('aria-pressed') })),
+          nodes: [...row.querySelectorAll('.signal-memo-node')].map(node => ({
+            role: node.dataset.role, bits: node.dataset.bits, flipsColour: node.dataset.colourSwap === 'true', active: node.dataset.active,
+            y: Number(node.getAttribute('cy')), fill: getComputedStyle(node).fill, outline: getComputedStyle(node).stroke,
+          })), paths,
+          markers: [...row.querySelectorAll('.signal-memo-colour-swap')].map(marker => ({
+            from: marker.dataset.from, to: marker.dataset.to, active: marker.dataset.active,
+            x: Number(marker.getAttribute('x')), y: Number(marker.getAttribute('y')),
+            width: Number(marker.getAttribute('width')), height: Number(marker.getAttribute('height')), glyph: marker.innerHTML,
+          })),
+        };
+      });
+      const drawing = await read(), count = 2**wires.length;
+      assert.ok(drawing.label?.length > 0, 'The circuit has an accessible explanation');
+      assert.equal(drawing.gates,1,'The reference contains the actual gate icon once');
+      assert.equal(drawing.lanes.length,count);
+      assert.equal(new Set(drawing.lanes.map(lane => lane.basis)).size,count);
+      assert.ok(drawing.lanes.every(lane => lane.fromY === lane.toY), 'Input and output share the same basis lanes');
+      const expectedPaths = Array.from({length:count}, (_, basis) => expectedOutputs(basis).map(output => ({from:bits(basis),to:output.bits,flipsColour:output.flipsColour}))).flat();
+      const pathOrder = (a,b) => (a.from + ':' + a.to).localeCompare(b.from + ':' + b.to);
+      assert.deepEqual(drawing.paths.filter(path => path.role === 'output').map(({from,to,flipsColour})=>({from,to,flipsColour})).sort(pathOrder),
+        expectedPaths.sort(pathOrder),'Every basis mapping is present, including inactive mappings');
+      const negativePaths = expectedPaths.filter(path => path.flipsColour).map(({from,to})=>({from,to})).sort(pathOrder);
+      assert.deepEqual(drawing.markers.map(({from,to})=>({from,to})).sort(pathOrder),negativePaths,'Only colour-changing paths carry the black/white swap marker');
+      assert.equal(await page.locator('#signal-memo-key').isVisible(),negativePaths.length > 0);
+      if (negativePaths.length) {
+        const key = page.locator('#signal-memo-key .signal-memo-colour-swap');
+        assert.equal(await key.count(),1);
+        assert.equal(await key.getAttribute('data-from'),null,'The legend marker is not a circuit route');
+        assert.equal(await key.getAttribute('data-to'),null);
+        assert.ok(drawing.markers.every(marker => marker.glyph === drawing.markers[0].glyph));
+        assert.equal(await key.innerHTML(),drawing.markers[0].glyph,'The legend uses the same marker as the paths');
+      }
+      assert.equal(await circuit.locator('.signal-memo-node[data-phase], .signal-memo-path[data-phase]').count(),0);
+      for (const path of drawing.paths.filter(path => path.role === 'output')) {
+        assert.ok(Math.abs(path.startY - drawing.lanes[parseInt(path.from,2)].fromY) < 0.1);
+        assert.ok(Math.abs(path.endY - drawing.lanes[parseInt(path.to,2)].toY) < 0.1,
+          'Mappings terminate on their output basis lane instead of relabelling an input lane');
+      }
+      for (const marker of drawing.markers) {
+        const path = drawing.paths.find(path => path.from === marker.from && path.to === marker.to);
+        assert.ok(marker.width > 0 && marker.height > 0);
+        assert.ok(Math.abs(marker.x + marker.width/2 - (path.startX + path.endX)/2) < 0.1);
+        assert.ok(Math.abs(marker.y + marker.height/2 - (path.startY + path.endY)/2) < 0.1,'Colour-change markers sit at the route midpoint');
+      }
+      for (let basis=0; basis<count; basis++) {
+        await activate(page,page.locator(`[data-memo-input="${bits(basis)}"]`));
+        const row = await read(), expected = expectedOutputs(basis);
+        assert.equal(row.input,bits(basis));
+        const inputs = row.nodes.filter(node => node.role === 'input'), outputs = row.nodes.filter(node => node.role === 'output');
+        assert.equal(inputs.length,count);
+        assert.deepEqual(inputs.map(({bits:input,active})=>({bits:input,active})),
+          Array.from({length:count},(_,index)=>({bits:bits(index),active:String(index===basis)})));
+        assert.deepEqual(row.buttons,Array.from({length:count},(_,index)=>({bits:bits(index),pressed:String(index===basis)})));
+        assert.deepEqual(outputs.map(({bits,flipsColour})=>({bits,flipsColour})),expected,`${gate}, ${row.input}`);
+        assert.ok(row.nodes.every(node => Math.abs(node.y - row.lanes[parseInt(node.bits,2)].fromY) < 0.1), 'Nodes stay on their named basis lane');
+        assert.ok(row.nodes.every(node => node.fill === 'none' && node.outline === rgb(CIRCUIT_COLORS.text)), 'Neutral endpoints do not impose an input colour');
+        assert.ok(row.paths.filter(path => path.role === 'output').every(path => path.active === String(path.from === bits(basis))), 'Only the selected input’s mapping is highlighted');
+        assert.deepEqual(row.paths.filter(path => path.role === 'output' && path.active === 'true').map(({to,flipsColour})=>({bits:to,flipsColour})),expected);
+        assert.ok(row.markers.every(marker => marker.active === String(marker.from === bits(basis))),'Colour-swap markers follow the selected input');
+        assert.ok(row.paths.every(path => path.stroke === rgb(CIRCUIT_COLORS.text)), 'Every route uses the same neutral stroke');
+      }
+    }
+  }
+  const inputs = page.locator('#signal-memo-body [data-memo-input]');
+  await inputs.first().focus(); await page.keyboard.press('Space');
+  assert.equal(await page.locator('#signal-memo-body > .signal-memo-circuit').getAttribute('data-input'),await inputs.first().getAttribute('data-memo-input'));
+  await inputs.last().focus(); await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#signal-memo-body > .signal-memo-circuit').getAttribute('data-input'),await inputs.last().getAttribute('data-memo-input'));
+  await page.locator('#signal-memo-tabs [data-memo-choice]').first().focus(); await page.keyboard.press('End');
+  assert.equal(await page.locator('#signal-memo-tabs [aria-selected="true"]').getAttribute('data-memo-choice'),getHoles(puzzle).at(-1).wires.length === 1 ? 'Z' : 'CZ');
+  await page.keyboard.press('Home');
+  assert.equal(await page.locator('#signal-memo-tabs [aria-selected="true"]').getAttribute('data-memo-choice'),'I');
+  assert.equal(await page.locator('#sequence').innerHTML(),history,'Consulting the maps places no gates');
+  assert.deepEqual(await targetMarkers(page),target);
+  await noOverflow(page); await accessibility(page);
+  const hadamard = getHoles(puzzle).find(hole=>hole.wires.length === 1);
+  if (hadamard) {
+    await activate(page,page.locator(`[data-hole="${hadamard.id}"]`));
+    await activate(page,page.locator('#signal-memo-tabs [data-memo-choice="H"]'));
+    await activate(page,page.locator('[data-memo-input="1"]'));
+    await page.locator('#signal-memo').screenshot({path:resolve(output,`memo-H-${page.viewportSize().width}.png`)});
+  }
+  await page.screenshot({path:resolve(output,`memo-${page.viewportSize().width}.png`),fullPage:true});
+  await activate(page, page.locator('#signal-memo > summary'));
+}
+
 async function daily(page, name) {
   const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/daily' && response.status() === 200);
   await activate(page, page.locator('#mode-daily'));
@@ -1404,6 +1445,7 @@ async function daily(page, name) {
   await dailyEditorHidden(page);
   const info = fixture.getDaily('quantum-signals');
   const puzzle = dailyPuzzle(info.date);
+  await gateMemo(page, puzzle);
   await noOverflow(page);
   assert.doesNotMatch((await page.locator('#daily-heading, #daily-status').allTextContents()).join(' '), /ranking|score|optimal/i,
     'Daily puzzle status contains no ranking or benchmark language');
@@ -1415,12 +1457,12 @@ async function daily(page, name) {
 }
 
 async function archivedCompletion() {
-  const now = '2026-10-17T10:00:00Z', api = createBrowserApi({ now: Date.parse(now) });
+  const now = '2026-10-27T10:00:00Z', api = createBrowserApi({ now: Date.parse(now) });
   const page = await pageFor({ viewport: { width: 1000, height: 850 } }, { api, now });
   await activate(page, page.locator('#mode-daily'));
   await page.locator('#daily-heading:not([hidden])').waitFor();
   await activate(page, page.locator('#daily-toggle'));
-  const date = '2026-10-15';
+  const date = '2026-10-25';
   const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/daily' &&
     new URL(response.url()).searchParams.get('date') === date && response.status() === 200);
   await page.locator('#daily-date').selectOption(date);
@@ -1469,72 +1511,108 @@ async function tutorialGateAppearance(page) {
     const glyphs = [...document.querySelectorAll('#signal-board .gate-glyph, .signal-palette [data-choice]:not([hidden]) .gate-glyph, #tutorial-text .gate-glyph')];
     return {
       opaque: [...board, ...palette, ...glyphs].every(node => getComputedStyle(node).opacity === '1'),
-      locked: board.every(button => button.disabled) && palette.every(button => button.disabled === !button.hasAttribute('data-tutorial-focus')),
+      locked: [...board, ...palette].every(button => button.disabled),
     };
   });
   assert.equal(report.opaque, true, 'Tutorial gates retain their normal circuit, palette and inline opacity');
-  assert.equal(report.locked, true, 'Only the highlighted tutorial gate is enabled; the other gates remain locked');
+  assert.equal(report.locked, true, 'The cinematic tutorial keeps every gate and hole read-only');
 }
 
 async function cancellationTutorial(page, profile) {
-  await activate(page, page.locator('#mode-tutorial'));
-  await tutorialGateAppearance(page);
+  await activate(page, page.locator('#mode-tutorial')); await tutorialGateAppearance(page);
+  assert.equal(TUTORIAL_STEPS.length, 15, 'The worked guide stays within fifteen steps');
+  assert.equal(await page.locator('#signal-board .signal-fixed').count(), 0, 'The tutorial begins without imposed gates');
+  await basisFlow(page, TUTORIAL_PUZZLES[0]);
+  assert.deepEqual(simulate(TUTORIAL_PUZZLES[0]).state, [1, 0, 0, 0], 'The empty input circuit preserves 00');
   await activate(page, page.locator('#tutorial-start'));
-  await activate(page, page.locator('[data-choice="H"]'));
-  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 1);
+  const restartAt = TUTORIAL_STEPS.findIndex((step, index) => step.gate && TUTORIAL_STEPS[index + 1]?.chapter === step.chapter);
+  for (let index = 0; index <= restartAt; index++) {
+    await activate(page, page.locator('#tutorial-next'));
+    await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text, `Step ${index + 2} of ${TUTORIAL_STEPS.length}`);
+  }
+  await page.waitForFunction(() => document.querySelectorAll('#signal-board [data-hole][data-filled="true"]').length === 1);
   await activate(page, page.locator('#tutorial-start'));
-  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 0, 'Restart clears the worked example');
-  const placements = {};
-  for (const [index, { hole, gate }] of TUTORIAL_STEPS.entries()) {
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 0, 'Restart returns to the first empty worked circuit');
+  let chapter = -1, placements = {}, sawWall = false, sawLaterPath = false;
+  for (const [index, step] of TUTORIAL_STEPS.entries()) {
+    if (chapter !== step.chapter) { chapter = step.chapter; placements = {}; }
+    const puzzle = TUTORIAL_PUZZLES[chapter];
     assert.equal(await page.locator('#tutorial-heading').innerText(), `Step ${index + 1} of ${TUTORIAL_STEPS.length}`);
-    const highlighted = await page.locator('.signal-flow-bit-highlight').evaluateAll(nodes => nodes.map(node => Number(node.dataset.wire)));
-    assert.deepEqual(highlighted, gate === 'CZ' ? Array(8).fill([0, 1]).flat() : [], 'CZ highlights the linked wires’ bit positions only for its explanation');
-    if (gate === 'CZ') {
-      await pinnedBasisLabels(page);
-      await page.locator('#flow-panel').screenshot({ path: resolve(output, `${profile}-tutorial-cz-bits.png`) });
+    assert.equal(await page.locator('#signal-target .signal-flow-target').getAttribute('data-basis'), String(2 ** puzzle.wires - 1));
+    assert.deepEqual(await page.locator('#signal-board .signal-wire-focus').evaluateAll(nodes => nodes.map(node => Number(node.dataset.wire))), step.focus.wires ?? []);
+    assert.deepEqual(await page.locator('#signal-board .signal-gate-focus').evaluateAll(nodes => nodes.map(node => node.dataset.wires)),
+      (puzzle.columns[step.focus.column] ?? []).filter(entry => !step.focus.wires?.length || entry.wires.some(wire => step.focus.wires.includes(wire)))
+        .map(entry => entry.wires.join(':')), 'Only gates on the explained wires are highlighted, including whole controlled gates');
+    const highlighted = await page.locator('.signal-flow-bit-highlight').evaluateAll(nodes => [...new Set(nodes.map(node => Number(node.dataset.wire)))].sort((a,b)=>a-b));
+    assert.deepEqual(highlighted, [...(step.focus.wires ?? [])].sort((a,b)=>a-b), 'The expanded digits identify the actual circuit wires');
+    if (touchPages.has(page) && page.viewportSize().width <= 600) {
+      const checkView = async view => {
+        assert.equal(await page.locator('.signals-game').getAttribute('data-signal-tutorial-view'), view);
+        assert.equal(await page.locator('#signal-scroll').isVisible(), view === 'circuit');
+        assert.equal(await page.locator('#flow-panel').isVisible(), view === 'paths');
+        const controls = await page.locator('#tutorial-panel').evaluate(panel => {
+          const box=panel.getBoundingClientRect(), next=document.getElementById('tutorial-next').getBoundingClientRect();
+          return { position:getComputedStyle(panel).position, top:box.top, bottom:box.bottom, nextBottom:next.bottom, height:innerHeight };
+        });
+        assert.equal(controls.position,'fixed');
+        assert.ok(controls.top >= 0 && controls.bottom <= controls.height && controls.nextBottom <= controls.height, 'The tutorial bubble and Next step stay visible');
+      };
+      await checkView(step.view);
+    } else {
+      assert.equal(await page.locator('#signal-scroll').isVisible(), true); assert.equal(await page.locator('#flow-panel').isVisible(), true);
+    }
+    if (step.view === 'circuit') {
+      const visible = await page.locator('#signal-board .signal-gate-focus').evaluateAll(nodes => {
+        const card = document.getElementById('tutorial-panel').getBoundingClientRect();
+        return nodes.map(node => { const rect = node.getBoundingClientRect();
+          return { top:rect.top,bottom:rect.bottom,height:innerHeight,
+            overlap:Math.max(0,Math.min(rect.right,card.right)-Math.max(rect.left,card.left))*Math.max(0,Math.min(rect.bottom,card.bottom)-Math.max(rect.top,card.top)) };
+        });
+      });
+      assert.ok(visible.every(rect=>rect.top>=0&&rect.bottom<=rect.height&&rect.overlap<=1),
+        `Step ${index+1}: the bubble leaves the complete focused gate visible: ${JSON.stringify(visible)}`);
+    }
+    const cancellations = flowTrace(puzzle, placements).cancellations[step.focus.column];
+    if (step.focus.toBases?.some(basis => cancellations.includes(basis))) {
+      sawWall = true;
+      assert.ok(await page.locator('.signal-flow-cancellation.signal-flow-focus').count() > 0, 'The explanation highlights the actual stopped path');
+      assert.equal(await page.locator('#signal-target').getAttribute('data-match'), 'false', 'The wall appears before the later gate reaches the goal');
+      await page.screenshot({path:resolve(output,`${profile}-tutorial-cancellation.png`),fullPage:true});
+    }
+    if (step.gate === 'CZ') {
+      const wires = getHoles(puzzle).find(hole => hole.id === step.hole).wires;
+      assert.deepEqual(highlighted,[...wires].sort((a,b)=>a-b), 'CZ highlights the bits for its actual circuit wires');
+      await page.screenshot({path:resolve(output,`${profile}-tutorial-cz-bits.png`),fullPage:true});
+    }
+    if (step.focus.phase && step.chapter === 1 && simulate(puzzle, placements).state.some(value => value < -1e-9)) {
+      await page.screenshot({path:resolve(output,`${profile}-tutorial-phase.png`),fullPage:true});
     }
     const history = await page.locator('#sequence').innerHTML();
-    if (hole) {
-      await activate(page, page.locator(`[data-choice="${gate}"]`));
-      placements[hole] = gate;
-    } else {
-      assert.match(await page.locator('#tutorial-text').innerText(), /walls.*white.*dark.*cancel/i);
-      assert.equal(await page.locator('#signal-target').getAttribute('data-match'), 'false', 'The wall explanation precedes matching the target');
-      assert.equal(await page.locator('[data-hole="e"]').getAttribute('data-filled'), 'false');
-      assert.equal(await page.locator('#signal-board').evaluate(board =>
-        parseFloat(board.querySelector('[data-hole="e"]').style.left) > parseFloat(board.querySelector('[data-hole="f"]').style.left)), true,
-      'The remaining gate is physically after the recombination');
-      const focused = page.locator('.signal-flow-cancellation[data-tutorial-focus]');
-      assert.equal(await focused.count(), 1, 'The observation highlights a real cancellation wall');
-      assert.deepEqual(await page.locator('.signal-flow-cancellation').evaluateAll(nodes => nodes.map(node => Number(node.dataset.basis))), [2, 3, 4, 5]);
-      await page.waitForFunction(() => {
-        const wall = document.querySelector('.signal-flow-cancellation[data-tutorial-focus]').getBoundingClientRect();
-        const region = document.getElementById('flow-panel').getBoundingClientRect();
-        return wall.left >= region.left && wall.right <= region.right && wall.top >= region.top && wall.bottom <= region.bottom;
-      });
-      await page.screenshot({ path: resolve(output, `${profile}-tutorial-cancellation.png`), fullPage: true });
-      await activate(page, page.locator('#tutorial-next'));
-      assert.equal(await page.locator('#sequence').innerHTML(), history, 'Observing the wall places no extra gate');
+    await activate(page,page.locator('#tutorial-next'));
+    if (step.gate) placements[step.hole] = step.gate;
+    const heading = index === TUTORIAL_STEPS.length - 1 ? 'Tutorial complete' : `Step ${index+2} of ${TUTORIAL_STEPS.length}`;
+    await page.waitForFunction(text=>document.getElementById('tutorial-heading').textContent===text,heading);
+    await page.waitForFunction(()=>!document.getElementById('signal-flow').hasAttribute('data-flow-animating'));
+    assert.equal(await page.locator('#win-dialog').evaluate(dialog=>dialog.open),false);
+    if (!step.gate && TUTORIAL_STEPS[index+1]?.chapter === chapter) assert.equal(await page.locator('#sequence').innerHTML(),history,'Looking adds no gate placement');
+    if (sawWall && chapter === 1 && simulate(puzzle, placements).solved) {
+      assert.equal(simulate(puzzle,placements).solved,true); sawLaterPath=true;
     }
-    const heading = index === TUTORIAL_STEPS.length - 1 ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL_STEPS.length}`;
-    await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text,
-      heading);
-    assert.equal(await page.locator('#win-dialog').evaluate(dialog => dialog.open), false, 'The tutorial never interrupts its explanation with a win popup');
-    await tutorialGateAppearance(page);
-    await basisFlow(page, TUTORIAL_PUZZLE, placements);
-    if (placements.f) assert.equal(await page.locator('#signal-flow').evaluate(svg => [2, 3, 4, 5].every(basis =>
-      !svg.querySelector(`.signal-flow-path[data-column="6"][data-from="${basis}"]`) &&
-      !svg.querySelector(`.signal-flow-node[data-boundary="7"][data-basis="${basis}"]`))), true,
-    'Stopped paths remain absent through the later gate and at the output');
+    const next = TUTORIAL_STEPS[index+1];
+    if (chapter === TUTORIAL_PUZZLES.length - 1 && next?.chapter === chapter) {
+      assert.equal(simulate(puzzle, placements).solved, false, 'The final worked example reaches its goal only on the last move');
+      assert.equal(await page.locator('#signal-target').getAttribute('data-match'), 'false');
+    }
+    const shown = next && next.chapter !== chapter ? TUTORIAL_PUZZLES[next.chapter] : puzzle;
+    await tutorialGateAppearance(page); await basisFlow(page,shown,next && next.chapter !== chapter ? {} : placements);
   }
-  assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
-  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(), 6,
-    'The seven-step guide still demonstrates all six explicit gate placements');
-  assert.equal(await page.locator('#sequence button').count(), 6, 'Observing interference adds no placement');
-  assert.equal(await page.locator('.signal-flow-cancellation').count(), 4, 'The completed tutorial retains its cancellation walls');
-  await page.locator('#flow-panel').screenshot({ path: resolve(output, `${profile}-tutorial-downstream.png`) });
-  await activate(page, page.locator('#tutorial-levels'));
-  assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'), 'true');
+  assert.ok(sawWall && sawLaterPath,'The guide shows cancellation before following the surviving path');
+  const final=TUTORIAL_PUZZLES.at(-1);
+  assert.equal(await page.locator('#signal-target').getAttribute('data-match'),'true');
+  assert.equal(await page.locator('[data-hole][data-filled="true"]').count(),getHoles(final).length);
+  assert.equal(await page.locator('#sequence button').count(),getHoles(final).length);
+  await page.screenshot({path:resolve(output,`${profile}-tutorial-downstream.png`),fullPage:true});
+  await activate(page,page.locator('#tutorial-levels')); assert.equal(await page.locator('#mode-campaign').getAttribute('aria-pressed'),'true');
 }
 
 async function focusedCancellations() {
@@ -1547,7 +1625,7 @@ async function focusedCancellations() {
     assert.equal(await page.locator('.signal-flow-cancellation').count(), 0, 'An unfilled identity hole produces no false wall');
     await finish(page, LEVELS[3]); await closeWin(page);
     assert.equal(await page.locator('.signal-flow-cancellation').count(), 1);
-    assert.equal(await page.locator('.signal-flow-cancellation').getAttribute('data-basis'), '1');
+    assert.equal(await page.locator('.signal-flow-cancellation').getAttribute('data-basis'), '0');
     await page.locator('#flow-panel').screenshot({ path: resolve(output, `${profile}-hh-cancellation.png`) });
     await openDetails(page, '#advanced-features');
     await activate(page, page.locator('#share-replay'));
@@ -1560,23 +1638,30 @@ async function focusedCancellations() {
       const step = 740 / columns, left = (canvas.width - step * columns) / 2;
       const flowHeight = (2 ** wires - 1) * 38, top = (canvas.height + 48 - flowHeight) / 2;
       return [...context.getImageData(left + (column + 1) * step, top + row * 38, 1, 1).data];
-    }, { column, columns: LEVELS[3].columns.length, wires: LEVELS[3].wires, row: basisRow(1) });
+    }, { column, columns: LEVELS[3].columns.length, wires: LEVELS[3].wires, row: 0 });
     assert.deepEqual(pixel, [255, 255, 255, 255], 'The actual static PNG contains the cancellation wall at the canceled output');
     const pending = page.waitForEvent('download');
     await activate(page, page.locator('#download-gif'));
     assert.equal((await readFile(await (await pending).path())).subarray(0, 6).toString('ascii'), 'GIF89a');
     await activate(page, page.locator('#close-share'));
-    await page.locator('#level').selectOption('3');
-    await finish(page, LEVELS[2]); await closeWin(page);
-    assert.equal(await page.locator('.signal-flow-cancellation').count(), 0, 'Nonzero positive and negative outputs do not create cancellation walls');
+    await page.locator('#level').selectOption('1');
+    await finish(page, LEVELS[0]); await closeWin(page);
+    assert.equal(await page.locator('.signal-flow-cancellation').count(), 0, 'A bit flip creates no false cancellation wall');
     await noOverflow(page);
     await page.context().close();
   }
   assert.deepEqual(errors, []);
-  console.log('Desktop/mobile: seven-step tutorial, restart/Levels, visible cancellation focus, HH walls, mixed-phase controls and PNG/GIF exports verified.');
+  console.log('Desktop/mobile: three-circuit tutorial, restart/Levels, visible cancellation focus, HH walls, mixed-phase controls and PNG/GIF exports verified.');
 }
 
 async function focusedBaits() {
+  let seededBait, identityWitness;
+  for (let index = 0; index < 64 && !identityWitness; index++) {
+    const candidate = generatePuzzle('browser-identity-bait-' + index, 1);
+    const witness = solvePuzzle(candidate, { limit: 4096 }).find(solution => Object.values(solution).includes('I'));
+    if (witness) { seededBait = candidate; identityWitness = witness; }
+  }
+  assert.ok(identityWitness, 'Seeded random generation includes playable identity baits');
   for (const [profile, options] of [['desktop', { viewport: { width: 1440, height: 1100 } }],
     ['mobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 }]]) {
     const page = await pageFor(options), submissions = [];
@@ -1587,10 +1672,10 @@ async function focusedBaits() {
           submissions.push(request.postDataJSON());
         }
       });
-      for (const [level, count] of [[4, 1], [7, 1], [11, 3]]) {
+      for (const level of [4, 7, 11]) {
         await page.locator('#level').selectOption(String(level));
-        assert.equal(await page.locator('#signal-board [data-hole]').count(), count,
-          `Official level ${level} retains its original holes`);
+        assert.equal(await page.locator('#signal-board [data-hole]').count(), getHoles(LEVELS[level - 1]).length,
+          `Official level ${level} matches its authored hole layout`);
         if (level !== 11) { await finish(page, LEVELS[level - 1]); await closeWin(page); }
       }
       await completionBoard(page);
@@ -1598,8 +1683,8 @@ async function focusedBaits() {
       await openDetails(page, '#advanced-features');
       const customRequests = completionRequests;
       const puzzle = await importPuzzle(page, { wires: 1,
-        columns: [[{ gate: 'H', wires: [0] }], [{ wires: [0], choices: ['I', 'H', 'X', 'Z'] }],
-          [{ wires: [0], choices: ['I', 'X'] }]], target: { '0': 1 } });
+        columns: [[{ gate: 'X', wires: [0] }], [{ gate: 'H', wires: [0] }], [{ wires: [0], choices: ['I', 'H', 'X', 'Z'] }],
+          [{ wires: [0], choices: ['I', 'X'] }]] });
       const [active, bait] = getHoles(puzzle);
       await finish(page, puzzle);
       await page.locator('#win-dialog[open]').waitFor();
@@ -1627,11 +1712,9 @@ async function focusedBaits() {
       assert.deepEqual(await placedGates(page, puzzle), { [active.id]: 'H', [bait.id]: 'X' });
       await basisFlow(page, puzzle);
 
-      await page.locator('#difficulty').selectOption('1');
-      await activate(page, page.locator('#new-puzzle'));
-      const random = await currentPuzzle(page);
+      const random = await importPuzzle(page, puzzleData(seededBait));
       const witness = solvePuzzle(random, { limit: 4096 }).find(solution => Object.values(solution).includes('I'));
-      assert.ok(witness, 'A generated one-wire puzzle permits an identity to stay empty');
+      assert.ok(witness, 'A seeded generated puzzle permits an identity to stay empty');
       for (const [hole, gate] of Object.entries(witness)) {
         if (await page.locator('#win-dialog').evaluate(dialog => dialog.open)) break;
         if (gate !== 'I') await place(page, hole, gate);
@@ -1645,7 +1728,7 @@ async function focusedBaits() {
       const savedCompletions = submissions.length;
       await openDetails(page, '#advanced-features');
       const custom = await importPuzzle(page, { wires: 1,
-        columns: [[{ wires: [0], choices: ['I', 'X'] }]], target: { '0': 1 } });
+        columns: [[{ gate: 'X', wires: [0] }], [{ wires: [0], choices: ['I', 'X'] }]] });
       assert.equal(simulate(custom).solved, true, 'A custom circuit may already match with no placements');
       assert.equal(await page.locator('#sequence button').count(), 0);
       assert.equal(await page.locator('#share-replay').isVisible(), false, 'A zero-action circuit has no replay to share');
@@ -1665,7 +1748,7 @@ async function focusedBaits() {
     } finally {
       await page.context().close();
     }
-    console.log(`${profile}: original campaign holes, custom/random identity baits, PNG/GIF exports, erase/undo, zero-action custom results and seven-step tutorial passed.`);
+    console.log(`${profile}: authored campaign holes, custom/random identity baits, PNG/GIF exports, erase/undo, zero-action custom results and three-circuit tutorial passed.`);
   }
   assert.deepEqual(errors, [], 'Optional identity gameplay has no uncaught browser errors');
 }
@@ -1755,6 +1838,7 @@ try {
   else if (process.env.GAME_BROWSER_FOCUS === 'registration') await focusedRegistration();
   else if (process.env.GAME_BROWSER_FOCUS === 'alpha') await focusedAlpha();
   else {
+  if (process.env.GAME_BROWSER_FOCUS !== 'mobile') {
   const desktop = await pageFor({ viewport: { width: 1440, height: 1050 } });
   await noOverflow(desktop);
   await emptySlots(desktop);
@@ -1771,12 +1855,12 @@ try {
   assert.equal(await desktop.locator('[data-hole][data-filled="true"]').count(), 0, 'Undo clears the keyboard placement');
   await desktop.locator('#restart').click();
   await autofocus(desktop, true);
-  await desktop.locator('#level').selectOption('11');
-  await desktop.locator('[data-choice="H"]').focus();
+  await desktop.locator('#level').selectOption('3');
+  await desktop.locator('[data-choice="Z"]').focus();
   await desktop.keyboard.press('Enter');
   assert.equal(await desktop.locator('[data-hole="b"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await desktop.evaluate(() => document.activeElement?.dataset.hole), 'b', 'Focus follows the next hole when its palette hides the previous choice');
-  await visibleChoices(desktop, getHoles(LEVELS[10])[1]);
+  await visibleChoices(desktop, getHoles(LEVELS[2])[1]);
   await desktop.locator('[data-hole="a"]').click();
   await desktop.locator('#erase-gate').focus();
   await desktop.keyboard.press('Enter');
@@ -1786,11 +1870,14 @@ try {
   await keyboardAndMouse(desktop);
   for (const level of LEVELS) {
     await desktop.locator('#level').selectOption(String(LEVELS.indexOf(level) + 1));
+    assert.equal(await desktop.locator('#signal-memo').isVisible(), true, 'Every official level has the gate memo');
+    if (level === LEVELS[2]) await gateMemo(desktop, level);
     await gateGeometry(desktop, level);
     if (level === LEVELS[2] || level === LEVELS[7]) {
       const [current, target] = await finalAmplitudes(desktop, level);
-      assert.ok(current.every((amplitude, index) => Math.abs(amplitude * amplitude - target[index] * target[index]) < 1e-8), 'Relative-phase lessons have identical probabilities');
-      assert.ok(!stateEqual(current, target), 'The target still makes its different relative phase visible');
+      assert.equal(target.filter(amplitude => Math.abs(amplitude) > 1e-8).length, 1, 'Phase lessons retain the same single-basis goal');
+      assert.equal(target.at(-1), 1, 'The goal collects all paths at the all-ones label');
+      assert.ok(!stateEqual(current, target), 'The phase lesson still needs a nontrivial completion');
       await basisFlow(desktop, level);
       await desktop.screenshot({ path: resolve(output, `desktop-phase-${LEVELS.indexOf(level) + 1}.png`), fullPage: true });
     }
@@ -1814,8 +1901,10 @@ try {
   await controlledGeometry(desktop, 'desktop-gate-geometry.png');
   await jointStateExamples(desktop);
   console.log('Desktop: random difficulties, malformed and valid custom puzzles, undo/reset, HTTP failure and daily retry verified.');
+  }
 
   const mobile = await pageFor({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  if (process.env.GAME_BROWSER_FOCUS === 'mobile') await cancellationTutorial(mobile, 'mobile');
   await accessibility(mobile);
   await mobile.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true });
   await mobile.setViewportSize({ width: 320, height: 780 });

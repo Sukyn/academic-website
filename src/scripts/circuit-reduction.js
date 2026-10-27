@@ -3,6 +3,7 @@ import { customCircuit, identityCircuit } from '../lib/circuit-reduction/custom.
 import { generatePuzzle } from '../lib/circuit-reduction/generator.js';
 import { spaceGlyph, circuitWires } from '../lib/circuit-reduction/rendering.js';
 import { animateRewrite } from '../lib/circuit-reduction/animation.js';
+import { REPLAY_REWRITE_DURATION } from '../lib/circuit-reduction/transition.js';
 import { gateGlyph } from '../lib/games/circuit-graphics.js';
 import { LEVELS, DAILY_START } from '../lib/circuit-reduction/puzzles.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
@@ -10,11 +11,13 @@ import { createDailySession } from '../lib/games/daily-session.js';
 import { startDailyFromLink } from '../lib/games/daily-links.js';
 import { createReplayShare } from '../lib/games/replay-share.js';
 import { createStepReplay } from '../lib/games/step-replay.js';
-import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
+import { formatPuzzleDate, bindDailyControls, updateDailyHeading } from '../lib/games/daily-ui.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
-import { bindGameDialogs, handleRoundShortcut, rectangleCells, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
+import { bindGameDialogs, handleRoundShortcut, rectangleCells, updateModeMenu, updateResultMenu, updateLevelControls } from '../lib/games/controls.js';
 import { expandSelection, toggleSelection } from '../lib/games/circuit-selection.js';
 import { createTutorial } from '../lib/games/tutorial.js';
+import { createRulePalette } from '../lib/games/rule-palette.js';
+import { createPuzzleResult } from '../lib/games/puzzle-result.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/circuit-reduction/tutorial.js';
 
@@ -23,6 +26,8 @@ const get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 const winDialog = get('win-dialog');
 const ruleButtons = [...document.querySelectorAll('[data-rule]')];
+const rulePalette = createRulePalette(ruleButtons, { apply: playMove });
+const puzzleSolved = createPuzzleResult(isSolved);
 const cellNames = { '.': 'empty slot', H: 'H', X: 'X', Z: 'Z', ZU: 'upper Z endpoint', ZD: 'lower Z endpoint', XU: 'upper X endpoint', XD: 'lower X endpoint' };
 let mode = 'campaign', level = LEVELS[0], campaignLevel = level, editing = false;
 let circuit = level.circuit, sequence = [], states = [circuit];
@@ -54,7 +59,7 @@ const scores = createScoreboard({
   get, selector: () => mode === 'campaign' || mode === 'daily' ? selector() : null,
   benchmark: () => ({ optimalMoves: level?.optimalMoves ?? level?.parMoves,
     benchmarkLabel: level?.optimalMoves == null ? 'Best known' : 'Optimal' }),
-  canSubmit: () => !animation && !daily.loading && canScore() && isSolved(circuit),
+  canSubmit: () => !animation && !daily.loading && canScore() && puzzleSolved(circuit),
   sequence: () => sequence, update: () => update({ board: false }),
   onDailyClosed: () => { level.acceptingScores = false; daily.load(level.date, false); },
 });
@@ -81,7 +86,7 @@ const review = createStepReplay({
   length: () => sequence.length, canReview: () => !animation && mode !== 'tutorial' && !editing && !daily.loading,
   onEnter: () => { clearSelection(); winDialog.close(); }, onChange: () => update(),
   transition(step) {
-    const job = animation = animateRewrite(get('circuit-board'), states[step], states[step + 1], sequence[step]);
+    const job = animation = animateRewrite(get('circuit-board'), states[step], states[step + 1], sequence[step], { duration: REPLAY_REWRITE_DURATION });
     return job ? { cancel: cancelAnimation, finished: job.finished.then(completed => {
       if (animation === job) animation = null;
       return completed;
@@ -90,33 +95,49 @@ const review = createStepReplay({
 });
 guide = createTutorial({
   get, isBlocked: () => daily.loading,
+  onRender: focus => rulePalette.prioritize(focus?.dataset.rule),
   renderText: (node, text) => renderCircuitInstruction(node, text, { singleWire: true }),
   controls: '[data-cell], [data-space], [data-rule], #undo, #restart, #compact-identities, #replay, #replay-result, #share-score, #share-result, #show-results',
   intro: TUTORIAL_INTRO,
   onReset: () => setPuzzle('tutorial', { circuit: cloneCircuit(TUTORIAL_CIRCUIT), optimalMoves: null }),
   onLeave: () => { cancelAnimation(); review.clear(); clearSelection(); },
-  steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => ({
-    text, target: target ?? `[data-rule="${move.rule}"]`,
-    prepare() {
-      if (layout) playMove({ rule: 'arrange', row: 0, column: 0, circuit: layout });
-      clearSelection();
-      const rule = getRule(move.rule);
-      if (!rule) return;
-      for (let row = 0; row < rule.left.length; row++) {
-        for (let column = 0; column < rule.left[0].length; column++) selection.add(`${move.row + row}:${move.column + column}`);
-      }
-      selection = expandSelection(selection, linkedCells);
-      updateSelection();
-      get('circuit-board').querySelector(`[data-cell="${move.row}:${move.column + Math.floor(rule.left[0].length / 2)}"]`)
-        ?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
-    },
-    action() {
-      const before = sequence.length;
-      const completed = playMove(move);
-      if (sequence.length === before) throw new Error('The tutorial action could not be applied.');
-      return completed;
-    },
-  })),
+  steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => {
+    const rule = getRule(move.rule);
+    let block = [];
+    return {
+      text, target: target ?? `[data-rule="${move.rule}"]`,
+      anchor() {
+        if (!rule) return { elements: [document.querySelector(target)],
+          avoid: [get('circuit-scroll')] };
+        const cells = block.map(key => get('circuit-board').querySelector(`[data-cell="${key}"]`)).filter(Boolean);
+        const gates = cells.map(cell => cell.querySelector('.gate-glyph')).filter(Boolean);
+        return { elements: gates.length ? gates : cells, avoid: cells };
+      },
+      prepare() {
+        if (layout) playMove({ rule: 'arrange', row: 0, column: 0, circuit: layout });
+        clearSelection(); block = [];
+        if (!rule) return;
+        const cells = rectangleCells(`${move.row}:${move.column}`,
+          `${move.row + rule.left.length - 1}:${move.column + rule.left[0].length - 1}`);
+        // The movie protects the whole window, while only gates need selecting.
+        block = [...expandSelection(cells, linkedCells)];
+        const gates = block.filter(key => {
+          const [row, column] = key.split(':').map(Number);
+          return circuit[row][column] !== '.';
+        });
+        selection = new Set(gates.length ? gates : block);
+        updateSelection();
+        get('circuit-board').querySelector(`[data-cell="${move.row}:${move.column + Math.floor(rule.left[0].length / 2)}"]`)
+          ?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+      },
+      action() {
+        const before = sequence.length;
+        const completed = playMove(move);
+        if (sequence.length === before) throw new Error('The tutorial action could not be applied.');
+        return completed;
+      },
+    };
+  }),
 });
 function matchingSelection() {
   return getSelectionMoves(circuit, selection, { allowedRules: allowedRules() });
@@ -164,7 +185,7 @@ function renderCircuit() {
 
 function update({ board = true } = {}) {
   if (daily.loading && animation) { cancelAnimation(); board = true; }
-  const solved = isSolved(circuit), won = !editing && solved, locked = Boolean(animation) || daily.loading || review.step !== null;
+  const solved = puzzleSolved(circuit), won = !editing && solved, locked = Boolean(animation) || daily.loading || review.step !== null;
   const scorable = canScore(), hasPlayer = Boolean(scores.player);
   if (board && !animation) { renderCircuit(); boardLocked = locked; }
   else if (boardLocked !== locked) {
@@ -180,27 +201,17 @@ function update({ board = true } = {}) {
   get('save-circuit').disabled = locked || solved;
   get('editor-wires').disabled = locked;
   get('create-circuit').hidden = editing;
-  const matches = new Set((locked || won ? [] : matchingSelection()).map(move => move.rule));
-  const availableRules = allowedRules();
-  for (const button of ruleButtons) {
-    button.hidden = !availableRules.includes(button.dataset.rule);
-    button.disabled = !matches.has(button.dataset.rule);
-  }
-  const selectionNote = !locked && !won && selection.size && !matches.size ? 'No matching rule' : '';
+  const matching = locked || won ? [] : matchingSelection();
+  rulePalette.update(matching, { allowed: allowedRules(), disabled: locked });
+  const selectionNote = !locked && !won && selection.size && !matching.length ? 'No matching rule' : '';
   get('selection-note').textContent = selectionNote;
   updateModeMenu(get, mode, false, scores.submitting);
-  get('campaign-controls').hidden = mode !== 'campaign';
+  updateLevelControls(get, { mode, level: level.id, count: LEVELS.length, loading: daily.loading,
+    canAdvance: !animation && !scores.submitting && won });
   get('custom-controls').hidden = mode !== 'random';
   customJson.update({ visible: mode === 'random', disabled: daily.loading, canShare: !editing || !solved });
   get('leaderboard-section').hidden = mode === 'random' || mode === 'tutorial';
-  get('daily-heading').hidden = mode !== 'daily';
-  get('daily-date').disabled = !daily.info;
-  if (mode === 'campaign') get('level').value = String(level.id);
-  get('previous-level').disabled = daily.loading || mode !== 'campaign' || level.id === 1;
-  get('next-level').disabled = Boolean(animation) || daily.loading || scores.submitting || mode !== 'campaign' || !won || level.id === LEVELS.length;
-  get('result-next').disabled = get('next-level').disabled;
-  get('result-next').hidden = mode !== 'campaign' || level.id === LEVELS.length;
-  get('level').disabled = daily.loading;
+  updateDailyHeading(get, { mode, date: level.date, available: daily.info, acceptingScores: scorable });
   get('undo').disabled = daily.loading || !sequence.length;
   get('restart').disabled = daily.loading;
   get('compact-identities').disabled = locked;
@@ -226,10 +237,6 @@ function update({ board = true } = {}) {
   for (const id of ['player-name', 'submit-score']) get(id).disabled = daily.loading || Boolean(scores.submitting) || !showForm;
   get('win-summary').textContent = scoreMoves === level?.optimalMoves ? `Optimal solution in ${score}.`
     : level?.optimalMoves != null ? `${score} : optimum+${scoreMoves - level.optimalMoves}` : `Circuit reduced in ${score}.`;
-  if (mode === 'daily') {
-    get('daily-title').textContent = `Daily puzzle · ${formatPuzzleDate(level.date)}`;
-    get('daily-note').textContent = scorable ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
-  }
   guide?.render();
 }
 
@@ -244,7 +251,7 @@ function reset() {
 }
 function playMove(move) {
   if (animation || tutorialLocked()) return false;
-  const free = moveCost(move) === 0, wasWon = !editing && isSolved(circuit);
+  const free = moveCost(move) === 0, wasWon = !editing && puzzleSolved(circuit);
   if (daily.loading || (!free && (review.step !== null || wasWon)) || (!free && !allowedRules().includes(move.rule))) return;
   if (free && review.step !== null) review.clear();
   try {
@@ -257,7 +264,7 @@ function playMove(move) {
     // applyMove never mutates its input, so history can retain each result directly.
     circuit = next; sequence.push({ ...move }); states.push(circuit); clearSelection();
     get('status').textContent = ''; update();
-    const finish = () => { if (!editing && isSolved(circuit) && !wasWon) openWin(); };
+    const finish = () => { if (!editing && puzzleSolved(circuit) && !wasWon) openWin(); };
     if (!job) { finish(); return true; }
     return job.finished.then(completed => {
       if (animation !== job) return false;
@@ -268,7 +275,7 @@ function playMove(move) {
   } catch (error) { get('status').textContent = error.message; }
 }
 function openWin() {
-  if (animation || mode === 'tutorial' || editing || !isSolved(circuit) || !sequence.length || winDialog.open) return;
+  if (animation || mode === 'tutorial' || editing || !puzzleSolved(circuit) || !sequence.length || winDialog.open) return;
   const reviewing = review.step !== null;
   review.clear(); update({ board: reviewing }); scores.autoSubmit(); winDialog.showModal();
   get(scores.automatic ? 'close-win' : canScore() && !scores.player ? 'player-name' : 'try-again').focus();
@@ -314,7 +321,7 @@ function playCustom(custom) {
 }
 
 function share(source) {
-  if (animation || mode === 'tutorial' || editing || daily.loading || !isSolved(circuit) || !sequence.length) return;
+  if (animation || mode === 'tutorial' || editing || daily.loading || !puzzleSolved(circuit) || !sequence.length) return;
   sharing.open(source, { label: mode === 'daily' ? `Daily puzzle : ${formatPuzzleDate(level.date)}` : mode === 'campaign' ? `Level : ${level.id}` : 'Custom circuit', circuit: cloneCircuit(level.circuit), sequence: sequence.map(move => ({ ...move })), optimalMoves: level?.optimalMoves ?? null }, `circuit-simplification-${level?.date ?? (mode === 'campaign' ? `level-${level.id}` : 'custom')}.gif`);
 }
 
@@ -392,7 +399,6 @@ for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) documen
 });
 window.addEventListener('blur', () => { cancelTouchPress(); cancelSelectionDrag(); });
 get('circuit-scroll').addEventListener('scroll', cancelTouchPress);
-for (const button of ruleButtons) button.addEventListener('click', () => { const move = matchingSelection().find(move => move.rule === button.dataset.rule); if (move) playMove(move); });
 onClick('undo', () => { if (tutorialLocked() || daily.loading || !sequence.length) return; cancelAnimation(); review.clear(); resetScore(); clearSelection(); sequence.pop(); states.pop(); circuit = states.at(-1); update(); scores.load(); });
 onClick('restart', reset); onClick('try-again', reset); onClick('show-results', openWin);
 onClick('mode-tutorial', () => guide.enter());
@@ -416,7 +422,7 @@ bindGameDialogs(get);
 get('score-form').addEventListener('submit', scores.submit);
 document.addEventListener('keydown', event => {
   if (handleRoundShortcut(event, { blocked: tutorialLocked(), undo: () => get('undo').click(), reset })) return;
-  if (event.key === 'Enter' && !animation && !daily.loading && review.step === null && (editing || !isSolved(circuit))) {
+  if (event.key === 'Enter' && !animation && !daily.loading && review.step === null && (editing || !puzzleSolved(circuit))) {
     const cell = event.target.closest('button[data-cell]');
     if (cell?.parentElement === get('circuit-board') || event.target === get('circuit-scroll')) {
       const matches = matchingSelection();
@@ -456,8 +462,12 @@ window.addEventListener('pagehide', () => {
 for (const button of ruleButtons) {
   const rule = getRule(button.dataset.rule);
   const preview = document.createElement('span'); preview.className = 'rule-preview'; preview.setAttribute('aria-hidden', 'true');
-  for (const [index, pattern] of [rule.left, rule.right].entries()) {
+  for (const [index, source] of [rule.left, rule.right].entries()) {
     if (index) { const arrow = document.createElement('span'); arrow.textContent = '↔'; preview.appendChild(arrow); }
+    // A slide needs its gap; other equations omit unused outer identity cells.
+    const first = source[0].findIndex((_, column) => source.some(row => row[column] !== '.'));
+    const last = source[0].findLastIndex((_, column) => source.some(row => row[column] !== '.'));
+    const pattern = moveCost({ rule: rule.id }) ? source.map(row => row.slice(Math.max(0, first), first < 0 ? 1 : last + 1)) : source;
     const mini = document.createElement('span'); mini.className = 'rule-mini'; mini.style.setProperty('--mini-columns', pattern[0].length);
     mini.appendChild(circuitWires(pattern, { cellWidth: 22, cellHeight: 22, gutter: 0, header: 0 }));
     pattern.forEach(row => row.forEach(cell => mini.appendChild(gateGlyph(cell)))); preview.appendChild(mini);

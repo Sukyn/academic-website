@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { gateCells, getSelectionMoves } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, applyMove, gateCells, getSelectionMoves } from '../../src/lib/circuit-reduction/engine.js';
 
 const windowCells = (row, column, height, width) => Array.from({ length: height }, (_, y) =>
   Array.from({ length: width }, (_, x) => (row + y) + ':' + (column + x))).flat();
@@ -45,6 +45,65 @@ test('partial controlled rules preserve their one-wire windows with selected lin
     assert.deepEqual(getSelectionMoves(circuit, [...expanded, (1 - row) + ':0'], { allowedRules: [rule] }), []);
     assert.deepEqual(circuit, original);
   }
+});
+
+test('every nonempty rule side matches by selecting only its gates, with spaces optional', () => {
+  for (const rule of RULES) for (const side of ['left', 'right']) {
+    const pattern = rule[side], cells = pattern.map(line => [...line]);
+    let row = 0;
+    if (pattern.length === 1 && [...rule.left[0], ...rule.right[0]].some(cell => cell.endsWith('U'))) {
+      cells.push(pattern[0].map(cell => cell.endsWith('U') ? 'ZD' : '.'));
+    } else if (pattern.length === 1 && [...rule.left[0], ...rule.right[0]].some(cell => cell.endsWith('D'))) {
+      cells.unshift(pattern[0].map(cell => cell.endsWith('D') ? 'ZU' : '.')); row = 1;
+    }
+    const gates = pattern.flatMap((line, y) => line.flatMap((symbol, column) => symbol === '.' ? [] : [(row + y) + ':' + column]));
+    const fullWindow = windowCells(row, 0, pattern.length, pattern[0].length), move = { rule: rule.id, row, column: 0 };
+    assert.deepEqual(getSelectionMoves(cells, gates, { allowedRules: [rule.id] }), gates.length ? [move] : [], `${rule.id} ${side}: gate-only selection`);
+    assert.deepEqual(getSelectionMoves(cells, fullWindow, { allowedRules: [rule.id] }), [move], `${rule.id} ${side}: explicit spaces still work`);
+  }
+});
+
+test('a single X or controlled endpoint can expand without selecting its existing padding', () => {
+  for (const [circuit, key, rule, row] of [
+    [[['.', 'X', '.']], '0:1', 'basis-x', 0],
+    [[['.', 'Z', '.']], '0:1', 'basis-z', 0],
+    [[['.', 'XU', '.'], ['.', 'ZD', '.']], '0:1', 'basis-up', 0],
+    [[['.', 'ZU', '.'], ['.', 'XD', '.']], '1:1', 'basis-down', 1],
+  ]) {
+    const saved = structuredClone(circuit), move = { rule, row, column: 0 };
+    for (const selection of [[key], [key, row + ':0'], [key, row + ':2']]) {
+      assert.deepEqual(getSelectionMoves(circuit, selection, { allowedRules: [rule] }), [move]);
+    }
+    assert.deepEqual(applyMove(applyMove(circuit, move), move), circuit, 'Replay coordinates and reversible rewrites are unchanged');
+    assert.deepEqual(circuit, saved);
+  }
+});
+
+test('implicit padding cannot overwrite another gate or grow past a circuit boundary', () => {
+  for (const [circuit, key] of [
+    [[['X', '.']], '0:0'],
+    [[['.', 'X']], '0:1'],
+    [[['H', 'X', '.']], '0:1'],
+    [[['.', 'X', 'Z']], '0:1'],
+  ]) assert.deepEqual(getSelectionMoves(circuit, [key], { allowedRules: ['basis-x'] }), []);
+  const circuit = [['.', 'X', '.', 'H']];
+  assert.deepEqual(getSelectionMoves(circuit, ['0:1', '0:3'], { allowedRules: ['basis-x'] }), [], 'Extra selected gates cannot be ignored');
+});
+
+test('identity insertions still require an explicit empty window', () => {
+  const circuit = [['.', '.', '.', '.']];
+  assert.deepEqual(getSelectionMoves(circuit, []), []);
+  assert.deepEqual(getSelectionMoves(circuit, ['0:1'], { allowedRules: ['cancel-h'] }), []);
+  assert.deepEqual(getSelectionMoves(circuit, ['0:1', '0:2'], { allowedRules: ['cancel-h'] }), [{ rule: 'cancel-h', row: 0, column: 1 }]);
+});
+
+test('inferred padding inspects only local rule windows on an unbounded wire', () => {
+  const line = Array(10_000).fill('.'); line[5_000] = 'X';
+  const local = new Proxy(line, { get(target, property) {
+    if (/^\d+$/.test(String(property))) assert.ok(Number(property) >= 4_998 && Number(property) <= 5_002, 'Only candidate windows next to the selected gate are inspected');
+    return Reflect.get(target, property);
+  } });
+  assert.deepEqual(getSelectionMoves([local], ['0:5000'], { allowedRules: ['basis-x'] }), [{ rule: 'basis-x', row: 0, column: 4_999 }]);
 });
 
 test('selection matching leaves unrelated context alone and respects rule unlocks and column offsets', () => {

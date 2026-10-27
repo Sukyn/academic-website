@@ -12,8 +12,8 @@ import { createStepReplay } from '../lib/games/step-replay.js';
 import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
-import { bindGameDialogs, ignoresGameShortcut, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
-import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
+import { bindGameDialogs, handleRoundShortcut, updateLevelControls, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
+import { formatPuzzleDate, updateDailyHeading, bindDailyControls } from '../lib/games/daily-ui.js';
 
 const GAME = 'graph-states', get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
@@ -103,7 +103,7 @@ function update({ board = true, follow = false } = {}) {
     if (focusedMove) get('graph-board').querySelector(moveSelector(focusedMove))?.focus({ preventScroll: true });
   } else for (const button of get('graph-board').querySelectorAll('button')) button.disabled = locked;
   updateModeMenu(get, mode, false, scores.submitting);
-  get('campaign-controls').hidden = mode !== 'campaign'; get('custom-controls').hidden = mode !== 'random';
+  get('custom-controls').hidden = mode !== 'random';
   get('graph-editor-controls').hidden = mode !== 'random';
   get('custom-details').hidden = !editing;
   get('editor-vertices').value = String(graph.vertices);
@@ -111,12 +111,8 @@ function update({ board = true, follow = false } = {}) {
   get('save-graph').disabled = Boolean(animation) || !editing || solved;
   customJson.update({ visible: mode === 'random', disabled: Boolean(animation) || daily.loading, canShare: !editing || !solved });
   get('leaderboard-section').hidden = mode === 'random' || mode === 'tutorial';
-  get('daily-heading').hidden = mode !== 'daily'; get('daily-date').disabled = !daily.info;
-  get('level').disabled = daily.loading; get('level').value = String(campaignIndex + 1);
-  get('previous-level').disabled = daily.loading || mode !== 'campaign' || campaignIndex === 0;
-  get('next-level').disabled = daily.loading || scores.submitting || mode !== 'campaign' || !won || campaignIndex === LEVELS.length - 1;
-  get('result-next').disabled = get('next-level').disabled;
-  get('result-next').hidden = mode !== 'campaign' || campaignIndex === LEVELS.length - 1;
+  updateLevelControls(get, { mode, level: campaignIndex + 1, count: LEVELS.length, loading: daily.loading,
+    canAdvance: !scores.submitting && won });
   get('undo').disabled = locked || !sequence.length; get('restart').disabled = daily.loading;
   get('show-results').hidden = mode === 'tutorial' || !won;
   for (const id of ['replay', 'replay-result']) get(id).disabled = Boolean(animation) || daily.loading || editing || !sequence.length || review.playing;
@@ -141,10 +137,7 @@ function update({ board = true, follow = false } = {}) {
   const shotLabel = `${shots} ${shots === 1 ? 'shot' : 'shots'}`;
   get('win-summary').textContent = shots === minimum ? `Optimal solution in ${shotLabel}.`
     : `Chain reached in ${shotLabel}. Optimal: ${minimum}.`;
-  if (mode === 'daily') {
-    get('daily-title').textContent = 'Daily puzzle · ' + formatPuzzleDate(puzzle.date);
-    get('daily-note').textContent = recordable ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
-  }
+  updateDailyHeading(get, { mode, date: puzzle.date, available: daily.info, acceptingScores: recordable });
   tutorial.render();
 }
 function reset() {
@@ -283,11 +276,7 @@ onClick('show-gate-legend', () => {
 });
 bindGameDialogs(get, ['gate-legend']); get('score-form').addEventListener('submit', scores.submit);
 document.addEventListener('keydown', event => {
-  if (tutorialBlocked() || ignoresGameShortcut(event)) return;
-  if (event.ctrlKey || event.metaKey) {
-    if (!event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); get('undo').click(); }
-  } else if (event.key === 'Backspace') { event.preventDefault(); get('undo').click(); }
-  else if (event.key.toLowerCase() === 'r') { event.preventDefault(); reset(); }
+  handleRoundShortcut(event, { blocked: tutorialBlocked(), undo: () => get('undo').click(), reset });
 });
 window.addEventListener('pageshow', event => {
   if (event.persisted) { review.clear(); update({ follow: true }); daily.refresh(); scores.load(); }
@@ -299,6 +288,16 @@ const customJson = createCustomPuzzleJson({ get, game: GAME,
 });
 const tutorial = createTutorial({
   get, isBlocked: () => daily.loading,
+  getAnchor: focus => {
+    // Complementation and pivoting animate across the graph, beyond the clicked control.
+    const board = get('graph-board').getBoundingClientRect(), rect = focus?.getBoundingClientRect();
+    const anchor = { element: focus, avoid: [...get('graph-board').querySelectorAll('[data-vertex]'), get('graph-target')],
+      preferredSide: rect && rect.top + rect.height / 2 < board.top + board.height / 2 ? 'above' : 'below' };
+    if (!focus?.dataset.edge) return anchor;
+    // The edge hitbox spans the whole segment; point to its midpoint.
+    return { ...anchor, rect: { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 } };
+  },
+  revealTarget: () => get('graph-board').scrollIntoView({ block: 'center', inline: 'nearest' }),
   intro: TUTORIAL_INTRO,
   controls: '#graph-board button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #graph-editor-controls button, #custom-details select',
   steps: TUTORIAL.steps.map(({ move, text }) => ({ text, target: '#graph-board ' + moveSelector(move), action: () => playMove(move) })),

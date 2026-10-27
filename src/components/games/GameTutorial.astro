@@ -1,16 +1,20 @@
 ---
+import '../../styles/tutorial-bubble.css';
 interface Props { intro?: string }
 const { intro } = Astro.props;
 ---
 
 <section class="game-tutorial" id="tutorial-panel" aria-labelledby="tutorial-heading" hidden={!intro}>
-  <div aria-live="polite" aria-atomic="true">
-    <p id="tutorial-heading">{intro && 'Guided example'}</p>
-    <p id="tutorial-text">{intro}</p>
-  </div>
-  <div class="tutorial-actions">
-    <button class="button ghost" id="tutorial-start" type="button" disabled>Start tutorial</button>
-    <button class="button" id="tutorial-next" type="button" hidden>Next step</button>
-    <button class="button" id="tutorial-levels" type="button" hidden>Play levels</button>
+  <button class="tutorial-close" id="tutorial-close" type="button" aria-label="Exit tutorial" hidden>×</button>
+  <div class="tutorial-body">
+    <div aria-live="polite" aria-atomic="true">
+      <p id="tutorial-heading">{intro && 'Guided demonstration'}</p>
+      <p id="tutorial-text">{intro}</p>
+    </div>
+    <div class="tutorial-actions">
+      <button class="button ghost" id="tutorial-start" type="button" disabled>Start tutorial</button>
+      <button class="button" id="tutorial-next" type="button" hidden>Next step</button>
+      <button class="button" id="tutorial-levels" type="button" hidden>Play levels</button>
+    </div>
   </div>
 </section>

@@ -34,14 +34,10 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    /** @type {System[]} */
-    const systems = [];
-
     let cssW = 0;
     let cssH = 0;
     let idle = 0;
     const lineGradients = new Map();
-    let centerVeil = null;
 
     const rand = (min, max) => min + Math.random() * (max - min);
     const randInt = (min, max) => Math.floor(rand(min, max + 1));
@@ -55,8 +51,6 @@
 
       canvas.width = cssW;
       canvas.height = cssH;
-      lineGradients.clear();
-      centerVeil = null;
     }
 
     function lineOffset(system, line) {
@@ -115,14 +109,14 @@
       return system;
     }
 
-    function init() {
-      systems.length = 0;
-
+    function makeSystems() {
+      const systems = [];
       let y = 98;
       while (y < cssH + 110) {
         systems.push(makeSystem(y));
         y += rand(118, 175);
       }
+      return systems;
     }
 
     function makeGradient(alpha) {
@@ -178,34 +172,20 @@
         : `rgba(255, 255, 255, ${alpha})`;
     }
 
-    function eraseMarkerCircle(x, y, radius) {
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, TAU);
-      ctx.fillStyle = "rgba(0, 0, 0, 1)";
-      ctx.fill();
-      ctx.restore();
-    }
-
-    function eraseMarkerSquare(x, y, size) {
-      const half = size / 2;
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0, 0, 0, 1)";
-      ctx.fillRect(x - half, y - half, size, size);
-      ctx.restore();
-    }
-
     function eraseMarkerUnderlay(x, y, shape, size) {
       const padding = 1.6;
-
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0, 0, 0, 1)";
       if (shape === "square") {
-        eraseMarkerSquare(x, y, size + padding * 2);
-        return;
+        const padded = size + padding * 2;
+        ctx.fillRect(x - padded / 2, y - padded / 2, padded, padded);
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, size / 2 + padding, 0, TAU);
+        ctx.fill();
       }
-
-      eraseMarkerCircle(x, y, size / 2 + padding);
+      ctx.restore();
     }
 
     function fillMarkerCircle(x, y, radius, tone, alpha) {
@@ -269,17 +249,15 @@
     function drawCenterVeil() {
       const veilWidth = Math.min(cssW - 24, Math.max(560, cssW * 0.54));
       const x0 = (cssW - veilWidth) / 2;
-      if (!centerVeil) {
-        centerVeil = ctx.createLinearGradient(x0, 0, x0 + veilWidth, 0);
-        centerVeil.addColorStop(0, "rgba(24, 35, 30, 0)");
-        centerVeil.addColorStop(0.08, "rgba(24, 35, 30, 0.72)");
-        centerVeil.addColorStop(0.18, "rgba(24, 35, 30, 0.94)");
-        centerVeil.addColorStop(0.3, "rgba(24, 35, 30, 0.985)");
-        centerVeil.addColorStop(0.7, "rgba(24, 35, 30, 0.985)");
-        centerVeil.addColorStop(0.82, "rgba(24, 35, 30, 0.94)");
-        centerVeil.addColorStop(0.92, "rgba(24, 35, 30, 0.72)");
-        centerVeil.addColorStop(1, "rgba(24, 35, 30, 0)");
-      }
+      const centerVeil = ctx.createLinearGradient(x0, 0, x0 + veilWidth, 0);
+      centerVeil.addColorStop(0, "rgba(24, 35, 30, 0)");
+      centerVeil.addColorStop(0.08, "rgba(24, 35, 30, 0.72)");
+      centerVeil.addColorStop(0.18, "rgba(24, 35, 30, 0.94)");
+      centerVeil.addColorStop(0.3, "rgba(24, 35, 30, 0.985)");
+      centerVeil.addColorStop(0.7, "rgba(24, 35, 30, 0.985)");
+      centerVeil.addColorStop(0.82, "rgba(24, 35, 30, 0.94)");
+      centerVeil.addColorStop(0.92, "rgba(24, 35, 30, 0.72)");
+      centerVeil.addColorStop(1, "rgba(24, 35, 30, 0)");
 
       // Fade the wallpaper ink while preserving the page's background gradient.
       ctx.save();
@@ -301,7 +279,8 @@
       }
     }
 
-    function draw() {
+    /** @param {System[]} systems */
+    function draw(systems) {
       ctx.clearRect(0, 0, cssW, cssH);
 
       drawDust();
@@ -309,6 +288,7 @@
         drawSystem(system);
       }
       drawCenterVeil();
+      lineGradients.clear();
     }
 
     function cancelPaint() {
@@ -329,8 +309,7 @@
         const width = window.innerWidth, height = window.innerHeight;
         if (cssW === width && cssH === height) return;
         resize(width, height);
-        init();
-        draw();
+        draw(makeSystems());
       };
       // Render content first; a decorative canvas does not need to block it.
       idle = window.requestIdleCallback

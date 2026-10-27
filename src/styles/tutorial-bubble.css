@@ -1,0 +1,23 @@
+.quantum-game .game-tutorial[data-tutorial-bubble] {
+  position: fixed; inset: auto; z-index: 100; box-sizing: border-box;
+  width: min(23rem, var(--tutorial-width)); max-height: var(--tutorial-height);
+  margin: 0; padding: .85rem; overflow: visible;
+  border: 1px solid var(--color-accent); border-radius: 1rem;
+  background: var(--color-bg); color: var(--color-text); box-shadow: 0 6px 24px rgb(0 0 0 / 30%);
+}
+.tutorial-pointer { position: absolute; left: -1px; top: -1px; width: calc(100% + 2px); height: calc(100% + 2px); overflow: visible; pointer-events: none; }
+.tutorial-pointer path { fill: var(--color-bg); stroke: var(--color-accent); stroke-width: 1; stroke-linejoin: round; }
+.tutorial-pointer line { stroke: var(--color-bg); stroke-width: 3; }
+.game-tutorial::backdrop { background: transparent; pointer-events: none; }
+.quantum-game .game-tutorial .button:hover { transform: none; }
+/* Keep borders and focus rings inside the scroll clip without shifting content. */
+.game-tutorial[data-tutorial-bubble] .tutorial-body { max-height: calc(var(--tutorial-height) - 1.7rem - 2px); overflow: auto; margin: -6px; padding: 6px; }
+.game-tutorial[data-tutorial-bubble] [aria-live] { padding-right: 1.5rem; }
+.quantum-game .tutorial-close { position: absolute; top: .1rem; right: .15rem; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--color-muted); font: 1.5rem var(--font-ui); cursor: pointer; }
+.quantum-game .tutorial-close:hover { color: var(--color-heading); }
+.quantum-game .game-content [data-tutorial-focus]:disabled { opacity: 1; }
+.quantum-game [data-tutorial-demo] canvas { cursor: default; touch-action: pan-x pan-y; }
+@media (prefers-reduced-motion: no-preference) {
+  .game-tutorial[data-tutorial-bubble] { animation: tutorial-bubble-enter .12s ease-out; }
+  @keyframes tutorial-bubble-enter { from { opacity: 0; } to { opacity: 1; } }
+}

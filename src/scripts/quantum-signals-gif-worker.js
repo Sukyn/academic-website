@@ -1,7 +1,7 @@
 import * as gifenc from 'gifenc';
 import { applyPlacement, controlWire, simulate, validatePuzzle } from '../lib/quantum-signals/engine.js';
 import { CIRCUIT_COLORS as colors, drawGate } from '../lib/games/circuit-graphics.js';
-import { PHASE_COLORS, PHASE_PATH_COLORS, CANCELLATION_WALL, phasePathColor, phaseColor, canonicalTarget, targetRadius, grayBasis, basisRow } from '../lib/quantum-signals/state-visuals.js';
+import { PHASE_COLORS, PHASE_PATH_COLORS, GOAL_COLOR, GOAL_RADIUS, CANCELLATION_WALL, phasePathColor, phaseColor } from '../lib/quantum-signals/state-visuals.js';
 import { flowTrace } from '../lib/quantum-signals/flow.js';
 import { installReplayEncoder } from '../lib/games/replay-gif.js';
 
@@ -49,13 +49,12 @@ function drawFlow(ctx, puzzle, placements, top, { imageOnly = false } = {}) {
   const step = imageOnly ? 740 / puzzle.columns.length : Math.min(88, 740 / puzzle.columns.length);
   const left = (WIDTH - step * puzzle.columns.length) / 2;
   const right = left + puzzle.columns.length * step, targetX = right + 54;
-  const rowHeight = imageOnly ? 38 : 28, y = basis => top + basisRow(basis) * rowHeight;
+  const rowHeight = imageOnly ? 38 : 28, y = basis => top + basis * rowHeight;
   ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = colors.text;
   if (!imageOnly) {
-    ctx.fillText('Output', right, top - 28); ctx.fillText('Target', targetX, top - 28);
+    ctx.fillText('Output', right, top - 28); ctx.fillText('Goal', targetX, top - 28);
   }
-  for (let row = 0; row < snapshots[0].length; row++) {
-    const basis = grayBasis(row);
+  for (let basis = 0; basis < snapshots[0].length; basis++) {
     ctx.fillText(basis.toString(2).padStart(puzzle.wires, '0'), left - 28, y(basis));
     ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(left, y(basis)); ctx.lineTo(right, y(basis)); ctx.stroke();
@@ -83,18 +82,16 @@ function drawFlow(ctx, puzzle, placements, top, { imageOnly = false } = {}) {
     });
     ctx.stroke();
   }));
-  const dot = (x, basis, amplitude, target = false) => {
+  const dot = (x, basis, amplitude) => {
     if (Math.abs(amplitude) < 1e-9) return;
-    ctx.fillStyle = phaseColor(amplitude); ctx.strokeStyle = PHASE_COLORS.negative; ctx.lineWidth = target ? 2 : 1.4;
-    ctx.beginPath(); ctx.arc(x, y(basis), target ? targetRadius(amplitude) : 8 * Math.abs(amplitude), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = phaseColor(amplitude); ctx.strokeStyle = PHASE_COLORS.negative; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(x, y(basis), 8 * Math.abs(amplitude), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   };
   snapshots.forEach((state, column) => state.forEach((amplitude, basis) => dot(left + column * step, basis, amplitude)));
-  if (!imageOnly) canonicalTarget(puzzle.target).forEach((amplitude, basis) => {
-    if (Math.abs(amplitude) < 1e-9) {
-      ctx.strokeStyle = colors.wire; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(targetX, y(basis), 6, 0, Math.PI * 2); ctx.stroke();
-    } else dot(targetX, basis, amplitude, true);
-  });
+  if (!imageOnly) {
+    ctx.strokeStyle = GOAL_COLOR; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(targetX, y(snapshots[0].length - 1), GOAL_RADIUS, 0, Math.PI * 2); ctx.stroke();
+  }
 }
 
 export function encodeReplay(round, onProgress, imageOnly = false) {

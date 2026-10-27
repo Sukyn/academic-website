@@ -20,7 +20,9 @@ const { DAILY_START: SIGNAL_START, LEVELS: SIGNAL_LEVELS, dailyPuzzle: signalDai
   await import(websiteFile('src/lib/quantum-signals/puzzles.js'));
 const { CAMPAIGN: SIGNAL_CAMPAIGN, DAILY_CAMPAIGN: SIGNAL_DAILY_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_SIGNAL_BYTES } =
   await import(websiteFile('src/lib/quantum-signals/completions.js'));
-const { solvePuzzle: solveSignals } = await import(websiteFile('src/lib/quantum-signals/engine.js'));
+const { solvePuzzle: solveSignals, validatePuzzle: validateSignalsPuzzle } = await import(websiteFile('src/lib/quantum-signals/engine.js'));
+const { DAY, dateTimestamp } = await import(websiteFile('src/lib/games/daily-calendar.js'));
+const signalDay = offset => new Date(dateTimestamp(SIGNAL_START) + offset * DAY).toISOString().slice(0, 10);
 const signalSequence = puzzle => Object.entries(solveSignals(puzzle, { limit: 1 })[0])
   .filter(([, gate]) => gate !== 'I').map(([hole, gate]) => ({ hole, gate }));
 const { LEVELS: GRAPH_LEVELS, DAILY_START: GRAPH_START, dailyPuzzle: graphDailyPuzzle } =
@@ -28,10 +30,15 @@ const { LEVELS: GRAPH_LEVELS, DAILY_START: GRAPH_START, dailyPuzzle: graphDailyP
 const { optimalShots: graphOptimalShots, sequenceCost: graphSequenceCost, solutionForGraph: graphSequence } = await import(websiteFile('src/lib/graph-states/engine.js'));
 const { CAMPAIGN: GRAPH_CAMPAIGN, DAILY_CAMPAIGN: GRAPH_DAILY_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_GRAPH_BYTES } =
   await import(websiteFile('src/lib/graph-states/leaderboard.js'));
+const { LEVELS: ZX_LEVELS, MAX_MOVES: ZX_MAX_MOVES } = await import(websiteFile('src/lib/zx-calculus/engine.js'));
+const { default: ZX_SOLUTIONS } = await import(websiteFile('tools/zx-calculus/solutions.json'), { with: { type: 'json' } });
+const { CAMPAIGN: ZX_CAMPAIGN, DAILY_START: ZX_START, DAILY_VERSION: ZX_DAILY_CAMPAIGN,
+  MAX_SUBMISSION_BYTES: MAX_ZX_BYTES, dailyPuzzle: zxDailyPuzzle } = await import(websiteFile('src/lib/zx-calculus/leaderboard.js'));
 const { getLevels: categoricalLevels } = await import(websiteFile('src/lib/categorical-circuits/puzzles.js'));
+const { createLevelLeaderboard: categoricalLeaderboard } = await import(websiteFile('src/lib/categorical-circuits/leaderboard.js'));
 const advancedCampaigns = ['prop', 'controlled'].flatMap(profile => ['simplification', 'signals'].map(kind => ({
   profile, kind, game: `${kind === 'signals' ? 'quantum-signals' : 'circuit-reduction'}-${profile}`,
-  levels: categoricalLevels(profile, kind),
+  levels: categoricalLevels(profile, kind), campaign: categoricalLeaderboard(kind, profile).getBoard({ level: 1 }).campaign,
 })));
 const advancedSequence = (kind, puzzle) => kind === 'signals'
   ? puzzle.solution.map((gate, hole) => ({ hole, gate })).filter(move => move.gate !== 'I')
@@ -89,6 +96,15 @@ test('compiled Vercel ESM resolves every game and their shared validator JavaScr
     const selectedGraph = await compiled.fetch(new Request(`${endpoint}?game=graph-states&level=unknown`));
     assert.equal(selectedGraph.status, 400);
     assert.deepEqual(await selectedGraph.json(), { error: 'Choose a campaign level from 1 to 10.' });
+    const selectedZx = await compiled.fetch(new Request(`${endpoint}?game=zx-calculus&level=unknown`));
+    assert.equal(selectedZx.status, 400);
+    assert.deepEqual(await selectedZx.json(), { error: `Choose a campaign level from 1 to ${ZX_LEVELS.length}.` });
+    assert.equal((await compiled.fetch(new Request(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: 'zx-calculus', level: 1, name: 'Ada', sequence: [] }),
+    }))).status, 400, 'The deployed ZX validator rejects unfinished diagrams before contacting the database');
+    assert.equal((await compiledDaily.fetch(new Request(`${endpoint.replace('leaderboard', 'daily')}?game=zx-calculus&date=invalid`))).status, 400,
+      'The deployed ZX daily generator and its puzzle assets resolve');
     for (const { game, levels } of advancedCampaigns) {
       const selected = await compiled.fetch(new Request(`${endpoint}?game=${game}&level=unknown`));
       assert.equal(selected.status, 400);
@@ -956,7 +972,7 @@ test('advanced level leaderboards verify official solutions and isolate categori
   const firstBoards = new Map();
   try {
     await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
-    for (const { game, kind, levels } of advancedCampaigns) {
+    for (const { game, kind, levels, campaign } of advancedCampaigns) {
       const level = levels[0], sequence = advancedSequence(kind, level);
       const payload = { game, level: level.id, name: 'Ada', sequence };
       const address = `${endpoint}?game=${game}`;
@@ -1030,7 +1046,7 @@ test('advanced level leaderboards verify official solutions and isolate categori
         'Player IDs are scoped to one official level');
       const table = kind === 'signals' ? 'completions' : 'scores';
       const saved = (await database.query(`SELECT * FROM ${table} WHERE id = $1`, [id])).rows[0];
-      assert.equal(saved.campaign, `${game}-levels-v1`);
+      assert.equal(saved.campaign, campaign);
       assert.deepEqual(Object.keys(saved).sort(), kind === 'signals'
         ? ['campaign', 'id', 'level', 'name'] : ['campaign', 'created_at', 'id', 'level', 'moves', 'name'],
       'Advanced leaderboards store only the existing score or completion fields');
@@ -1102,7 +1118,7 @@ test('Signals records verified completions in the shared table without ranks', a
     assert.equal(await count('completions'), 0);
     assert.equal(await count('scores'), 0);
 
-    Date.now = () => dailyBounds('2026-10-16').opensAt;
+    Date.now = () => dailyBounds(SIGNAL_START).opensAt;
     const response = await post({ ...payload, name: '  Ada  ', moves: 0, rank: 1,
       optimalMoves: 0, target: [1], sequence: [{ hole: 'a', gate: 'I' }, ...payload.sequence] }, origin, address);
     assert.equal(response.status, 201);
@@ -1116,7 +1132,7 @@ test('Signals records verified completions in the shared table without ranks', a
     assert.deepEqual(Object.keys(saved).sort(), ['campaign', 'id', 'level', 'name']);
     assert.deepEqual((await database.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'completions' ORDER BY column_name")).rows
       .map(row => row.column_name), ['campaign', 'id', 'level', 'name'], 'Only identity and puzzle membership are stored');
-    Date.now = () => dailyBounds('2026-10-17').opensAt;
+    Date.now = () => dailyBounds(signalDay(1)).opensAt;
     const retry = await post({ ...payload, sequence: [...payload.sequence,
       { hole: 'a', gate: null }, ...payload.sequence] });
     assert.equal(retry.status, 201);
@@ -1165,13 +1181,13 @@ test('Signals records verified completions in the shared table without ranks', a
     assert.equal(archive.total, 1);
     const archivedRow = (await database.query('SELECT * FROM completions WHERE id = $1', [archive.currentPlayer.id])).rows[0];
     assert.equal(archivedRow.campaign, SIGNAL_DAILY_CAMPAIGN);
-    assert.equal(archivedRow.level, 20261015);
+    assert.equal(archivedRow.level, Number(SIGNAL_START.replaceAll('-', '')));
     assert.deepEqual(await (await list(`date=${SIGNAL_START}`, archive.currentPlayer.id)).json(), archive);
     assert.equal((await (await list('level=1', archive.currentPlayer.id)).json()).currentPlayer, null);
-    Date.now = () => dailyBounds('2026-10-25').opensAt;
+    Date.now = () => dailyBounds(signalDay(2)).opensAt;
     assert.deepEqual(await (await post(dailyPayload, origin, address)).json(), archive,
       'Archive completion retries have no midnight or DST scoring deadline');
-    for (const date of ['2026-10-14', '2026-10-26', '2026-02-30']) {
+    for (const date of [signalDay(-1), signalDay(3), '2026-02-30']) {
       assert.equal((await post({ ...dailyPayload, date }, origin, address)).status, 400);
     }
 
@@ -1280,6 +1296,99 @@ test('graph states ranks verified shots and enforces daily database deadlines', 
   }
 });
 
+test('ZX scores replay official diagrams, keep compact records and enforce database daily deadlines', async () => {
+  const database = new PGlite();
+  const originalUrl = process.env.DATABASE_URL, originalNow = Date.now;
+  process.env.DATABASE_URL = 'postgresql://test.invalid/games';
+  globalThis.__quantumGolfPostgres = async (strings, ...values) => {
+    const query = strings.reduce((sql, part, index) => sql + (index ? `$${index}` : '') + part, '');
+    return (await database.query(query, values)).rows.map(row => Object.fromEntries(Object.entries(row)
+      .map(([key, value]) => [key, value !== null && key === 'id' ? String(value) : value])));
+  };
+  const address = `${endpoint}?game=zx-calculus`;
+  const payload = { game: 'zx-calculus', level: 1, name: 'Ada', sequence: ZX_SOLUTIONS[0] };
+  const list = (selector = 'level=1', player) => route.fetch(new Request(`${address}&${selector}${player ? `&player=${player}` : ''}`));
+  const count = async () => Number((await database.query('SELECT COUNT(*) AS n FROM scores')).rows[0].n);
+  const bounds = dailyBounds(ZX_START);
+  const databaseNow = instant => database.query("SELECT set_config('zx.test_now', $1, false)", [new Date(instant).toISOString()]);
+  try {
+    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(`
+      CREATE SCHEMA test_clock;
+      CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
+        AS $$ SELECT current_setting('zx.test_now')::timestamptz $$;
+      SET search_path TO test_clock, pg_catalog, public;
+    `);
+    Date.now = () => bounds.opensAt;
+    for (const sequence of [[], null, [null], [{ rule: 'unknown', nodes: [4] }], ZX_SOLUTIONS[0].slice(0, -1),
+      Array(ZX_MAX_MOVES + 1).fill(ZX_SOLUTIONS[0][0])]) {
+      assert.equal((await post({ ...payload, sequence }, origin, address)).status, 400);
+    }
+    const oversized = { ...payload, ignored: 'x'.repeat(MAX_ZX_BYTES) };
+    assert.equal((await post(oversized, origin, address)).status, 413);
+    assert.equal((await post(oversized)).status, 413, 'A body-only game selector retains the ZX byte budget');
+    assert.equal(await count(), 0, 'Invalid ZX replays cannot store scores');
+
+    const saved = await post({ ...payload, moves: -100, diagram: { nodes: [], edges: [] } }, origin, address);
+    assert.equal(saved.status, 201);
+    const board = await saved.json(), player = board.currentPlayer;
+    assert.equal(player.moves, payload.sequence.length, 'The server derives the score from the official replay');
+    assert.deepEqual(Object.keys(board).sort(), ['currentPlayer', 'entries', 'total']);
+    assert.deepEqual(Object.keys(player).sort(), ['id', 'moves', 'name', 'rank']);
+    assert.equal(board.total, 1);
+    assert.deepEqual(await (await list('level=1', player.id)).json(), board);
+    assert.equal((await list('level=1', player.id)).headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(await (await post(payload, origin, address)).json(), board, 'Identical score retries preserve the player record');
+    assert.equal(await count(), 1);
+    const row = (await database.query('SELECT * FROM scores WHERE id = $1', [player.id])).rows[0];
+    assert.deepEqual(Object.keys(row).sort(), ['campaign', 'created_at', 'id', 'level', 'moves', 'name']);
+    assert.equal(row.campaign, ZX_CAMPAIGN);
+    assert.equal(Number(row.moves), payload.sequence.length);
+    assert.equal((await (await get(1, player.id)).json()).total, 0, 'ZX scores stay isolated from Golf');
+
+    const dailyAddress = `${endpoint.replace('leaderboard', 'daily')}?game=zx-calculus`;
+    const dailyResponse = await dailyRoute.fetch(new Request(dailyAddress));
+    assert.equal(dailyResponse.status, 200);
+    assert.equal(dailyResponse.headers.get('Cache-Control'), 'no-store');
+    const info = await dailyResponse.json(), generated = zxDailyPuzzle(ZX_START);
+    assert.equal(info.acceptingScores, true);
+    assert.equal(info.startDate, ZX_START);
+    assert.deepEqual(Object.keys(info.puzzle).sort(), ['edges', 'nodes'], 'Daily transport excludes the solution, rules and display metadata');
+    assert.deepEqual(info.puzzle, generated.diagram);
+    const dailyPayload = { game: 'zx-calculus', date: ZX_START, name: 'Ada', sequence: generated.solution };
+    await databaseNow(bounds.opensAt - 1);
+    assert.equal((await post(dailyPayload, origin, address)).status, 409, 'Database time rejects early ZX scores');
+    assert.equal(await count(), 1);
+    await databaseNow(bounds.opensAt);
+    const dailySaved = await post(dailyPayload, origin, address);
+    assert.equal(dailySaved.status, 201);
+    const daily = await dailySaved.json();
+    assert.equal(daily.currentPlayer.moves, generated.solution.length);
+    const dailyRow = (await database.query('SELECT * FROM scores WHERE id = $1', [daily.currentPlayer.id])).rows[0];
+    assert.equal(dailyRow.campaign, ZX_DAILY_CAMPAIGN);
+    assert.equal(dailyRow.level, Number(ZX_START.replaceAll('-', '')));
+    assert.equal(Number(dailyRow.created_at), bounds.opensAt);
+    assert.deepEqual(await (await list(`date=${ZX_START}`, daily.currentPlayer.id)).json(), daily);
+    await databaseNow(bounds.closesAt);
+    assert.equal((await post(dailyPayload, origin, address)).status, 409, 'A queued ZX retry cannot cross Paris midnight');
+    Date.now = () => bounds.closesAt;
+    assert.equal((await post(dailyPayload, origin, address)).status, 409, 'Archived ZX puzzles remain practice only');
+    assert.deepEqual(await (await list(`date=${ZX_START}`, daily.currentPlayer.id)).json(), daily);
+    assert.equal((await (await list('level=1', daily.currentPlayer.id)).json()).currentPlayer, null);
+    const archived = await (await dailyRoute.fetch(new Request(`${dailyAddress}&date=${ZX_START}`))).json();
+    assert.equal(archived.acceptingScores, false);
+    assert.deepEqual(archived.puzzle, info.puzzle);
+    const nextDay = new Date(dateTimestamp(ZX_START) + DAY).toISOString().slice(0, 10);
+    assert.equal(archived.nextChangeAt, dailyBounds(nextDay).closesAt);
+  } finally {
+    Date.now = originalNow;
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+    delete globalThis.__quantumGolfPostgres;
+    await database.close();
+  }
+});
+
 test('graph daily API serves ranked days with their exact shot benchmark', async () => {
   const originalNow = Date.now;
   Date.now = () => dailyBounds(GRAPH_START).opensAt;
@@ -1316,14 +1425,16 @@ test('signal daily API keeps current and archived puzzles playable without score
     assert.equal(info.startDate, SIGNAL_START);
     assert.equal(info.acceptingScores, false);
     assert.equal(Object.hasOwn(info.puzzle, 'optimalMoves'), false);
-    assert.deepEqual(Object.keys(info.puzzle).sort(), ['columns', 'target', 'wires']);
-    assert.equal((await dailyRoute.fetch(new Request(`${address}&date=2026-10-14`))).status, 400);
-    assert.equal((await dailyRoute.fetch(new Request(`${address}&date=2026-10-16`))).status, 400);
-    Date.now = () => dailyBounds('2026-10-16').opensAt;
+    assert.deepEqual(Object.keys(info.puzzle).sort(), ['columns', 'wires']);
+    assert.deepEqual(validateSignalsPuzzle(info.puzzle).target, signalDailyPuzzle(SIGNAL_START).target,
+      'The playable puzzle reconstructs the fixed goal without transferring its derived vector');
+    assert.equal((await dailyRoute.fetch(new Request(`${address}&date=${signalDay(-1)}`))).status, 400);
+    assert.equal((await dailyRoute.fetch(new Request(`${address}&date=${signalDay(1)}`))).status, 400);
+    Date.now = () => dailyBounds(signalDay(1)).opensAt;
     const archived = await (await dailyRoute.fetch(new Request(`${address}&date=${SIGNAL_START}`))).json();
     assert.equal(archived.acceptingScores, false);
     assert.deepEqual(archived.puzzle, info.puzzle, 'The archive retains the same circuit after midnight');
-    assert.equal(archived.nextChangeAt, dailyBounds('2026-10-16').closesAt);
+    assert.equal(archived.nextChangeAt, dailyBounds(signalDay(1)).closesAt);
   } finally { Date.now = originalNow; }
 });
 

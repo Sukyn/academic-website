@@ -201,7 +201,7 @@ test('Advanced expanded paths support unequal controlled-H amplitudes and a fixe
   assert.deepEqual(circuit, original);
   assert.equal(target.dataset.match, 'true');
   assert.equal(svg.querySelectorAll('.signal-flow-target').length, 0);
-  assert.deepEqual(svg.querySelectorAll('.signal-flow-label').map(node => node.textContent), ['00', '01', '11', '10']);
+  assert.deepEqual(svg.querySelectorAll('.signal-flow-label').map(node => node.textContent), ['00', '01', '10', '11']);
   const output = svg.querySelectorAll('.signal-flow-node').filter(node => node.dataset.boundary === '2');
   assert.equal(output.length, 3);
   assert.ok(output.some(node => Math.abs(Number(node.dataset.amplitude) - .5) < 1e-9));

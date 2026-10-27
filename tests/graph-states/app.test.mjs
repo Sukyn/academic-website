@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { pathGraph } from '../../src/lib/graph-states/engine.js';
 import { LEVELS } from '../../src/lib/graph-states/puzzles.js';
 import { REPLAY_COMPLEMENT_DURATION } from '../../src/lib/graph-states/animation.js';
+import { updateDailyHeading } from '../../src/lib/games/daily-ui.js';
 
 const root = new URL('../../', import.meta.url);
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -60,7 +61,7 @@ test('graph replay keeps completed-round actions stable and cancels stale animat
     createMoveTimeline: node => sequence => { node.length = sequence.length; },
     createCustomPuzzleJson: () => ({ update() {}, close() {} }),
     createTutorial: () => ({ active: false, executing: false, enter() {}, leave() {}, render() {} }),
-    startDailyFromLink: () => false, bindDailyControls() {},
+    startDailyFromLink: () => false, bindDailyControls() {}, updateDailyHeading,
   };
   const globals = { document: Object.assign(new Element(), { getElementById: get }), window: new Element(),
     __graphControllerTest: dependencies,

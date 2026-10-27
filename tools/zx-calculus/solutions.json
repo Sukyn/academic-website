@@ -1,0 +1,359 @@
+[
+  [
+    {
+      "rule": "fusion",
+      "nodes": [
+        4,
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "fusion",
+      "nodes": [
+        4,
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "fusion",
+      "nodes": [
+        6,
+        7
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        6
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        4,
+        5
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "color",
+      "nodes": [
+        4
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        5,
+        7
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        6,
+        8
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "hopf",
+      "nodes": [
+        4,
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "fusion",
+      "nodes": [
+        12,
+        13
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        12
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        10,
+        11
+      ]
+    },
+    {
+      "rule": "color",
+      "nodes": [
+        4
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        6,
+        10
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        7,
+        11
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        8,
+        12
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        9,
+        13
+      ]
+    },
+    {
+      "rule": "hopf",
+      "nodes": [
+        4,
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "fusion",
+      "nodes": [
+        6,
+        14
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        13
+      ]
+    },
+    {
+      "rule": "color",
+      "nodes": [
+        6
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        10,
+        13
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        11,
+        14
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        12,
+        15
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        9
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        7,
+        8
+      ]
+    },
+    {
+      "rule": "fusion",
+      "nodes": [
+        4,
+        6
+      ]
+    },
+    {
+      "rule": "hopf",
+      "nodes": [
+        4,
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ],
+  [
+    {
+      "rule": "identity",
+      "nodes": [
+        17
+      ]
+    },
+    {
+      "rule": "fusion",
+      "nodes": [
+        14,
+        16
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        15
+      ]
+    },
+    {
+      "rule": "fusion",
+      "nodes": [
+        4,
+        14
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        13
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        12
+      ]
+    },
+    {
+      "rule": "color",
+      "nodes": [
+        5
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        9,
+        12
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        10,
+        13
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        11,
+        14
+      ]
+    },
+    {
+      "rule": "hh",
+      "nodes": [
+        7,
+        8
+      ]
+    },
+    {
+      "rule": "fusion",
+      "nodes": [
+        5,
+        6
+      ]
+    },
+    {
+      "rule": "hopf",
+      "nodes": [
+        4,
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        5
+      ]
+    },
+    {
+      "rule": "identity",
+      "nodes": [
+        4
+      ]
+    }
+  ]
+]

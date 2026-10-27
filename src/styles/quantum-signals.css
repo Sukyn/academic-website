@@ -1,6 +1,8 @@
 .signal-scroll { margin-top: .8rem; scrollbar-gutter: stable; padding: .5rem 0; border-radius: 5px; }
 #signal-board { position: relative; margin-inline: auto; user-select: none; font-family: var(--font-mono); }
 #signal-board .signal-wires { position: absolute; inset: 0; pointer-events: none; }
+#signal-board .signal-wire-focus line { stroke: #f2d572; stroke-width: 3; }
+#signal-board .signal-gate-focus { outline: 2px solid #f2d572; outline-offset: 5px; border-radius: 5px; }
 #signal-board .signal-hole, #signal-board .signal-fixed { position: absolute; width: 48px; padding: 0; transform: translate(-50%, -22px); }
 #signal-board .signal-hole { border: 0; border-radius: 6px; color: var(--color-heading); background: rgba(154,217,209,.05); cursor: pointer; min-height: 44px; }
 #signal-board .signal-hole::before { content: ''; position: absolute; inset: 0; border: 1.5px dashed var(--color-accent); border-radius: inherit; pointer-events: none; }
@@ -26,18 +28,23 @@
 #signal-target { flex: 0 0 52px; box-shadow: inset 1px 0 var(--color-border); }
 #signal-flow { display: block; max-width: none; margin-inline: auto; }
 .signal-flow-lane { stroke: #6d7b71; stroke-opacity: .3; stroke-width: 1; }
-.signal-flow-path { fill: none; stroke-linecap: round; stroke-opacity: .85; }
+.signal-flow-path { fill: none; stroke-linecap: round; }
 .signal-flow-node, .signal-flow-target { stroke-width: 1.4; }
-.signal-flow-target { stroke-width: 2; }
-#signal-target[data-match="true"] .signal-flow-target { stroke-width: 3; }
+.signal-flow-target { stroke-width: 2.5; }
 .signal-flow-label { fill: var(--color-muted); font: 11px var(--font-mono); }
 .signal-flow-bit-highlight { fill: #f2d572; font-weight: 700; text-decoration: underline; }
+.signal-flow-lane.signal-flow-focus { stroke: #f2d572; stroke-opacity: .7; }
+.signal-flow-label.signal-flow-focus { fill: var(--color-heading); font-weight: 700; }
+.signal-flow-context .signal-flow-path:not(.signal-flow-focus),
+.signal-flow-context .signal-flow-node:not(.signal-flow-focus),
+.signal-flow-context .signal-flow-cancellation:not(.signal-flow-focus) { opacity: .22; }
+.signal-flow-node.signal-flow-focus { stroke-width: 2; }
 .signal-flow-gutter { pointer-events: none; }
 .signal-flow-gutter rect { fill: var(--color-surface-2); }
 .signal-flow-heading { fill: var(--color-muted); font: 11px var(--font-ui); }
 .signal-flow-selection { fill: #9ad9d1; fill-opacity: .06; stroke: #9ad9d1; stroke-opacity: .25; }
 .signal-flow-ghost { pointer-events: none; }
-.signal-flow-ghost path { fill: none; stroke-linecap: round; stroke-opacity: .85; }
+.signal-flow-ghost path { fill: none; stroke-linecap: round; }
 .signal-flow-ghost circle { stroke-width: 1.4; }
 #custom-details { margin-top: .5rem; }
 .puzzle-editor { display: grid; gap: .8rem; margin-top: .7rem; text-align: left; }
@@ -69,15 +76,8 @@
 .editor-pair-hole { position: relative; height: 42px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
 .editor-pair-hole::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--color-accent); transform: translateX(-50%); }
 .editor-pair-hole .editor-hole { width: 17px; height: 17px; background: var(--color-surface); }
-.puzzle-editor fieldset { min-width: 0; margin: 0; padding: .65rem; border: 1px solid var(--color-border); border-radius: 4px; }
-.puzzle-editor legend { padding-inline: .3rem; color: var(--color-muted); }
 #editor-choices { margin-top: .4rem; padding-top: .4rem; border-top: 1px solid var(--color-border); }
 #editor-gates { display: grid; grid-template-columns: repeat(2, 44px); justify-content: center; gap: .3rem; }
-.editor-targets { display: flex; flex-direction: column; max-width: 14rem; max-height: 23rem; overflow-y: auto; }
-.quantum-game .editor-target { display: grid; grid-template-columns: max-content 1fr 24px; align-items: center; gap: .7rem; min-height: 44px; flex-shrink: 0; padding: .3rem .6rem; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--color-muted); font: .85rem var(--font-mono); cursor: pointer; }
-.editor-target:hover { background: var(--color-accent-soft); }
-.editor-target-line { height: 1px; background: var(--color-border-strong); }
-.editor-target-dot { justify-self: center; width: 20px; height: 20px; border: 1.5px solid var(--color-border-strong); border-radius: 50%; }
 .puzzle-editor > .button { justify-self: start; }
 .custom-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: center; max-width: 37rem; margin: 1rem auto 0; font: .9rem var(--font-ui); }
 .custom-controls select { min-height: 44px; }

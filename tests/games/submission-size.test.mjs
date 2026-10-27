@@ -17,7 +17,7 @@ test('submission size counts UTF-8 bytes and preserves the exact limit', () => {
 });
 
 test('each replay validator treats deeply nested JSON as invalid and oversized JSON as too large', () => {
-  for (const game of ['graph-states', 'quantum-signals', 'circuit-reduction',
+  for (const game of ['graph-states', 'quantum-signals', 'circuit-reduction', 'zx-calculus',
     'circuit-reduction-prop', 'circuit-reduction-controlled', 'quantum-signals-prop', 'quantum-signals-controlled']) {
     const descriptor = getGame(game), depth = Math.min(12_000, Math.floor((descriptor.maxBytes - 100) / 2));
     const raw = '{"level":1,"name":"Ada","sequence":[' + '['.repeat(depth) + 'null' + ']'.repeat(depth) + ']}';

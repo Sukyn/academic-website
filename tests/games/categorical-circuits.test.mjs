@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { RULES, applyOperation, applyMove, simulate, validateCircuit, holeOperation, isIdentity, isSolved,
   getLegalMoves, selectionCells, matchesSelection, flowTrace } from '../../src/lib/categorical-circuits/engine.js';
 import { getLevels, getTutorial, randomIdentity, generateSignals, validateSignals, fillSignals, signalsSolved, solveSignals, signalsData, verifySolution } from '../../src/lib/categorical-circuits/puzzles.js';
-import { applyGate } from '../../src/lib/quantum-signals/engine.js';
+import { applyGate, goalState, stateEqual } from '../../src/lib/quantum-signals/engine.js';
 
 const close = (first, second) => {
   assert.equal(first.length, second.length);
@@ -64,9 +64,8 @@ test('whole PROP hole choices preserve standard paired-gate conventions in eithe
 
 test('PROP Signals validates and solves complete paired holes without fixed controls', () => {
   const choices = ['I', 'CX', 'XC', 'CZ', 'SWAP'];
-  const prefix = [[op('H', [0])], [op('X', [1])]], wires = 2;
-  const targetCircuit = { wires, columns: [...prefix, [op('X', [1], [0])]] };
-  const puzzle = { wires, columns: prefix, holes: [{ wires: [0, 1], choices }], targetCircuit };
+  const prefix = [[op('X', [0])]], wires = 2;
+  const puzzle = { wires, columns: prefix, holes: [{ wires: [0, 1], choices }] };
   const original = structuredClone(puzzle), normalized = validateSignals(puzzle, 'prop');
   assert.equal(signalsSolved(normalized, ['CX'], 'prop'), true);
   assert.equal(signalsSolved(normalized, ['I'], 'prop'), false);
@@ -77,7 +76,8 @@ test('PROP Signals validates and solves complete paired holes without fixed cont
     assert.deepEqual(filled.columns.at(-1), operation ? [operation] : []);
     assert.doesNotThrow(() => validateCircuit(filled, 'prop'));
   }
-  const exported = signalsData(normalized, undefined, 'prop');
+  const exported = signalsData(normalized, 'prop');
+  assert.deepEqual(Object.keys(exported), ['wires', 'columns', 'holes']);
   assert.equal(Object.hasOwn(exported.holes[0], 'controls'), false);
   assert.equal(signalsSolved(validateSignals(JSON.parse(JSON.stringify(exported)), 'prop'), ['CX'], 'prop'), true);
   assert.deepEqual(puzzle, original);
@@ -89,8 +89,7 @@ test('PROP Signals validates and solves complete paired holes without fixed cont
     assert.throws(() => validateSignals({ ...puzzle, holes: [hole] }, 'prop'), /target|distinct|available/);
   }
   assert.throws(() => validateSignals(puzzle, 'controlled'), /2–4/);
-  const remote = { wires: 3, columns: [], holes: [{ wires: [2, 0], choices: ['I', 'CX', 'XC', 'CZ'] }],
-    target: [1, ...Array(7).fill(0)] };
+  const remote = { wires: 3, columns: [], holes: [{ wires: [2, 0], choices: ['I', 'CX', 'XC', 'CZ'] }] };
   assert.doesNotThrow(() => validateSignals(remote, 'prop'));
   assert.throws(() => validateSignals({ ...remote, holes: [{ ...remote.holes[0], choices }] }, 'prop'), /consecutive/);
 });
@@ -171,14 +170,13 @@ test('SWAP accepts only consecutive targets across circuits, imports, holes and 
     for (let first = 0; first < 4; first++) for (let second = 0; second < 4; second++) if (first !== second) {
       const operation = op('SWAP', [first, second]);
       const circuit = { wires: 4, columns: [[operation]] };
-      const puzzle = { wires: 4, columns: [], holes: [{ wires: operation.wires, choices: ['I', 'SWAP'] }],
-        target: [1, ...Array(15).fill(0)] };
+      const puzzle = { wires: 4, columns: [], holes: [{ wires: operation.wires, choices: ['I', 'SWAP'] }] };
       if (Math.abs(first - second) === 1) {
         assert.doesNotThrow(() => validateCircuit(circuit, profile));
         assert.doesNotThrow(() => validateSignals(puzzle, profile));
       } else {
         for (const validate of [() => validateCircuit(circuit, profile), () => validateSignals(puzzle, profile),
-          () => validateSignals({ ...puzzle, holes: [{ wires: [0], choices: ['I', 'X'] }], targetCircuit: circuit }, profile)]) {
+          () => validateSignals({ ...puzzle, columns: circuit.columns, holes: [{ wires: [0], choices: ['I', 'X'] }] }, profile)]) {
           assert.throws(validate, /consecutive/);
         }
       }
@@ -277,9 +275,10 @@ test('seeded categorical generators preserve witnesses, profiles and nontrivial 
     validateSignals(signals, profile);
     assert.equal(signalsSolved(signals, signals.solution, profile), true);
     assert.equal(signalsSolved(signals, [], profile), false);
-    close(simulate(fillSignals(signals, signals.solution, profile)), signals.target);
+    assert.deepEqual(signals.target, goalState(signals.wires));
+    assert.equal(stateEqual(simulate(fillSignals(signals, signals.solution, profile)), signals.target), true);
     if (profile === 'prop') {
-      assert.ok(signals.holes.some(hole => hole.choices.includes('CX')), 'Random PROP puzzles offer whole paired gates');
+      assert.ok(signals.holes.some(hole => hole.wires.length === 2), 'Random PROP puzzles offer whole paired gates');
       assert.ok(signals.holes.every(hole => !Object.hasOwn(hole, 'controls')));
     }
   }
@@ -291,7 +290,7 @@ test('seeded categorical generators preserve witnesses, profiles and nontrivial 
 test('categorical custom data rejects malformed choices, target vectors, profiles and resource excesses', () => {
   const puzzle = getLevels('controlled', 'signals').find(level => level.title === 'Unequal branches');
   assert.throws(() => validateSignals({ ...puzzle, holes: Array(7).fill(puzzle.holes[0]) }), /1–6/);
-  assert.throws(() => validateSignals({ ...puzzle, target: [Infinity, 0, 0, 0] }), /normalized/);
+  assert.throws(() => validateSignals({ ...puzzle, target: [Infinity, 0, 0, 0] }), /goal is fixed/);
   assert.throws(() => validateSignals({ ...puzzle, holes: [{ wires: [0, 1], choices: ['I', 'H'] }] }), /target/);
   assert.throws(() => fillSignals(puzzle, ['SWAP']), /offered/);
   assert.throws(() => solveSignals(puzzle, { limit: 99999 }), /4096/);
@@ -300,12 +299,12 @@ test('categorical custom data rejects malformed choices, target vectors, profile
   assert.throws(() => getLegalMoves({ wires: 1, columns: [[]] }, { selection: [null] }), /cells/);
   assert.throws(() => getLegalMoves({ wires: 1, columns: [[]] }, { selection: ['0:5'] }), /cells/);
   assert.throws(() => getLegalMoves({ wires: 1, columns: [[]] }, { selection: {} }), /cells/);
-  assert.throws(() => validateSignals({ ...puzzle, target: [1, , , ] }), /normalized/);
+  assert.throws(() => validateSignals({ ...puzzle, target: [1, , , ] }), /goal is fixed/);
   const unequal = getLevels('controlled', 'signals').find(level => level.title === 'Unequal branches');
   const data = signalsData(unequal);
   assert.equal(Object.hasOwn(data, 'target'), false);
   close(validateSignals(JSON.parse(JSON.stringify(data))).target, unequal.target);
-  assert.throws(() => validateSignals({ ...unequal, targetCircuit: { wires: 2, columns: [[]] } }), /disagree/);
+  assert.throws(() => validateSignals({ ...unequal, targetCircuit: { wires: 2, columns: [[]] } }), /goal is fixed/);
   assert.throws(() => validateSignals({ ...puzzle, holes: Array(1) }), /distinct gates/);
   for (const controls of [null, {}, '', '0', { length: 0 }, false, 0]) {
     assert.throws(() => validateSignals({ ...puzzle, holes: [{ wires: [1], choices: ['I', 'X'], controls }] }), /array/);
@@ -313,8 +312,8 @@ test('categorical custom data rejects malformed choices, target vectors, profile
 });
 
 test('unfilled mandatory signal holes preview identity but cannot win or accept an unoffered identity', () => {
-  const puzzle = { wires: 1, columns: [], holes: Array.from({ length: 2 }, () => ({ wires: [0], choices: ['H', 'X'] })), target: [1, 0] };
-  close(simulate(fillSignals(puzzle, [])), [1, 0]);
+  const puzzle = { wires: 1, columns: [[op('X', [0])]], holes: Array.from({ length: 2 }, () => ({ wires: [0], choices: ['H', 'X'] })) };
+  close(simulate(fillSignals(puzzle, [])), [0, 1]);
   assert.equal(signalsSolved(puzzle, []), false);
   assert.equal(signalsSolved(puzzle, Array(2)), false);
   assert.equal(signalsSolved(puzzle, ['H', 'H']), true);
@@ -336,13 +335,14 @@ test('rewrites normalize unordered SWAP targets and shared controls without chan
 });
 
 test('Signals capacity preflight keeps every offered filling playable and rejects excess before solving', () => {
-  const puzzle = { wires: 4, columns: Array.from({ length: 24 }, () =>
+  const puzzle = { wires: 4, columns: [...Array.from({ length: 23 }, () =>
     Array.from({ length: 4 }, (_, wire) => op('X', [wire]))),
-    holes: [{ wires: [0], choices: ['I', 'X'] }], target: [1, ...Array(15).fill(0)] };
+    [op('X', [0]), op('Z', [1]), op('Z', [2]), op('Z', [3])]],
+    holes: [{ wires: [0], choices: ['I', 'X'] }] };
   const original = structuredClone(puzzle);
   for (const action of [() => validateSignals(puzzle), () => solveSignals(puzzle), () => fillSignals(puzzle, ['I']),
     () => fillSignals(puzzle, ['X']), () => signalsSolved(puzzle, ['X'])]) assert.throws(action, /96 gates/);
-  const valid = { ...puzzle, columns: [...puzzle.columns.slice(0, -1), puzzle.columns.at(-1).slice(1)] };
+  const valid = { ...puzzle, columns: [...puzzle.columns.slice(0, -1), puzzle.columns.at(-1).slice(0, -1)] };
   assert.ok(solveSignals(valid).length);
   assert.equal(signalsSolved(valid, ['I']), false);
   assert.doesNotThrow(() => fillSignals(valid, ['X']));
@@ -377,9 +377,9 @@ test('column removal rejects occupied or invalid columns and retains the final e
   assert.deepEqual(empty, { wires: 4, columns: [[]] });
 });
 
-test('Signals reference exports retain reachable targets when a solver witness has opposite global phase', () => {
+test('Signals exports derive the fixed goal and accept witnesses with opposite global phase', () => {
   const puzzle = generateSignals('prop', { seed: 'categorical-browser-quality', difficulty: 2 });
-  const data = signalsData(puzzle, undefined, 'prop');
+  const data = signalsData(puzzle, 'prop');
   const restored = validateSignals(JSON.parse(JSON.stringify(data)), 'prop');
   const solution = solveSignals(restored, { profile: 'prop' })[0];
   assert.ok(solution);

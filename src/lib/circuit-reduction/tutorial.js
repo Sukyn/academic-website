@@ -1,4 +1,4 @@
-export const TUTORIAL_INTRO = 'Reach the identity: empty wires that leave every input unchanged. Choose a rule matching the selected gates.';
+export const TUTORIAL_INTRO = 'Circuit equations preserve the operation. The goal is the identity: empty wires that leave every input unchanged.';
 
 // Basic cancellations and a basis change, then paper mission 12 (campaign lesson 17).
 // Layout actions are free.
@@ -13,38 +13,38 @@ export const TUTORIAL_CIRCUIT = [
 ];
 
 export const TUTORIAL_STEPS = [
-  { text: 'Two neighbouring X gates cancel. Choose the rule that replaces them with empty wire.',
+  { text: 'X is self-inverse: two consecutive X gates equal the identity and can be removed.',
     move: { rule: 'cancel-x', row: 0, column: 0 } },
-  { text: 'Two neighbouring H gates cancel too. Match the selected pair to its rule.',
+  { text: 'H is self-inverse too, so the selected pair cancels.',
     move: { rule: 'cancel-h', row: 0, column: 2 } },
-  { text: 'Replace H–Z–H with X. Rules work in either direction.',
+  { text: 'Hadamard conjugation changes Z into X: H–Z–H = X. The equation also works in reverse.',
     move: { rule: 'basis-x', row: 0, column: 4 } },
-  { text: 'Cancel the two X gates.',
+  { text: 'The adjacent X gates cancel.',
     layout: [['X', 'X', ...PAPER_CIRCUIT[0]], ['.', '.', ...PAPER_CIRCUIT[1]]],
     move: { rule: 'cancel-x', row: 0, column: 0 } },
-  { text: 'Some rules have a controlled version. Expand CNOT into H–CZ–H.',
+  { text: 'The controlled form of H–Z–H = X expands CNOT into H–CZ–H, with H on the target wire.',
     layout: PAPER_CIRCUIT,
     move: { rule: 'basis-up', row: 0, column: 1 } },
-  { text: 'Add space between X and CNOT. Empty slots cost no moves.',
+  { text: 'An identity column adds space between X and CNOT. Adding or removing empty columns costs no moves.',
     target: '[data-space="0:5"]',
     layout: [['X', 'H', 'ZU', 'H', 'X', 'XU', '.'], ['.', '.', 'ZD', '.', '.', 'ZD', '.']],
     move: { rule: 'insert-column', row: 0, column: 5 } },
-  { text: 'Expand the second CNOT into H–CZ–H.',
+  { text: 'The second CNOT expands by the same controlled conjugation equation.',
     move: { rule: 'basis-up', row: 0, column: 5 } },
-  { text: 'Replace H–X–H with Z.',
+  { text: 'Hadamard conjugation also gives H–X–H = Z.',
     move: { rule: 'basis-z', row: 0, column: 3 } },
-  { text: 'Move Z past CZ; they commute.',
+  { text: 'Z and CZ commute: exchanging their order preserves the circuit.',
     layout: [['X', 'H', 'ZU', 'Z', 'ZU', '.', 'H'], ['.', '.', 'ZD', '.', 'ZD', '.', '.']],
     move: { rule: 'phase-up', row: 0, column: 3 } },
-  { text: 'Cancel the two CZ gates: applying CZ twice changes nothing.',
+  { text: 'CZ is self-inverse, so the two consecutive CZ gates cancel.',
     layout: [['X', 'H', 'ZU', 'ZU', 'Z', 'H'], ['.', '.', 'ZD', 'ZD', '.', '.']],
     move: { rule: 'cancel-cz', row: 0, column: 2 } },
-  { text: 'Replace H–Z–H with X.',
+  { text: 'The remaining H–Z–H block simplifies to X.',
     layout: [['X', 'H', 'Z', 'H'], ['.', '.', '.', '.']],
     move: { rule: 'basis-x', row: 0, column: 1 } },
-  { text: 'Use Tidy to remove empty slots and bring the two X gates together.',
+  { text: 'Tidy removes empty columns, bringing the two X gates together.',
     target: '#compact-identities',
     move: { rule: 'compact-identities', row: 0, column: 0 } },
-  { text: 'Cancel the two X gates. Empty wires are the identity: every input stays unchanged.',
+  { text: 'The last X pair cancels. The empty circuit is the identity.',
     move: { rule: 'cancel-x', row: 0, column: 0 } },
 ];

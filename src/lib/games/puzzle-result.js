@@ -1,4 +1,4 @@
-/** Cache only the latest result for an immutable puzzle and its current placements. */
+/** Cache only the latest evaluation of immutable puzzle data and optional placements. */
 export function createPuzzleResult(evaluate) {
   let previousPuzzle, previousPlacements, result;
   return (puzzle, placements) => {

@@ -182,23 +182,43 @@ function permutations(values, count) {
 
 export function selectionCells(move, { profile = 'controlled' } = {}) {
   const rule = getRule(move.rule), pattern = move.reverse ? rule.right : rule.left;
-  const targets = new Set(pattern.flat().flatMap(operation => operation.wires));
-  // Even empty sides can be selected to introduce an identity equation.
-  if (!targets.size) for (let wire = 0; wire < rule.wires; wire++) targets.add(wire);
   const cells = new Set();
   for (let offset = 0; offset < pattern.length; offset++) {
-    for (const wire of targets) cells.add(move.wires[wire] + ':' + (move.column + offset));
-    if (profile === 'prop') {
-      for (const wire of move.controls ?? []) cells.add(wire + ':' + (move.column + offset));
-      for (const operation of pattern[offset]) for (const wire of operation.controls ?? []) cells.add(move.wires[wire] + ':' + (move.column + offset));
+    for (const operation of pattern[offset]) {
+      for (const wire of operation.wires) cells.add(move.wires[wire] + ':' + (move.column + offset));
+      if (profile === 'prop') {
+        for (const wire of move.controls ?? []) cells.add(wire + ':' + (move.column + offset));
+        for (const wire of operation.controls ?? []) cells.add(move.wires[wire] + ':' + (move.column + offset));
+      }
     }
+  }
+  // Inserting an equation from the identity still needs an explicit empty window.
+  if (!cells.size) for (let offset = 0; offset < pattern.length; offset++) {
+    for (const wire of move.wires) cells.add(wire + ':' + (move.column + offset));
+    if (profile === 'prop') for (const wire of move.controls ?? []) cells.add(wire + ':' + (move.column + offset));
   }
   return [...cells];
 }
 
-export function matchesSelection(move, selection, options) {
-  const expected = selectionCells(move, options), actual = new Set(selection);
-  return actual.size === expected.length && expected.every(cell => actual.has(cell));
+export function matchesSelection(move, selection, { profile = 'controlled', circuit } = {}) {
+  const expected = new Set(selectionCells(move, { profile })), actual = new Set(selection);
+  if (![...expected].every(cell => actual.has(cell))) return false;
+  const rule = getRule(move.rule), pattern = move.reverse ? rule.right : rule.left;
+  const targets = new Set(pattern.flat().flatMap(operation => operation.wires));
+  if (!targets.size) for (let wire = 0; wire < rule.wires; wire++) targets.add(wire);
+  const rows = new Set([...targets].map(wire => move.wires[wire]));
+  if (profile === 'prop') {
+    for (const wire of move.controls ?? []) rows.add(wire);
+    for (const operation of pattern.flat()) for (const wire of operation.controls ?? []) rows.add(move.wires[wire]);
+  }
+  return [...actual].every(cell => {
+    if (expected.has(cell)) return true;
+    if (typeof cell !== 'string' || !/^\d+:\d+$/.test(cell)) return false;
+    const [wire, column] = cell.split(':').map(Number), offset = column - move.column;
+    if (!rows.has(wire) || offset < 0 || offset >= pattern.length) return false;
+    const entries = circuit ? circuit.columns[column] : pattern[offset].map(operation => mapOperation(operation, move.wires, move.controls ?? []));
+    return !entries.some(operation => touchedWires(operation).includes(wire));
+  });
 }
 
 export function getLegalMoves(input, { profile = 'controlled', selection, allowedRules, expansions = true } = {}) {
@@ -217,15 +237,17 @@ export function getLegalMoves(input, { profile = 'controlled', selection, allowe
   const all = Array.from({ length: circuit.wires }, (_, wire) => wire);
   for (const rule of RULES) {
     if (rule.wires > circuit.wires || (allowedRules && !allowedRules.includes(rule.id))) continue;
-    if (selected && lastColumn - firstColumn + 1 !== rule.left.length) continue;
+    if (selected && lastColumn - firstColumn + 1 > rule.left.length) continue;
+    const start = selected ? Math.max(0, lastColumn - rule.left.length + 1) : 0;
+    const end = Math.min(selected ? firstColumn : Infinity, circuit.columns.length - rule.left.length);
     for (const wires of permutations(all, rule.wires)) {
       const remaining = all.filter(wire => !wires.includes(wire));
       for (let mask = 0; mask < 2 ** remaining.length; mask++) {
         const controls = remaining.filter((_, index) => mask & 1 << index);
-        for (let column = firstColumn; column <= (selected ? firstColumn : circuit.columns.length - rule.left.length); column++) for (const reverse of [false, true]) {
+        for (let column = start; column <= end; column++) for (const reverse of [false, true]) {
           if (reverse && !expansions && rule.right.every(column => !column.length)) continue;
           const move = { rule: rule.id, column, wires, ...(controls.length ? { controls } : {}), ...(reverse ? { reverse: true } : {}) };
-          if (selected && !matchesSelection(move, selected, { profile })) continue;
+          if (selected && !matchesSelection(move, selected, { profile, circuit })) continue;
           try {
             const next = rewrite(circuit, move, profile), key = JSON.stringify([rule.id, next]);
             if (unique.has(key)) continue;

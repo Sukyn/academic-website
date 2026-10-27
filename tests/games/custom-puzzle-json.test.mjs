@@ -15,7 +15,7 @@ test('custom JSON contains exactly the puzzle data', () => {
   }
 });
 
-test('late JSON file reads cannot replace newer files, manual edits or a reopened dialog', async () => {
+function surface() {
   const nodes = new Map();
   const get = id => {
     if (!nodes.has(id)) {
@@ -28,12 +28,17 @@ test('late JSON file reads cannot replace newer files, manual edits or a reopene
     }
     return nodes.get(id);
   };
+  const ui = createCustomPuzzleJson({ get, game: 'quantum-golf', exportPuzzle: () => ({}), importPuzzle() {} });
+  return { get, ui };
+}
+
+test('late JSON file reads cannot replace newer files, manual edits or a reopened dialog', async () => {
+  const { get, ui } = surface();
   const pending = () => {
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { resolve, reject, file: { size: 10, text: () => promise } };
   };
-  const ui = createCustomPuzzleJson({ get, game: 'quantum-golf', exportPuzzle: () => ({}), importPuzzle() {} });
   await get('input-json').emit('click');
   const fileInput = get('puzzle-json-file'), text = get('puzzle-json-text');
   const first = pending(), second = pending();
@@ -60,4 +65,42 @@ test('custom JSON transport rejects oversized and malformed input', () => {
   }
   assert.throws(() => encodeCustomPuzzle({ text: 'x'.repeat(65_536) }), /64 KB/);
   assert.throws(() => encodeCustomPuzzle(null), /object/);
+});
+
+test('JSON size limits use UTF-8 bytes for ASCII, multibyte characters and surrogate pairs', () => {
+  // The pretty-printed object adds 16 ASCII bytes around the text value.
+  for (const [unit, count] of [['x', 65_520], ['é', 32_760], ['雪', 21_840], ['🧪', 16_380],
+    ['\ud800', 10_920], ['\udfff', 10_920]]) {
+    const puzzle = { text: unit.repeat(count) }, source = JSON.stringify(puzzle, null, 2);
+    assert.equal(new Blob([source]).size, 65_536, 'Each example sits exactly at the file-size boundary');
+    assert.equal(encodeCustomPuzzle(puzzle), source);
+    assert.deepEqual(decodeCustomPuzzle(source), puzzle);
+    assert.throws(() => encodeCustomPuzzle({ text: puzzle.text + 'x' }), /64 KB/);
+    assert.throws(() => decodeCustomPuzzle(source + ' '), /64 KB/);
+  }
+  const rawSurrogate = '{"text":"' + '\ud800'.repeat(21_842) + '"}';
+  assert.ok(rawSurrogate.length < 65_536 && new Blob([rawSurrogate]).size > 65_536);
+  assert.throws(() => decodeCustomPuzzle(rawSurrogate), /64 KB/, 'Unescaped lone surrogates also count as UTF-8 replacement bytes');
+});
+
+test('obviously invalid or oversized JSON never allocates a UTF-8 buffer', context => {
+  context.mock.method(TextEncoder.prototype, 'encode', () => assert.fail('Reject this input before byte encoding'));
+  const untrusted = { get length() { assert.fail('Do not inspect or coerce a non-string input'); } };
+  for (const source of [untrusted, null, 'x'.repeat(65_537)]) {
+    assert.throws(() => decodeCustomPuzzle(source), /64 KB/);
+  }
+  assert.throws(() => encodeCustomPuzzle({ text: 'x'.repeat(65_536) }), /64 KB/);
+});
+
+test('file uploads use the same byte boundary and reject oversized files before reading them', async () => {
+  const { get } = surface();
+  await get('input-json').emit('click');
+  const input = get('puzzle-json-file'), text = get('puzzle-json-text');
+  const source = JSON.stringify({ text: 'é'.repeat(32_760) }, null, 2);
+  input.files = [new Blob([source])]; await input.emit('change');
+  assert.equal(text.value, source);
+  input.files = [{ size: 65_537, text() { assert.fail('An oversized file must not be read'); } }];
+  await input.emit('change');
+  assert.match(get('puzzle-json-status').textContent, /64 KB/);
+  assert.equal(text.value, source, 'A rejected file keeps the previous editable JSON');
 });

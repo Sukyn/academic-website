@@ -1,5 +1,5 @@
 import { seededRandom } from '../games/random.js';
-import { stateEqual as signalsStateEqual } from '../quantum-signals/engine.js';
+import { goalState, stateEqual as signalsStateEqual } from '../quantum-signals/engine.js';
 import { validateCircuit, validateOperation, holeOperation, simulate, applyOperation, applyMove, isSolved, MAX_COLUMNS, MAX_OPERATIONS } from './engine.js';
 
 const op = (gate, wires, controls = []) => ({ gate, wires, ...(controls.length ? { controls } : {}) });
@@ -58,9 +58,19 @@ const simplificationLevels = profile => profile === 'controlled' ? [
   ['Carry the flip', naturality('X')],
 ];
 
-function signalPuzzle(wires, columns, holes, solution, profile = 'controlled') {
-  const initial = { wires, columns, holes, target: [1, ...Array(2 ** wires - 1).fill(0)] };
-  return { ...initial, target: simulate(fillSignals(initial, solution, profile), undefined, profile), solution };
+function signalPuzzle(wires, holes, solution, profile = 'controlled') {
+  // Finish by recombining paths, without offering a final unconditional bit flip.
+  if (solution.at(-1) === 'H') holes = [...holes.slice(0, -1), {
+    ...holes.at(-1), choices: holes.at(-1).choices.filter(gate => gate !== 'X'),
+  }];
+  const operations = [...Array.from({ length: wires }, (_, wire) => op('X', [wire])),
+    ...holes.map((hole, index) => holeOperation(hole, solution[index])).filter(Boolean).reverse()];
+  const stack = [];
+  for (const operation of operations) {
+    if (JSON.stringify(stack.at(-1)) === JSON.stringify(operation)) stack.pop();
+    else stack.push(operation);
+  }
+  return { ...validateSignals({ wires, columns: stack.map(operation => [operation]), holes }, profile), solution };
 }
 const hole = (wires, choices, controls = []) => ({ wires, choices, ...(controls.length ? { controls } : {}) });
 const single = (wire, controls = []) => hole([wire], ['I', 'H', 'X', 'Z'], controls);
@@ -68,35 +78,30 @@ const crossing = (first, second, controls = []) => hole([first, second], ['I', '
 const paired = (first, second) => hole([first, second], ['I', 'CX', 'XC', 'CZ',
   ...(Math.abs(first - second) === 1 ? ['SWAP'] : [])]);
 
-function cnotSignalPuzzle(profile, { wires = 3, targets = [0, 1], spectator = 2, controls = [], phase = false, flip = false } = {}) {
-  const [first, second] = targets;
+function cnotSignalPuzzle(profile, { wires = 3, targets = [0, 1], spectator = 2, controls = [] } = {}) {
+  const [first] = targets;
   // Entangle the moved qubit with a spectator so all three CNOTs affect the target.
-  const columns = [
-    ...controls.map(wire => [op('H', [wire])]),
-    [op('H', [first])], [op('X', [spectator], [first])], [op('X', [second])],
-    ...(phase ? [[op('Z', [first])]] : []), ...(flip ? [[op('X', [spectator])]] : []),
-  ];
   const holes = alternatingCnot(targets, controls).map(operation => profile === 'prop' ?
     hole(targets, ['I', 'CX', 'XC']) : hole(operation.wires, ['I', 'X'], operation.controls));
-  return signalPuzzle(wires, columns, holes, profile === 'prop' ? ['CX', 'XC', 'CX'] : ['X', 'X', 'X'], profile);
+  holes.push(profile === 'prop' ? paired(first, spectator) : single(spectator, [first]), single(first));
+  const solution = [...(profile === 'prop' ? ['CX', 'XC', 'CX'] : ['X', 'X', 'X']), profile === 'prop' ? 'CX' : 'X', 'H'];
+  if (controls.length) { holes.push(single(controls[0])); solution.push('H'); }
+  return signalPuzzle(wires, holes, solution, profile);
 }
 
 function signalLevels(profile) {
   const puzzle = (...args) => signalPuzzle(...args, profile);
   return profile === 'controlled' ? [
-    ['Unequal branches', puzzle(2, [[op('H', [0])]], [single(1, [0])], ['H'])],
-    ['Two control bits', puzzle(3, [[op('H', [0]), op('H', [1])]], [single(2, [0, 1])], ['X'])],
-    ['Choose which crossing', puzzle(3, [[op('H', [0])], [op('X', [1])]], [crossing(1, 2, [0]), single(2)], ['SWAP', 'Z'])],
-    ['A controlled interference', puzzle(3, [[op('H', [0])], [op('H', [1], [0])]],
-      [crossing(1, 2, [0]), single(2, [0]), single(1)], ['SWAP', 'H', 'X'])],
+    ['Unequal branches', puzzle(2, [single(1, [0]), single(0)], ['H', 'H'])],
+    ['Two control bits', puzzle(3, [single(2, [0, 1]), single(0), single(1)], ['X', 'H', 'H'])],
+    ['Choose which crossing', puzzle(3, [crossing(1, 2, [0]), single(2), single(0)], ['SWAP', 'H', 'H'])],
+    ['A controlled interference', puzzle(3, [crossing(1, 2, [0]), single(2, [0]), single(1), single(0)], ['SWAP', 'H', 'X', 'H'])],
     ['Control three CNOTs', cnotSignalPuzzle(profile, { wires: 4, targets: [1, 2], spectator: 3, controls: [0] })],
   ] : [
-    ['Move the excitation', puzzle(2, [[op('X', [0])]], [crossing(0, 1)], ['SWAP'])],
-    ['Move a superposition', puzzle(2, [[op('H', [0])]], [crossing(0, 1), single(0)], ['SWAP', 'X'])],
-    ['Move a correlation', puzzle(3, [[op('H', [0])], [op('X', [1], [0])]],
-      [crossing(1, 2), single(0)], ['SWAP', 'Z'])],
-    ['Return to one path', puzzle(3, [[op('H', [0])], [op('X', [1], [0])], [op('SWAP', [1, 2])]],
-      [crossing(1, 2), paired(0, 1), single(0)], ['SWAP', 'CX', 'H'])],
+    ['Move the excitation', puzzle(2, [crossing(0, 1), single(0)], ['SWAP', 'H'])],
+    ['Move a superposition', puzzle(2, [crossing(0, 1), single(1)], ['SWAP', 'H'])],
+    ['Move a correlation', puzzle(3, [crossing(1, 2), paired(0, 1), single(1), single(2), single(0)], ['SWAP', 'CX', 'X', 'X', 'H'])],
+    ['Return to one path', puzzle(3, [crossing(1, 2), paired(0, 1), single(0), single(2)], ['SWAP', 'CX', 'H', 'H'])],
     ['Three CNOTs make a swap', cnotSignalPuzzle(profile)],
   ];
 }
@@ -113,22 +118,23 @@ export function getTutorial(profile, game = 'simplification') {
   if (game !== 'simplification' && game !== 'signals') throw new RangeError('Choose a categorical circuit game.');
   if (game === 'signals') {
     if (profile === 'controlled') return {
-      ...signalPuzzle(3, [[op('H', [0])], [op('X', [1])]],
-        [crossing(1, 2, [0]), single(2, [0])], ['SWAP', 'H'], profile),
+      ...signalPuzzle(3, [crossing(1, 2, [0]), single(2, [0]), single(0)], ['SWAP', 'H', 'H'], profile),
       steps: [
-        { text: 'Choose SWAP. The control exchanges these wires only on paths whose first bit is 1.', hole: 0, gate: 'SWAP' },
-        { text: 'Choose H. The same control limits the gate to that branch. Match the target paths.', hole: 1, gate: 'H' },
+        { text: 'The first qubit controls SWAP. The last two bits exchange places when the first bit is 1.', hole: 0, gate: 'SWAP' },
+        { text: 'With the same control, H acts on the third qubit only in basis states whose first bit is 1.', hole: 1, gate: 'H' },
+        { text: 'H on the first qubit recombines the amplitudes, leaving only basis state 111.', hole: 2, gate: 'H' },
       ],
     };
     return {
-      ...signalPuzzle(3, [[op('H', [0])], [op('X', [1], [0])], [op('X', [2])]],
-        [crossing(1, 2), ...Array.from({ length: 3 }, () => hole([0, 1], ['I', 'CX', 'XC']))],
-        ['SWAP', 'CX', 'XC', 'CX'], profile),
+      ...signalPuzzle(3, [crossing(0, 1), ...Array.from({ length: 3 }, () => hole([0, 1], ['I', 'CX', 'XC'])), paired(0, 2), single(0)],
+        ['SWAP', 'CX', 'XC', 'CX', 'CX', 'H'], profile),
       steps: [
-        { text: 'A crossing exchanges neighbouring wires. Choose SWAP to move the lit paths.', hole: 0, gate: 'SWAP' },
-        { text: 'Three alternating CNOT gates also make a swap. Start with the upper control.', hole: 1, gate: 'CX' },
-        { text: 'Reverse the direction: put the control on the lower wire.', hole: 2, gate: 'XC' },
-        { text: 'Use the upper control again to finish the swap and match the target.', hole: 3, gate: 'CX' },
+        { text: 'SWAP exchanges the first two qubits. In each basis label, the first two bits exchange positions.', hole: 0, gate: 'SWAP' },
+        { text: 'Three CNOT gates with alternating controls equal SWAP. The first uses the upper qubit as control.', hole: 1, gate: 'CX' },
+        { text: 'Control and target exchange roles for the second gate.', hole: 2, gate: 'XC' },
+        { text: 'The third gate restores the original control direction, completing SWAP.', hole: 3, gate: 'CX' },
+        { text: 'This CNOT removes entanglement between the first and third qubits.', hole: 4, gate: 'CX' },
+        { text: 'H on the first qubit produces the target basis state 111.', hole: 5, gate: 'H' },
       ],
     };
   }
@@ -139,12 +145,12 @@ export function getTutorial(profile, game = 'simplification') {
   const solution = blocks.flatMap(block => block.solution);
   return { circuit: { wires: 2, columns }, solution,
     steps: solution.map((action, index) => ({ move: action, text: action.rule === 'tidy' ? 'Tidy removes the empty columns.' :
-      index === 0 ? 'Replace H–Z–H with X. The goal is empty wires: the identity.' :
+      index === 0 ? 'Hadamard conjugation gives H–Z–H = X. Removing all gates leaves the identity circuit.' :
       index === 2 ? 'The two X gates cancel.' : action.rule === 'basis-x' ?
-        'The same equation works under a shared control. Select only its target gates.' : action.rule === 'swap-h' ?
-          'Move H through the crossing. It follows the wire to the other side.' :
-          action.rule === 'swap-cnot' ? 'Three alternating CNOT gates make a swap.' :
-          action.rule === 'cancel-swap' ? 'Two crossings cancel.' : 'Cancel the matching pair.' })),
+        'The conjugation equation applies to the target gates under a shared, unchanged control condition.' : action.rule === 'swap-h' ?
+          'H follows its wire through SWAP, moving to the other row. This is the naturality equation.' :
+          action.rule === 'swap-cnot' ? 'Three alternating CNOT gates equal SWAP.' :
+          action.rule === 'cancel-swap' ? 'SWAP is self-inverse: two consecutive crossings cancel.' : 'Two identical self-inverse gates cancel.' })),
   };
 }
 
@@ -195,15 +201,11 @@ export function validateSignals(input, profile = 'controlled') {
     for (const gate of entry.choices) if (gate !== 'I') validateOperation(holeOperation(entry, gate), input.wires, profile);
     return { wires: [...entry.wires], ...(entry.controls?.length ? { controls: [...entry.controls] } : {}), choices: [...entry.choices] };
   });
-  const reference = input.targetCircuit === undefined ? undefined : validateCircuit(input.targetCircuit, profile);
-  if (reference && reference.wires !== circuit.wires) throw new RangeError('The target circuit needs the same wires.');
-  const referenceState = reference ? simulate(reference) : undefined;
-  const target = input.target ?? referenceState;
-  if (!Array.isArray(target) || target.length !== 2 ** input.wires || Array.from(target).some(value => !Number.isFinite(value)) ||
-      Math.abs(target.reduce((norm, value) => norm + value * value, 0) - 1) > 1e-9) throw new RangeError('Use a normalized real target state.');
-  if (reference && !signalsStateEqual(target, referenceState)) throw new RangeError('The target and its circuit disagree.');
-  return { wires: circuit.wires, columns: input.columns.length ? circuit.columns : [], holes, target: [...target],
-    ...(reference ? { targetCircuit: reference } : {}) };
+  const target = goalState(circuit.wires);
+  if (Object.hasOwn(input, 'targetCircuit') || (Object.hasOwn(input, 'target') && !signalsStateEqual(input.target, target))) {
+    throw new RangeError('The goal is fixed: make every bit 1.');
+  }
+  return { wires: circuit.wires, columns: input.columns.length ? circuit.columns : [], holes, target };
 }
 
 function filledCircuit(puzzle, placements, profile) {
@@ -254,15 +256,10 @@ export function solveSignals(input, { profile = 'controlled', limit = 1 } = {}) 
   visit(0, initial); return solutions;
 }
 
-export function signalsData(input, referenceCircuit = input.targetCircuit, profile = 'controlled') {
+export function signalsData(input, profile = 'controlled') {
   const puzzle = validateSignals(input, profile);
-  if (!referenceCircuit) {
-    const solution = solveSignals(puzzle, { profile })[0];
-    if (!solution) throw new RangeError('Choose a reachable target before sharing.');
-    referenceCircuit = fillSignals(puzzle, solution, profile);
-  }
-  const checked = validateSignals({ ...puzzle, targetCircuit: referenceCircuit }, profile);
-  return { wires: checked.wires, columns: checked.columns, holes: checked.holes, targetCircuit: checked.targetCircuit };
+  if (!solveSignals(puzzle, { profile }).length) throw new RangeError('Make every bit 1 before sharing.');
+  return { wires: puzzle.wires, columns: puzzle.columns, holes: puzzle.holes };
 }
 
 export function generateSignals(profile, { seed, difficulty = 2 } = {}) {
@@ -274,21 +271,25 @@ export function generateSignals(profile, { seed, difficulty = 2 } = {}) {
     if (random() < .5) targets.reverse();
     const others = Array.from({ length: wires }, (_, index) => index).filter(wire => !targets.includes(wire));
     const spectator = others.splice(Math.floor(random() * others.length), 1)[0];
-    return cnotSignalPuzzle(profile, { wires, targets, spectator, controls: profile === 'controlled' ? others : [],
-      phase: random() < .5, flip: random() < .5 });
+    return cnotSignalPuzzle(profile, { wires, targets, spectator, controls: profile === 'controlled' ? others : [] });
   }
-  const columns = [[op('H', [0])], [op('X', [1])]];
-  if (difficulty > 1) columns.push([op('X', [2], [0])]);
-  const firstCrossing = Math.floor(random() * (wires - 1));
-  const holes = [crossing(firstCrossing, firstCrossing + 1), single(0), profile === 'prop' ? paired(0, 1) : single(1, [wires > 2 ? wires - 1 : 0])];
-  if (difficulty > 1) holes.push(profile === 'prop' ? paired(1, 2) : crossing(1, 2, [0]));
-  if (difficulty > 2) holes.push(single(3, profile === 'controlled' ? [0, 1] : []));
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const solution = holes.map(entry => entry.choices[Math.floor(random() * entry.choices.length)]);
-    const puzzle = signalPuzzle(wires, columns, holes, solution, profile);
-    if (!signalsSolved(puzzle, [], profile)) return puzzle;
+  for (let attempt = 0; attempt < 64; attempt++) {
+    const holes = [], solution = [], count = difficulty + 2;
+    const bait = random() < .5 ? Math.floor(random() * count) : -1;
+    for (let index = 0; index < count + Number(bait >= 0); index++) {
+      const wire = Math.floor(random() * wires), other = wire === wires - 1 ? wire - 1 : wire + 1;
+      const closing = index === count + Number(bait >= 0) - 1;
+      const entry = closing ? single(wire) : index === 1 ? crossing(Math.min(wire, other), Math.max(wire, other)) :
+        index > 1 && profile === 'prop' && random() < .4 ? paired(wire, other) :
+          single(wire, profile === 'controlled' && random() < .5 ? [other] : []);
+      holes.push(entry);
+      solution.push(closing ? 'H' : index === bait ? 'I' : index === 0 ? 'H' : entry.choices[1 + Math.floor(random() * (entry.choices.length - 1))]);
+    }
+    const puzzle = signalPuzzle(wires, holes, solution, profile);
+    const withoutClosingH = { ...puzzle, holes: [...puzzle.holes.slice(0, -1), { ...puzzle.holes.at(-1), choices: ['I', 'Z'] }] };
+    if (!solveSignals(withoutClosingH, { profile }).length) return puzzle;
   }
-  return signalPuzzle(wires, columns, holes, holes.map((_, index) => index ? 'I' : 'SWAP'), profile);
+  return signalPuzzle(wires, [crossing(0, 1), single(0)], ['SWAP', 'H'], profile);
 }
 
 export function verifySolution(circuit, solution, profile = 'controlled') {

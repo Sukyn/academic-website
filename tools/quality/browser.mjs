@@ -20,7 +20,7 @@ const resilienceOnly = process.argv.includes('--resilience-only');
 await mkdir(output, { recursive: true });
 const routes = (await readdir('dist', { recursive: true })).filter(file => file.endsWith('.html'));
 assert.ok(routes.length > 0, 'Build the website before auditing it.');
-const auditTime = new Date('2026-10-17T10:00:00Z');
+const auditTime = new Date('2026-10-25T10:00:00Z');
 const fixture = createBrowserApi({ now: auditTime.getTime() });
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });

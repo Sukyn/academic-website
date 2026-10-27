@@ -13,6 +13,7 @@ import GameLeaderboard from './GameLeaderboard.astro';
 import GameHoleControls from './GameHoleControls.astro';
 import GameAutofocus from './GameAutofocus.astro';
 import CircuitCategoryMenu from './CircuitCategoryMenu.astro';
+import SignalGateMemo from './SignalGateMemo.astro';
 import '../../styles/categorical-circuits.css';
 
 interface Props { kind: 'simplification' | 'signals' }
@@ -39,29 +40,32 @@ const tools = [
       <GameModeMenu daily={false}><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={[]} daily={false} />
-        <GameTutorial intro={signals ? 'Fill the holes to match the target paths.' : 'Reach the identity using swaps and circuit equations.'} />
+        <GameTutorial intro={signals ? 'Circuit gates prepare the all-ones basis state.' : 'Gate equations and wire swaps reduce the circuit to the identity.'} />
         <section aria-label={title}>
           <p id="move-count" class="categorical-count" role="status" hidden={signals}>0 moves</p>
           <div class="game-scroll categorical-scroll" id="categorical-scroll" role="region" aria-label="Circuit board. Scroll horizontally to explore longer circuits." tabindex="0">
             <div id="categorical-board" role="group" aria-label="Quantum circuit"></div>
           </div>
-          <div id="rule-list" class="categorical-rule-list" role="group" aria-label="Circuit rewrite rules" hidden={signals}></div>
-          <div class="signal-palette" hidden={!signals}>
-            <div id="gate-palette" class="categorical-gate-palette" role="group" aria-label="Gate choices for the selected hole"></div>
-            {signals && <GameHoleControls />}
-          </div>
-          <div class="game-scroll signal-scroll signal-flow-panel" id="flow-panel" role="region" aria-label="Joint-state paths and target. Scroll vertically to explore the states." tabindex="0" hidden={!signals}>
-            <div class="signal-flow-layout">
-              <div class="signal-flow-scroll" id="flow-scroll" role="region" aria-label="Quantum state paths. Scroll horizontally to explore circuit columns." tabindex="0">
-                <svg id="signal-flow" role="img" aria-label="Quantum state paths through the circuit"></svg>
-              </div>
-              <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
+          <div class="circuit-actions">
+            <div id="rule-list" class="categorical-rule-list" role="group" aria-label="Circuit rewrite rules" hidden={signals}></div>
+            <div class="signal-palette" hidden={!signals}>
+              <div id="gate-palette" class="categorical-gate-palette" role="group" aria-label="Gate choices for the selected hole"></div>
+              {signals && <GameHoleControls />}
             </div>
+            <div class="game-scroll signal-scroll signal-flow-panel" id="flow-panel" role="region" aria-label="Joint-state paths and target. Scroll vertically to explore the states." tabindex="0" hidden={!signals}>
+              <div class="signal-flow-layout">
+                <div class="signal-flow-scroll" id="flow-scroll" role="region" aria-label="Quantum state paths. Scroll horizontally to explore circuit columns." tabindex="0">
+                  <svg id="signal-flow" role="img" aria-label="Quantum state paths through the circuit"></svg>
+                </div>
+                <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
+              </div>
+            </div>
+            {signals && <SignalGateMemo />}
+            <GameRoundControls resultLabel={signals ? 'Result' : 'Scores'}>
+              <button class="button ghost" id="tidy" type="button">Tidy</button>
+              <button class="button ghost" id="add-space" type="button">Add column</button>
+            </GameRoundControls>
           </div>
-          <GameRoundControls resultLabel={signals ? 'Result' : 'Scores'}>
-            <button class="button ghost" id="tidy" type="button">Tidy</button>
-            <button class="button ghost" id="add-space" type="button">Add column</button>
-          </GameRoundControls>
           <details class="advanced-features" id="advanced-features">
             <summary>Advanced</summary>
             <div class="advanced-panel">
@@ -111,7 +115,6 @@ const tools = [
             <div id="editor-context" class="categorical-actions" hidden></div>
             <p class="message" id="editor-summary" role="status"></p>
             <div class="categorical-actions">
-              {signals && <button class="button ghost" id="capture-target" type="button">Use this output as target</button>}
               <button class="button" id="play-custom" type="button">Play puzzle</button>
             </div>
           </section>
@@ -123,13 +126,13 @@ const tools = [
 
     <GameRulesDialog>
       {signals ? (
-        <p>Fill the holes to match the target, including relative phases. The paths show amplitudes splitting and combining.</p>
+        <p>Fill the holes to collect every path at the all-ones label. Matching signs add; opposite signs cancel. A single surviving path may have either sign.</p>
       ) : (
         <p>Reach empty wires: the identity. Select a gate block, then an equation. Include linked endpoints in PROP. In Controlled PROP, select the targets and leave shared controls unselected. Add column makes room; Tidy removes empty columns. Both are free.</p>
       )}
       <p><strong>PRO</strong> is the standard game. <strong>PROP</strong> adds wire crossings. <strong>Controlled PROP</strong> lets you use equations under shared controls.</p>
       {signals ? (
-        <p>Editor: place gates, set the output as target, then replace gates with holes. Click neighbouring wires for a swap. Keep controls and targets on different wires.</p>
+        <p>Editor: place gates, then replace gates with holes. The goal stays all ones. Click neighbouring wires for a swap. Keep controls and targets on different wires.</p>
       ) : (
         <p>Editor: start from empty wires. Enable Expand and apply equations in reverse. Choose shared controls under Control context.</p>
       )}

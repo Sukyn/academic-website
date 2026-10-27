@@ -1,6 +1,7 @@
 import { getRule } from './engine.js';
 
-export const REWRITE_DURATION = 400;
+export const REWRITE_DURATION = 800;
+export const REPLAY_REWRITE_DURATION = 560;
 
 const samePattern = (circuit, pattern, row, column) => pattern.every((line, y) => line.every((cell, x) => circuit[row + y]?.[column + x] === cell));
 
@@ -31,6 +32,10 @@ function matchGates(before, after) {
       const middle = sibling ? (gate.column + sibling.column) / 2 : gate.column;
       gates.push({ cell: gate.cell, row: gate.row, fromColumn: phase === 'in' ? middle : gate.column, toColumn: phase === 'out' ? middle : gate.column, phase });
     }
+  }
+  for (const gate of gates) if (gate.phase === 'out' && gate.fromColumn === gate.toColumn) {
+    const replacement = gates.find(next => next.phase === 'in' && next.row === gate.row && next.fromColumn === gate.fromColumn && next.toColumn === gate.toColumn);
+    if (replacement) gate.replacement = replacement.replacement = true;
   }
   return gates;
 }
@@ -95,8 +100,12 @@ const smooth = value => { const t = clamp(value); return t * t * (3 - 2 * t); };
 /** Shared timing for the live SVG overlay and the exported canvas frames. */
 export function transitionSample(item, progress) {
   const time = clamp(Number.isFinite(progress) ? progress : 0);
-  const column = item.fromColumn + (item.toColumn - item.fromColumn) * smooth(time);
+  // Hold the matched block, approach its meeting point, then cancel and settle.
+  // Reversing this schedule first reveals a pair, then separates it into its slots.
+  const reversed = item.phase === 'in', t = reversed ? 1 - time : time;
+  const movement = smooth((t - .16) / .44);
+  const column = item.fromColumn + (item.toColumn - item.fromColumn) * (reversed ? 1 - movement : movement);
   if (item.phase === 'move') return { column, opacity: 1, scale: 1 };
-  const visibility = item.phase === 'in' ? smooth(time / .8) : 1 - smooth((time - .2) / .8);
-  return { column, opacity: visibility, scale: .18 + .82 * visibility };
+  const visibility = item.replacement && reversed ? smooth((time - .55) / .29) : 1 - smooth((t - .55) / .29);
+  return { column, opacity: visibility, scale: item.replacement ? 1 : .18 + .82 * visibility };
 }

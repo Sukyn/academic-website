@@ -1,0 +1,48 @@
+.zx-game .zx-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 8.5rem; gap: 1rem; align-items: center; margin-block: 1rem; }
+.zx-game .zx-board-panel { min-width: 0; }
+.zx-game #zx-board { min-height: 320px; max-height: 600px; }
+.zx-game #zx-board > .zx-diagram { margin-inline: 0; }
+.zx-game .zx-target-panel { padding-left: 1rem; border-left: 1px solid var(--color-border); text-align: center; }
+.zx-game .zx-target-panel h2 { margin: 0; font: .85rem var(--font-ui); color: var(--color-muted); }
+.zx-game .zx-canvas { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; scrollbar-width: thin; }
+.zx-game .zx-diagram { position: relative; margin-inline: auto; }
+.zx-game .zx-svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.zx-game .zx-wire { pointer-events: none; }
+.zx-game .zx-wire-hit { pointer-events: stroke; cursor: pointer; }
+.zx-game .zx-diagram button { appearance: none; position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%); border: 0; padding: 0; margin: 0; background: transparent; box-shadow: none; cursor: pointer; touch-action: manipulation; }
+.zx-game .zx-diagram button:disabled { opacity: 1; cursor: default; }
+.zx-game .zx-diagram .zx-node { z-index: 2; border-radius: 50%; cursor: grab; touch-action: none; }
+.zx-game .zx-diagram .zx-node:active { cursor: grabbing; }
+.zx-game .zx-diagram .zx-edge { z-index: 1; width: 24px; height: 24px; min-width: 24px; min-height: 24px; border-radius: .5rem; }
+.zx-game .zx-diagram button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }
+.zx-game .zx-node:not(:disabled):hover { box-shadow: inset 0 0 0 2px rgb(242 213 114 / 40%); }
+.zx-game .zx-edge:not(:disabled):hover { background: rgb(242 213 114 / 8%); }
+.zx-game .zx-glyph { display: inline-block; flex-shrink: 0; vertical-align: middle; }
+.zx-game .zx-rules, .zx-game .zx-editor-bar { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; align-items: center; }
+.zx-game .zx-rules { margin-block: .8rem; }
+.zx-game .zx-editor-bar .button, .zx-game .zx-rule { min-height: 44px; }
+.zx-game .zx-editor-bar:has(> [hidden]) { display: none; }
+.quantum-game .zx-option-choices { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; }
+.quantum-game .zx-option-choices .button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: .35rem; }
+.quantum-game .zx-option-wire { width: .75rem; height: 2px; background: #e5ece7; }
+.quantum-game .zx-choice-dialog { width: fit-content; max-width: calc(100% - 2rem); }
+.quantum-game .zx-choice-dialog h2 { font-size: 1.1rem; margin: 0 1rem 1rem 0; }
+.zx-game .zx-rule { appearance: none; display: inline-flex; align-items: center; justify-content: center; padding: .15rem .35rem; border: 1px solid var(--color-border); border-radius: .5rem; background: transparent; color: inherit; cursor: pointer; }
+.zx-game .zx-rule-glyph { display: block; max-width: 100%; }
+.zx-game .zx-rule:disabled { opacity: .24; }
+.zx-game #move-count { text-align: center; }
+.zx-game .zx-target-panel .zx-canvas { overflow: visible; }
+.quantum-game .zx-rule-guide { list-style: none; padding: 0; margin-block: 1rem; }
+.quantum-game .zx-rule-guide li { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; margin-block: .7rem; }
+.quantum-game .zx-rule-guide svg { flex: 0 0 144px; }
+.quantum-game .zx-rule-guide span { flex: 1 1 14rem; }
+.quantum-game .zx-phase-cycle, .quantum-game .zx-phase-examples { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin-block: 1rem; }
+.quantum-game .zx-phase-cycle { flex-wrap: nowrap; gap: .25rem; }
+.quantum-game .zx-phase-examples > span { display: inline-flex; align-items: center; gap: .25rem; }
+.zx-game [data-tutorial-focus] { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .zx-game .zx-workspace { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+  .zx-game .zx-target-panel { display: flex; align-items: center; justify-content: center; gap: .5rem; grid-row: 1; border-left: 0; border-bottom: 1px solid var(--color-border); padding: 0; }
+  .zx-game .zx-target-panel .zx-canvas { width: 8rem; }
+  .zx-game .zx-rules { gap: .35rem; }
+}

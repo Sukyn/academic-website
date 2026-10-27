@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeReplay } from '../../src/scripts/circuit-reduction-gif-worker.js';
+import { REPLAY_REWRITE_DURATION } from '../../src/lib/circuit-reduction/transition.js';
 
 function replace(context, object, key, value) {
   const original = object[key];
@@ -99,14 +100,16 @@ test('GIF animates cancellation while keeping a static clean header and ending o
   assert.ok(surface.frames.slice(1).every(frame => texts(frame).length === 0), 'Summary text is drawn only once');
   assert.ok(surface.frames.every(frame => selectedCells(frame).length === 0), 'There are no rewrite highlights');
   assert.ok(surface.frames.every(frame => !texts(frame).some(text => /Move|Layout|Cancel/.test(text))), 'There are no per-move captions');
-  const positions = surface.frames.slice(1, -1).map(frame => frame.filter(command => command.name === 'translate').map(command => command.args[0]));
+  const positions = surface.frames.slice(1, -1).map(frame => frame.filter(command => command.name === 'translate').map(command => command.args[0])).filter(pair => pair.length);
   assert.ok(positions.every(pair => pair.length === 2));
-  assert.ok(positions.every((pair, index) => !index || pair[1] - pair[0] < positions[index - 1][1] - positions[index - 1][0]), 'The cancelling glyphs converge');
-  assert.ok(surface.frames[3].some(command => command.name === 'scale' && command.args[0] < 1), 'The glyphs shrink');
-  assert.ok(arcs(surface.frames[3]).every(command => command.opacity > 0 && command.opacity < 1), 'The glyphs fade');
+  assert.ok(positions.every((pair, index) => !index || pair[1] - pair[0] <= positions[index - 1][1] - positions[index - 1][0]), 'The cancelling glyphs converge and meet before fading');
+  assert.ok(surface.frames[1].filter(command => command.name === 'scale').every(command => command.args[0] === 1), 'The first tween holds the matched source');
+  assert.ok(surface.frames[6].some(command => command.name === 'scale' && command.args[0] < 1), 'The glyphs shrink after approaching each other');
+  assert.ok(arcs(surface.frames[6]).every(command => command.opacity > 0 && command.opacity < 1), 'The glyphs fade');
+  assert.equal(arcs(surface.frames[7]).length, 0, 'The result is held before the last frame');
   assert.equal(arcs(surface.frames.at(-1)).length, 0);
   assert.equal(frames[0].delay, 1000); assert.equal(frames.at(-1).delay, 1800);
-  assert.ok(frames.slice(1, -1).every(frame => frame.delay === 50));
+  assert.ok(frames.slice(1, -1).every(frame => frame.delay === Math.round(REPLAY_REWRITE_DURATION / 8 / 10) * 10));
   assert.ok(frames.every(frame => !frame.transparent && frame.disposal === 1));
   assert.deepEqual(surface.crops[0], { x: 0, y: 0, width: 720, height: 168 });
   assert.ok(surface.crops.slice(1).every(crop => crop.y === 100 && crop.height === 68));
@@ -160,7 +163,7 @@ test('all thirteen rewrites animate when separated by many free spacing edits, i
   const frames = gifFrames(bytes, 168), surface = surfaces[0];
   assert.equal(frames.length, 119);
   assert.deepEqual(texts(surface.frames[0]), [round.label, 'Optimal : 1', 'My score : 13']);
-  assert.equal(surface.frames.filter(frame => frame.some(command => command.name === 'scale')).length, 13 * 7, 'All thirteen cancellation or creation tweens are present');
+  assert.equal(surface.frames.filter(frame => frame.some(command => command.name === 'scale')).length, 13 * 6, 'Each rewrite has visible motion plus held source and result frames');
   for (let sample = 1; sample <= 13; sample++) {
     assert.equal(arcs(surface.frames[sample * 9]).length, sample % 2 ? 0 : 2, 'Each rewrite reaches its exact resulting state');
   }
@@ -196,7 +199,7 @@ test('free gate slides cannot crowd thirteen scored rewrites out of the GIF', co
     ...Array.from({ length: 13 }, () => move('cancel-x', 0, 1))];
   const bytes = encodeReplay({ ...round, circuit: [['X', '.', 'X']], sequence });
   assert.equal(gifFrames(bytes, 168).length, 106);
-  assert.equal(surfaces[0].frames.filter(frame => frame.some(command => command.name === 'scale')).length, 13 * 7);
+  assert.equal(surfaces[0].frames.filter(frame => frame.some(command => command.name === 'scale')).length, 13 * 6);
   assert.equal(arcs(surfaces[0].frames.at(-1)).length, 0);
 });
 

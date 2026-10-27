@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { stemOutreach } from '../../data/stemOutreach';
-import { games } from '../../data/games.js';
+import { games, gameImage } from '../../data/games.js';
 
 const events = [...stemOutreach].sort((left, right) => right.date.localeCompare(left.date));
 ---
@@ -11,7 +11,7 @@ const events = [...stemOutreach].sort((left, right) => right.date.localeCompare(
   <ul class="games">
     {games.map(game => (
       <li>
-        <img src={`/images/games/${game.image}.webp`} alt="" width="120" height="90" loading="lazy" decoding="async" />
+        <img src={gameImage(game)} alt="" width="120" height="90" loading="lazy" decoding="async" />
         <h2>{game.title}</h2>
         <a class="button ghost" href={`/games/${game.path}/`} aria-label={`Play ${game.title}`}>Play →</a>
       </li>
@@ -23,7 +23,7 @@ const events = [...stemOutreach].sort((left, right) => right.date.localeCompare(
       <path d="M12 12H36V36H12Z" fill="none" stroke="currentColor" stroke-width="1.5" />
       {[ [12, 12], [36, 12], [36, 36], [12, 36] ].map(([cx, cy]) => <circle cx={cx} cy={cy} r="4" fill="currentColor" />)}
     </svg>
-    <span><strong>All daily puzzles</strong><small>Today’s four games.</small></span>
+    <span><strong>All daily puzzles</strong><small>Today’s puzzles.</small></span>
     <span class="daily-round-arrow" aria-hidden="true">→</span>
   </a>
 

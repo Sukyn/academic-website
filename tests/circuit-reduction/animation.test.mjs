@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { animateRewrite } from '../../src/lib/circuit-reduction/animation.js';
-import { REWRITE_DURATION } from '../../src/lib/circuit-reduction/transition.js';
+import { REWRITE_DURATION, REPLAY_REWRITE_DURATION } from '../../src/lib/circuit-reduction/transition.js';
 
 function fixture(context, circuit, { reducedMotion = false, supported = true, failAt = Infinity } = {}) {
   const stats = { created: 0, mutations: 0, styleWrites: [], layoutReads: 0, frameRequests: 0, attempts: 0 };
@@ -131,16 +131,19 @@ test('HH cancellation uses native transform/opacity frames and preserves the boa
   assert.deepEqual(state.board.children.slice(0, -1), state.originalNodes);
   for (const animation of state.animations) {
     assert.equal(animation.node.style.left, '32px'); assert.equal(animation.node.style.top, '14px');
-    assert.deepEqual(animation.frames.map(frame => frame.offset), [0, .25, .5, .75, 1]);
+    assert.deepEqual(animation.frames.map(frame => frame.offset), [0, .16, .3, .45, .55, .6, .7, .84, 1]);
     assert.ok(animation.frames.every(frame => Object.keys(frame).sort().join() === 'offset,opacity,transform'));
     assert.deepEqual(animation.options, { duration: REWRITE_DURATION, fill: 'both', easing: 'linear' });
   }
   const [left, right] = state.animations;
   assert.deepEqual([geometry(left.frames[0]).x, geometry(right.frames[0]).x], [64, 128]);
-  assert.deepEqual([geometry(left.frames[2]).x, geometry(right.frames[2]).x], [80, 112], 'The pair approaches its shared midpoint');
-  assert.ok(left.frames[2].opacity > 0 && left.frames[2].opacity < 1);
+  assert.deepEqual(geometry(left.frames[1]), geometry(left.frames[0]), 'The matched source is held before motion');
+  assert.ok(geometry(left.frames[3]).x > 64 && geometry(left.frames[3]).x < 96);
+  assert.deepEqual([geometry(left.frames[5]).x, geometry(right.frames[5]).x], [96, 96], 'The pair meets before disappearing');
+  assert.ok(left.frames[6].opacity > 0 && left.frames[6].opacity < 1);
   assert.deepEqual(geometry(left.frames.at(-1)), { x: 96, scale: .18, opacity: 0 });
   assert.deepEqual(geometry(right.frames.at(-1)), { x: 96, scale: .18, opacity: 0 });
+  assert.deepEqual(geometry(left.frames.at(-2)), geometry(left.frames.at(-1)), 'The resulting identity settles before cleanup');
   const pendingWrites = state.stats.styleWrites.length, pendingMutations = state.stats.mutations;
   await Promise.resolve();
   assert.equal(state.stats.styleWrites.length, pendingWrites); assert.equal(state.stats.mutations, pendingMutations);
@@ -236,10 +239,21 @@ test('reverse cancellation introduces a pair from its midpoint into the final sl
   const [left, right] = state.animations;
   assert.deepEqual(geometry(left.frames[0]), { x: 32, scale: .18, opacity: 0 });
   assert.deepEqual(geometry(right.frames[0]), { x: 32, scale: .18, opacity: 0 });
-  assert.deepEqual([geometry(left.frames[2]).x, geometry(right.frames[2]).x], [16, 48]);
+  assert.deepEqual([geometry(left.frames[2]).x, geometry(right.frames[2]).x], [32, 32], 'The new pair first appears at its shared midpoint');
+  assert.ok(left.frames[2].opacity > 0 && left.frames[2].opacity < 1);
+  assert.ok(geometry(left.frames[6]).x < 32 && geometry(right.frames[6]).x > 32, 'The visible pair separates into its slots');
   assert.deepEqual(geometry(left.frames.at(-1)), { x: 0, scale: 1, opacity: 1 });
   assert.deepEqual(geometry(right.frames.at(-1)), { x: 64, scale: 1, opacity: 1 });
+  assert.deepEqual(geometry(left.frames.at(-2)), geometry(left.frames.at(-1)));
   assert.ok(state.stats.styleWrites.every(write => write.property !== 'visibility'), 'An insertion has no old glyph to hide');
+  state.animations.forEach(animation => animation.complete()); assert.equal(await job.finished, true); state.assertClean();
+});
+
+test('replay uses the same native phases with a shorter complete duration', async context => {
+  const before = [['H', 'H']], state = fixture(context, before);
+  const job = animateRewrite(state.board, before, [['.', '.']], move('cancel-h'), { duration: REPLAY_REWRITE_DURATION });
+  assert.ok(REPLAY_REWRITE_DURATION < REWRITE_DURATION);
+  assert.ok(state.animations.every(animation => animation.options.duration === REPLAY_REWRITE_DURATION));
   state.animations.forEach(animation => animation.complete()); assert.equal(await job.finished, true); state.assertClean();
 });
 

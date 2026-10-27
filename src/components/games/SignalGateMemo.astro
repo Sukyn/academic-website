@@ -1,0 +1,12 @@
+---
+import '../../styles/signal-gate-memo.css';
+---
+<details class="signal-memo" id="signal-memo" hidden>
+  <summary>Gate memo</summary>
+  <div class="signal-memo-tabs" id="signal-memo-tabs" role="tablist" aria-label="Gates for the selected hole’s wires"></div>
+  <p class="signal-memo-key" id="signal-memo-key" hidden></p>
+  <div class="signal-memo-map" id="signal-memo-map" role="tabpanel" aria-describedby="signal-memo-caption" tabindex="0">
+    <p class="sr-only" id="signal-memo-caption"></p>
+    <div id="signal-memo-body"></div>
+  </div>
+</details>

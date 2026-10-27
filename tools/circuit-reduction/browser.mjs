@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
 import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove, gateCells } from '../../src/lib/circuit-reduction/engine.js';
-import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../../src/lib/circuit-reduction/tutorial.js';
+import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../../src/lib/circuit-reduction/tutorial.js';
 import { createBrowserApi } from './browser-api.mjs';
 import { layoutMoves } from './layout-moves.js';
 
@@ -318,14 +318,13 @@ async function focusedTutorial() {
     try {
       await activate(page, page.locator('#mode-tutorial'));
       await page.evaluate(() => document.fonts.ready);
-      assert.match(await page.locator('#tutorial-text').innerText(), /identity.*empty wires.*every input unchanged/i,
-        'The introduction states the goal and what identity means');
-      assert.match(await page.locator('#tutorial-text').innerText(), /rule matching the selected gates/i);
+      assert.equal(await page.locator('#tutorial-text').innerText(), TUTORIAL_INTRO,
+        'The introductory text matches the tutorial source');
       assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT);
       assert.deepEqual(TUTORIAL_CIRCUIT.map(row => row.slice(0, 4)), [['X', 'X', 'H', 'H'], ['.', '.', '.', '.']]);
       const order = await ruleOrder();
-      assert.deepEqual(order.dom, RULES.map(rule => rule.id), 'The tutorial presents the normal rule order');
-      assert.deepEqual(order.visual, order.dom, 'CSS does not move the active rule ahead of the others');
+      assert.deepEqual(order.dom, RULES.map(rule => rule.id), 'The preview keeps canonical order while no rule is available');
+      assert.deepEqual(order.visual, order.dom, 'Visual and keyboard order agree');
       await screenshot(page, `${profile}-tutorial-intro.png`);
       await activate(page, page.locator('#tutorial-start'));
       await boardSizing(page, Boolean(options.hasTouch));
@@ -337,7 +336,7 @@ async function focusedTutorial() {
         const target = page.locator('[data-tutorial-focus]');
         assert.equal(await target.count(), 1, 'Exactly one real game control is highlighted');
         assert.equal(await target.evaluate((node, selector) => node.matches(selector), step.target ?? `[data-rule="${step.move.rule}"]`), true);
-        assert.equal(await target.isDisabled(), false);
+        assert.equal(await target.isDisabled(), true, 'The highlighted game control remains read-only during the demonstration');
         const rule = RULES.find(rule => rule.id === step.move.rule);
         if (rule) {
           const selected = [];
@@ -347,22 +346,30 @@ async function focusedTutorial() {
           const wholeGates = new Set(selected.flatMap(cell => gateCells(expected, cell)));
           const wholeSelection = expected.flatMap((line, row) => line.flatMap((_, column) =>
             wholeGates.has(`${row}:${column}`) ? [`${row}:${column}`] : []));
-          assert.deepEqual(await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(nodes => nodes.map(node => node.dataset.cell)), wholeSelection,
+          const gatesOnly = wholeSelection.filter(key => {
+            const [row, column] = key.split(':').map(Number);
+            return expected[row][column] !== '.';
+          });
+          assert.deepEqual(await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(nodes => nodes.map(node => node.dataset.cell)), gatesOnly.length ? gatesOnly : wholeSelection,
             'The guide selects the gate block for the matching rule');
           const pattern = expected.slice(step.move.row, step.move.row + rule.left.length)
             .map(row => row.slice(step.move.column, step.move.column + rule.left[0].length));
           assert.ok([rule.left, rule.right].some(side => JSON.stringify(side) === JSON.stringify(pattern)),
             'The displayed selected pattern is one side of the highlighted rule');
         }
-        const tokens = [...step.text.matchAll(/\b(CNOT|CZ|H|T|X|Z)\b/g)].map(match => ({ CNOT: 'XU', CZ: 'ZU' })[match[1]] ?? match[1]);
+        const tokens = [...step.text.matchAll(/\b(CNOT|NOTC|CZ|H|T|X|Z)\b/g)].map(match => ({ CNOT: 'XU', NOTC: 'XD', CZ: 'ZU' })[match[1]] ?? match[1]);
         assert.deepEqual(await page.locator('#tutorial-text .tutorial-gate').evaluateAll(nodes => nodes.map(node => node.dataset.gate)), tokens,
           'Tutorial gate names render as gameplay icons');
         assert.equal(await page.locator('#tutorial-text .tutorial-gate:not(:has(svg))').count(), 0);
         assert.equal(await page.locator('#tutorial-text .tutorial-pair').count(), 0, 'Rule instructions show only their single-wire endpoints');
         if (index === 4) await screenshot(page, `${profile}-tutorial-controlled-rule.png`);
-        assert.deepEqual(await ruleOrder(), order, 'A matching rule keeps its normal place in the palette');
+        const activeRule = await target.getAttribute('data-rule');
+        const expectedOrder = activeRule ? [activeRule, ...order.dom.filter(rule => rule !== activeRule)] : order.dom;
+        const applicableFirst = await ruleOrder();
+        assert.deepEqual(applicableFirst.dom, expectedOrder, 'The highlighted tutorial equation comes before unavailable rules');
+        assert.deepEqual(applicableFirst.visual, expectedOrder, 'Keyboard and visual equation order stay consistent');
         if (index < 2) assert.equal(step.move.rule, index ? 'cancel-h' : 'cancel-x', 'The first two steps teach simple cancellations');
-        await activate(page, step.target || index % 2 === 0 ? target : page.locator('#tutorial-next'));
+        await activate(page, page.locator('#tutorial-next'));
         await page.waitForFunction(heading => document.getElementById('tutorial-heading').textContent === heading,
           index + 1 === TUTORIAL_STEPS.length ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL_STEPS.length}`);
         expected = applyMove(expected, step.move); moves += moveCost(step.move);
@@ -377,7 +384,7 @@ async function focusedTutorial() {
       assert.equal(moves, 11);
       assert.ok(isSolved(await boardCircuit(page)), 'The worked example finishes on empty identity wires');
       assert.equal(await page.locator('#tutorial-heading').innerText(), 'Tutorial complete');
-      assert.deepEqual(await ruleOrder(), order, 'The rule order remains fixed after completion');
+      assert.deepEqual(await ruleOrder(), order, 'Completion restores canonical order when all rules are unavailable');
       assert.equal(requests, 0, 'The tutorial never requests or submits scores');
       assert.deepEqual(workers, [], 'The fixed walkthrough starts no solver or replay encoder');
       await activate(page, page.locator('#tutorial-levels'));
@@ -385,7 +392,8 @@ async function focusedTutorial() {
       assert.equal(await page.locator('#tutorial-panel').isVisible(), false);
       await activate(page, page.locator('#mode-tutorial'));
       await activate(page, page.locator('#tutorial-start'));
-      await activate(page, page.locator('[data-tutorial-focus]'));
+      await activate(page, page.locator('#tutorial-next'));
+      await page.waitForFunction(count => document.getElementById('tutorial-heading').textContent === `Step 2 of ${count}`, TUTORIAL_STEPS.length);
       await activate(page, page.locator('#tutorial-start'));
       assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT, 'Restart restores the simple prefix and worked example');
       assert.equal(await page.locator('#move-count').innerText(), '0 moves');
@@ -396,7 +404,7 @@ async function focusedTutorial() {
     } finally {
       await page.context().close();
     }
-    console.log(`${profile}: identity goal, uncontrolled then controlled rules, matching icons, fixed order, full solution, free layout, restart and Levels verified.`);
+    console.log(`${profile}: identity goal, uncontrolled then controlled rules, matching icons, available-first order, full solution, free layout, restart and Levels verified.`);
   }
   assert.deepEqual(errors, [], 'The tutorial has no uncaught browser errors');
 }
@@ -507,10 +515,37 @@ async function desktopSelection(page) {
     await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
     assert.deepEqual(await boardCircuit(page), applyMove(original, { rule, row, column: 0 }));
   }
+  await implicitIdentitySelection(page);
   await page.locator('#mode-campaign').click();
   await page.locator('#level').selectOption('1');
   console.log('Desktop selection: whole CNOT/CZ toggles, linked Shift/drag, basis/phase context, Enter and Ctrl+Z verified');
 }
+
+async function implicitIdentitySelection(page) {
+  for (const [rule, row, block] of [
+    ['basis-x', 0, [['.', 'X', '.']]],
+    ['basis-z', 0, [['.', 'Z', '.']]],
+    ['basis-up', 0, [['.', 'XU', '.'], ['.', 'ZD', '.']]],
+    ['basis-down', 1, [['.', 'ZU', '.'], ['.', 'XD', '.']]],
+  ]) {
+    const original = block.map(line => [...line, ...line]);
+    await importJson(page, { circuit: original });
+    await activate(page, page.locator(`[data-cell="${row}:1"]`));
+    const selected = await page.locator('[data-cell][aria-pressed="true"]').evaluateAll(nodes => nodes.map(node => node.dataset.gate));
+    assert.equal(selected.length, block.length, `${rule}: only the gate and its linked endpoint are selected`);
+    assert.ok(selected.every(gate => gate !== '.'));
+    const button = page.locator(`[data-rule="${rule}"]`);
+    assert.equal(await button.isEnabled(), true, `${rule}: surrounding empty slots need no clicks`);
+    assert.equal(await button.locator('.rule-mini').nth(1).evaluate(node => node.style.getPropertyValue('--mini-columns')), '1', 'The one-gate side has no outer padding');
+    await activate(page, button);
+    await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
+    assert.deepEqual(await boardCircuit(page), applyMove(original, { rule, row, column: 0 }));
+    assert.equal(await page.locator('#move-count').innerText(), '1 move');
+    await activate(page, page.locator('#undo'));
+    assert.deepEqual(await boardCircuit(page), original);
+  }
+}
+
 async function touchSelection(page) {
   const selected = () => page.locator('[data-cell][aria-pressed="true"]').evaluateAll(cells => cells.map(cell => cell.dataset.cell));
   await activate(page, page.locator('#mode-random'));
@@ -535,6 +570,7 @@ async function touchSelection(page) {
   await activate(page, basis);
   await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
   assert.deepEqual(await boardCircuit(page), applyMove(original, { rule: 'basis-up', row: 0, column: 0 }));
+  await implicitIdentitySelection(page);
   console.log('Touch selection: either endpoint toggles whole CNOT/CZ gates and the partial basis rule remains playable');
 }
 async function columnSpacing(page) {
@@ -625,6 +661,35 @@ async function focusedMobileLayout() {
   assert.deepEqual(errors, [], 'No uncaught desktop or touch-board errors');
 }
 
+async function focusedControlsLayout() {
+  for (const width of [390, 1440]) {
+    const page = await pageFor({ viewport: { width, height: 1000 }, reducedMotion: 'reduce', ...(width <= 600 ? { isMobile: true, hasTouch: true } : {}) });
+    try {
+      for (const category of ['pro', 'prop', 'controlled']) {
+        if (category !== 'pro') {
+          await page.goto(`${base}/games/circuit-reduction/?category=${category}`);
+          await page.locator('#categorical-board [data-cell]').first().waitFor();
+          await page.waitForFunction(() => !document.querySelector('[data-circuit-game]').inert);
+          await page.locator('#mode-campaign').click();
+        }
+        const layout = await page.locator('.circuit-actions').evaluate(group => {
+          const controls = group.querySelector('.round-controls'), rules = group.querySelector('.rule-palette, #rule-list');
+          const tidy = group.querySelector('#compact-identities, #tidy');
+          return { controls: controls.getBoundingClientRect().toJSON(), rules: rules.getBoundingClientRect().toJSON(),
+            sourceOrder: Boolean(rules.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING), tidyGrouped: controls.contains(tidy) };
+        });
+        assert.equal(layout.sourceOrder, true, `${category}: source order and keyboard navigation remain unchanged`);
+        assert.equal(layout.tidyGrouped, true, `${category}: Tidy stays in the round controls`);
+        if (width <= 600) assert.ok(layout.controls.bottom <= layout.rules.top, `${category}: mobile controls precede the rule palette`);
+        else assert.ok(layout.rules.bottom <= layout.controls.top, `${category}: desktop keeps the rule palette above controls`);
+        await noOverflow(page);
+      }
+    } finally { await page.context().close(); }
+  }
+  assert.deepEqual(errors, [], 'Responsive controls have no uncaught errors');
+  console.log('Circuit controls: Tidy precedes rules at 390px in PRO, PROP and Controlled PROP; desktop order unchanged.');
+}
+
 async function focusedAnimation() {
   const cancelH = { rule: 'cancel-h', row: 0, column: 0 };
   for (const mobile of [false, true]) {
@@ -650,7 +715,8 @@ async function focusedAnimation() {
           return Math.abs((b.left + b.width / 2) - (a.left + a.width / 2));
         };
         const start = distance();
-        for (const job of jobs) job.currentTime = 200;
+        // The approach follows the initial hold and meets at 60% of the rewrite.
+        for (const job of jobs) job.currentTime = Number(job.effect.getTiming().duration) * .38;
         return { start, middle: distance(), jobs: jobs.length, busy: board.getAttribute('aria-busy'), win: document.getElementById('win-dialog').open };
       });
       assert.equal(tween.jobs, 2, 'Only the two changed gates have native animations');
@@ -741,6 +807,7 @@ try {
   else if (process.env.GAME_TEST_SCOPE === 'custom') await focusedCustom();
   else if (process.env.GAME_TEST_SCOPE === 'registration') await focusedRegistration();
   else if (process.env.GAME_TEST_SCOPE === 'mobile-layout') await focusedMobileLayout();
+  else if (process.env.GAME_TEST_SCOPE === 'controls-layout') await focusedControlsLayout();
   else {
   let desktop, beforeRemoval;
   if (process.env.GAME_TEST_SCOPE !== 'mobile') {

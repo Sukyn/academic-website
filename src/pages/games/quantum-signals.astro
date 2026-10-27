@@ -19,6 +19,8 @@ import { TUTORIAL_INTRO } from '../../lib/quantum-signals/tutorial.js';
 import { GATES } from '../../lib/quantum-signals/engine.js';
 import { gateLabel } from '../../lib/quantum-signals/rendering.js';
 import '../../styles/quantum-signals.css';
+import '../../styles/signals-tutorial.css';
+import SignalGateMemo from '../../components/games/SignalGateMemo.astro';
 ---
 
 <BaseLayout title="Quantum signals" description="Fill the holes in a quantum circuit. Follow superposition, interference and entanglement to reach the target state.">
@@ -28,7 +30,7 @@ import '../../styles/quantum-signals.css';
     <h1>Quantum signals</h1>
     <div class="game-layout">
       <GameModeMenu><CircuitCategoryMenu /></GameModeMenu>
-      <div class="game-content">
+      <div class="game-content signals-game">
         <GameToolbar levels={LEVELS} />
         <GameTutorial intro={TUTORIAL_INTRO} />
         <section aria-label="Quantum signals">
@@ -47,6 +49,7 @@ import '../../styles/quantum-signals.css';
               <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
             </div>
           </div>
+          <SignalGateMemo />
           <GameRoundControls resultLabel="Results" />
           <div class="custom-controls" id="custom-controls" hidden>
             <label for="difficulty">Difficulty</label>
@@ -84,7 +87,6 @@ import '../../styles/quantum-signals.css';
                       <div id="editor-choices" role="group" aria-label="Gates offered by this hole" hidden><div id="editor-gates"></div></div>
                     </div>
                   </div>
-                  <fieldset class="editor-target-field"><legend>Target</legend><div id="editor-targets" class="editor-targets" role="group" aria-label="Target states"></div></fieldset>
                   <button class="button" type="submit">Play puzzle</button>
                 </form>
                 <p class="message" id="custom-status" role="status"></p>
@@ -100,9 +102,9 @@ import '../../styles/quantum-signals.css';
     </div>
     <GameDialogs gameTitle="Quantum signals" completionOnly>
       <Fragment slot="rules">
-        <p>Match the output to the target. Choose a hole, then a gate. Leave holes empty to use identity when it is offered.</p>
+        <p>Collect every path at the all-ones label: 1, 11, 111 or 1111. Choose a hole, then a gate. Leave holes empty to use identity when it is offered.</p>
         <p>The white wires show the circuit. Below, each lane represents a bit string. Lit paths show amplitudes splitting, moving and interfering. Black dots mean + phase; white dots mean − phase. Larger dots mean a greater chance of that result.</p>
-        <p>Match the output dots to the target, including their relative phases. Unlit lanes have zero amplitude.</p>
+        <p>Matching signs add; opposite signs cancel. Unlit lanes have zero amplitude. With just one surviving path, its overall sign does not change the result.</p>
         <p>Yellow squares are H, red ⊕ gates are X, and green dots are Z. Linked dots are CZ. The two CNOT choices swap the control dot and ⊕.</p>
         <p>Arrow keys move between holes. H, X, Z, I or 1–4 place gates. Right-click or Delete clears a hole; Ctrl/Cmd+Z undoes.</p>
       </Fragment>

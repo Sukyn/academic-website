@@ -6,6 +6,14 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 
 export const formatPuzzleDate = date => dateFormat.format(new Date(`${date}T12:00:00Z`));
 
+export function updateDailyHeading(get, { mode, date, available, acceptingScores }) {
+  get('daily-heading').hidden = mode !== 'daily';
+  get('daily-date').disabled = !available;
+  if (mode !== 'daily') return;
+  get('daily-title').textContent = 'Daily puzzle · ' + formatPuzzleDate(date);
+  get('daily-note').textContent = acceptingScores ? 'Scores close at midnight (Paris).' : 'Practice · leaderboard closed.';
+}
+
 export function populateDailyArchive(select, { today, startDate }) {
   const options = [];
   for (let day = Date.parse(`${today}T00:00:00Z`), first = Date.parse(`${startDate}T00:00:00Z`);

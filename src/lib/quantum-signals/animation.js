@@ -9,7 +9,8 @@ const key = node => node.dataset.column === undefined ?
 const stationary = () => ({ finished: Promise.resolve(true), cancel() {} });
 
 /** Crossfade changed columns without animating SVG geometry or moving its bounds. */
-export function animateFlow(svg, previous, firstColumn) {
+export function animateFlow(svg, previous, firstColumn, { duration = 280 } = {}) {
+  if (!Number.isFinite(duration) || duration <= 0) throw new RangeError('Use a positive animation duration.');
   const view = svg.ownerDocument.defaultView;
   if (typeof svg.animate !== 'function' || view.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     return stationary();
@@ -44,9 +45,9 @@ export function animateFlow(svg, previous, firstColumn) {
   svg.dataset.flowAnimating = 'true'; svg.setAttribute('aria-busy', 'true');
   // Batch all DOM changes before starting browser animations.
   for (const [column, { old, next }] of groups) {
-    const delay = (column - firstColumn) * 70;
-    if (old.childNodes.length) animations.push(old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, delay, fill: 'forwards' }));
-    if (next.childNodes.length) animations.push(next.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, delay, fill: 'backwards' }));
+    const delay = (column - firstColumn) * duration / 4;
+    if (old.childNodes.length) animations.push(old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: duration * 4 / 7, delay, fill: 'forwards' }));
+    if (next.childNodes.length) animations.push(next.animate([{ opacity: 0 }, { opacity: 1 }], { duration, delay, fill: 'backwards' }));
   }
   let settled = false, resolve;
   const finished = new Promise(done => { resolve = done; });

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ignoresShortcut } from '../../src/lib/browser/shortcuts.js';
 import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, ignoresGameShortcut,
-  rectangleCells, updateModeMenu, updateResultMenu } from '../../src/lib/games/controls.js';
+  rectangleCells, updateLevelControls, updateModeMenu, updateResultMenu } from '../../src/lib/games/controls.js';
 
 for (const extraDialogs of [[], ['gate-legend']]) test(`shared dialogs respect disabled controls and backdrop boundaries (${extraDialogs.length ? 'with guide' : 'default'})`, () => {
   const nodes = new Map();
@@ -75,6 +76,44 @@ test('daily navigation is visible only in Daily mode and save locks reset withou
   }
 });
 
+test('campaign navigation follows caller eligibility and keeps both next buttons in sync', () => {
+  const nodes = new Map(['campaign-controls', 'level', 'previous-level', 'next-level', 'result-next'].map(id => [id, {
+    value: '', hidden: false, disabled: false,
+    click() { assert.fail('Rendering navigation must not select a level'); },
+    focus() { assert.fail('Rendering navigation must not move focus'); },
+  }]));
+  const get = id => { assert.ok(nodes.has(id), `Unexpected control: ${id}`); return nodes.get(id); };
+  for (const { level, count, loading, canAdvance, previousDisabled, nextDisabled, resultHidden } of [
+    { level: 1, count: 3, loading: false, canAdvance: false, previousDisabled: true, nextDisabled: true, resultHidden: false },
+    { level: 2, count: 3, loading: false, canAdvance: true, previousDisabled: false, nextDisabled: false, resultHidden: false },
+    { level: 2, count: 3, loading: false, canAdvance: false, previousDisabled: false, nextDisabled: true, resultHidden: false },
+    { level: 2, count: 3, loading: true, canAdvance: true, previousDisabled: true, nextDisabled: true, resultHidden: false },
+    { level: 3, count: 3, loading: false, canAdvance: true, previousDisabled: false, nextDisabled: true, resultHidden: true },
+    { level: 1, count: 1, loading: false, canAdvance: true, previousDisabled: true, nextDisabled: true, resultHidden: true },
+  ]) {
+    updateLevelControls(get, Object.freeze({ mode: 'campaign', level, count, loading, canAdvance }));
+    assert.equal(get('campaign-controls').hidden, false);
+    assert.equal(get('level').value, String(level)); assert.equal(get('level').disabled, loading);
+    assert.equal(get('previous-level').disabled, previousDisabled);
+    assert.equal(get('next-level').disabled, nextDisabled); assert.equal(get('result-next').disabled, nextDisabled);
+    assert.equal(get('result-next').hidden, resultHidden);
+  }
+});
+
+test('inactive campaign navigation cannot advance or overwrite the selected campaign level', () => {
+  const nodes = new Map(['campaign-controls', 'level', 'previous-level', 'next-level', 'result-next'].map(id => [id, {
+    value: '2', hidden: false, disabled: false,
+  }]));
+  const get = id => nodes.get(id);
+  for (const mode of ['tutorial', 'random', 'daily']) for (const loading of [false, true]) {
+    updateLevelControls(get, { mode, level: 1, count: 3, loading, canAdvance: true });
+    assert.equal(get('campaign-controls').hidden, true); assert.equal(get('level').value, '2');
+    assert.equal(get('level').disabled, loading);
+    for (const id of ['previous-level', 'next-level', 'result-next']) assert.equal(get(id).disabled, true);
+    assert.equal(get('result-next').hidden, true);
+  }
+});
+
 test('daily result menus move existing replay controls and retain nickname management', () => {
   const nodes = new Map();
   const get = id => {
@@ -121,6 +160,7 @@ test('daily result menus move existing replay controls and retain nickname manag
 });
 
 test('shared shortcut guard protects editing and dialogs without swallowing game-specific modifiers', context => {
+  assert.equal(ignoresGameShortcut, ignoresShortcut, 'Games and other browser tools use the same shortcut guard');
   const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
   let modal = null;
   Object.defineProperty(globalThis, 'document', { configurable: true, value: { querySelector: () => modal } });
@@ -131,10 +171,14 @@ test('shared shortcut guard protects editing and dialogs without swallowing game
   const event = (extra = {}, target = {}) => ({ target: { tagName: 'BUTTON', ...target }, ...extra });
   assert.equal(ignoresGameShortcut(event()), false);
   for (const flag of ['defaultPrevented', 'altKey', 'repeat']) assert.equal(ignoresGameShortcut(event({ [flag]: true })), true);
+  assert.equal(ignoresShortcut(event({ repeat: true }), true), false, 'Circuit navigation can opt into held keys');
+  for (const flag of ['defaultPrevented', 'altKey']) assert.equal(ignoresShortcut(event({ repeat: true, [flag]: true }), true), true);
   for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) assert.equal(ignoresGameShortcut(event({}, { tagName })), true);
+  for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) assert.equal(ignoresShortcut(event({ repeat: true }, { tagName }), true), true);
   assert.equal(ignoresGameShortcut(event({}, { isContentEditable: true })), true);
   for (const flag of ['ctrlKey', 'metaKey', 'shiftKey']) assert.equal(ignoresGameShortcut(event({ [flag]: true })), false);
   modal = {}; assert.equal(ignoresGameShortcut(event()), true);
+  assert.equal(ignoresShortcut(event({ repeat: true }), true), true, 'Held circuit navigation still respects modal focus');
 });
 
 const keyEvent = (key, extra = {}, target = {}) => ({ key, target: { tagName: 'BUTTON', ...target }, ...extra,
