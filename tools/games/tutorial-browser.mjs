@@ -412,6 +412,23 @@ async function run([game, count, category], touch, fallback = false) {
   try {
     await page.goto(`${base}/games/${game}/${category ? '?category=' + category : ''}`);
     await page.locator('#tutorial-start:enabled').waitFor();
+    if (touch) {
+      const menu = await page.evaluate(() => {
+        const box = id => {
+          const { x, y, width, height, right } = document.getElementById(id).getBoundingClientRect();
+          return { x, y, width, height, right };
+        };
+        return { rules: box('show-rules'), category: document.getElementById('circuit-category') && box('circuit-category'),
+          toolbarVisible: document.querySelector('.game-toolbar').getClientRects().length > 0 };
+      });
+      assert.ok(menu.rules.width >= 44 && menu.rules.height >= 44, name + ': Rules keeps its touch target');
+      assert.equal(menu.toolbarVisible, false, name + ': the tutorial reserves no empty level toolbar');
+      if (menu.category) {
+        assert.ok(menu.category.height >= 44, name + ': Category keeps its touch target');
+        assert.ok(Math.abs(menu.category.y - menu.rules.y) <= 1 && menu.category.right < menu.rules.x,
+          name + ': Category and Rules share one row without overlapping');
+      }
+    }
     assert.equal(await page.locator('#tutorial-panel[data-tutorial-bubble]').count(), 0, 'The introduction stays in the page');
     await activate(page.locator('#tutorial-start'), touch);
     await page.getByText(`Step 1 of ${count}`, { exact: true }).waitFor();

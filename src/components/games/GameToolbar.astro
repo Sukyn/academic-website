@@ -3,16 +3,13 @@ interface Props { levels: { title: string }[]; daily?: boolean }
 const { levels, daily = true } = Astro.props;
 ---
 
-<div class="game-toolbar">
-  <div class="level-bar" id="campaign-controls" hidden>
-    <button class="button ghost" id="previous-level" type="button" aria-label="Previous level" disabled>←</button>
-    <label class="sr-only" for="level">Level</label>
-    <select id="level">
-      {levels.map((item, index) => <option value={index + 1}>{index + 1} · {item.title}</option>)}
-    </select>
-    <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
-  </div>
-  <button class="button ghost" id="show-rules" type="button" aria-haspopup="dialog">Rules</button>
+<div class="game-toolbar level-bar" id="campaign-controls" hidden>
+  <button class="button ghost" id="previous-level" type="button" aria-label="Previous level" disabled>←</button>
+  <label class="sr-only" for="level">Level</label>
+  <select id="level">
+    {levels.map((item, index) => <option value={index + 1}>{index + 1} · {item.title}</option>)}
+  </select>
+  <button class="button ghost" id="next-level" type="button" aria-label="Next level" disabled>→</button>
 </div>
 {daily && <div class="daily-heading" id="daily-heading" hidden>
   <p id="daily-title"></p>

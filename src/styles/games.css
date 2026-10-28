@@ -11,6 +11,7 @@
   .quantum-game .game-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
   .quantum-game .mode-menu { display: flex; flex-direction: column; gap: .5rem; font-family: var(--font-ui); }
   .quantum-game .mode-menu .button { width: 100%; padding: .55rem .65rem; text-align: left; font-size: .95rem; }
+  .quantum-game .game-menu-options { display: grid; gap: .5rem; }
   .quantum-game button[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
   .quantum-game .daily-menu { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; gap: .25rem; }
   .quantum-game .daily-menu #daily-toggle { padding: 0; text-align: center; }
@@ -107,8 +108,10 @@
   .quantum-game button:focus-visible, .quantum-game input:focus-visible, .quantum-game select:focus-visible, .quantum-game summary:focus-visible, .quantum-game .ranking:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
   @media (max-width: 760px) {
   .quantum-game .game-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .quantum-game .mode-menu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; }
-  .quantum-game .mode-menu .button { padding: .4rem .5rem; font-size: .85rem; }
+  .quantum-game .mode-menu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
+  .quantum-game .mode-menu .button { padding: .4rem .5rem; font-size: .85rem; line-height: 1.2; }
+  .quantum-game .game-menu-options { grid-column: 1 / -1; display: flex; align-items: center; gap: .5rem; }
+  .quantum-game .game-menu-options #show-rules { flex: none; width: auto; margin-left: auto; }
   .quantum-game .mode-menu #daily-status { grid-column: 1 / -1; }
   .quantum-game .daily-menu { grid-template-columns: minmax(0, 1fr) 2.75rem; }
   .quantum-game .daily-archive { font-size: .8rem; }
@@ -125,11 +128,14 @@
   }
   @media (max-width: 600px) {
   main.container:has(.quantum-game) { padding-top: 1rem; }
-  .quantum-game .game-layout { gap: .75rem; margin-top: .75rem; }
+  .quantum-game .game-layout { gap: .5rem; margin-top: .75rem; }
   .quantum-game .mode-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quantum-game .mode-menu:not(:has(.circuit-category)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quantum-game .mode-menu:not(:has(.circuit-category)) .daily-menu-group { grid-column: span 2; }
+  .quantum-game .game-menu-options:not(:has(.circuit-category)) { display: contents; }
+  .quantum-game .game-menu-options:not(:has(.circuit-category)) #show-rules { width: 100%; margin: 0; }
   .quantum-game .mode-menu .button { font-size: .95rem; text-align: center; }
   .quantum-game .game-toolbar, .quantum-game .level-bar { gap: .4rem; }
-  .quantum-game #show-rules { margin-left: auto; }
   .quantum-game .round-controls { gap: .5rem; }
   .quantum-game #sequence:empty { display: none; }
   }

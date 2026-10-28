@@ -9,6 +9,7 @@ export function createTutorialBubble(panel, getAnchor) {
   const view = panel.ownerDocument?.defaultView;
   if (!view) return { update() {}, hide() {}, reposition() {}, reveal() {} };
   const native = typeof panel.showPopover === 'function';
+  const menu = panel.closest?.('.game-layout')?.querySelector('.mode-menu');
   let active = false, frame = 0, pointer = null, revealPending = false;
   const anchors = new Map();
   const observer = typeof view.ResizeObserver === 'function' ? new view.ResizeObserver(schedule) : null;
@@ -45,7 +46,14 @@ export function createTutorialBubble(panel, getAnchor) {
       { left: centerX, right: centerX, top: centerY, bottom: centerY, width: 0, height: 0 };
     const size = panel.getBoundingClientRect();
     const avoid = (referent?.avoid ?? []).map(element => element.getBoundingClientRect?.() ?? element);
-    const placement = placeTutorialBubble(rect, size, bounds, { preferredSide: referent?.preferredSide, avoid });
+    let placement = placeTutorialBubble(rect, size, bounds, { preferredSide: referent?.preferredSide, avoid });
+    const overlaps = (position, box) => position.left < box.right && position.left + size.width > box.left &&
+      position.top < box.bottom && position.top + size.height > box.top;
+    const navigation = menu?.getBoundingClientRect();
+    if (navigation && overlaps(placement, navigation)) {
+      const alternative = placeTutorialBubble(rect, size, bounds, { preferredSide: referent?.preferredSide, avoid: [...avoid, navigation] });
+      if (![rect, ...avoid, navigation].some(box => overlaps(alternative, box))) placement = alternative;
+    }
     if (revealPending) {
       revealPending = false;
       if (avoid.length) {
@@ -54,12 +62,10 @@ export function createTutorialBubble(panel, getAnchor) {
           rect.top + rect.height / 2 < context.top + context.height / 2 ? 'above' : 'below';
         const free = side === 'above' ? context.top - bounds.top - 12 : bounds.top + bounds.height - context.bottom - 12;
         const visible = context.top >= bounds.top + 12 && context.bottom <= bounds.top + bounds.height - 12;
-        const overlap = placement.left < context.right && placement.left + size.width > context.left &&
-          placement.top < context.bottom && placement.top + size.height > context.top;
         // Leave room for page scrolling to round to device pixels instead of landing just outside a strict fit.
         const headroom = 2;
         if (context.height + size.height + 36 + headroom <= bounds.height &&
-          (!visible || overlap || referent?.preferredSide === side && free < size.height + 12)) {
+          (!visible || overlaps(placement, context) || referent?.preferredSide === side && free < size.height + 12)) {
           const targetTop = side === 'above' ? bounds.top + size.height + 24 + headroom :
             bounds.top + bounds.height - context.height - size.height - 24 - headroom;
           const shift = context.top - targetTop;
