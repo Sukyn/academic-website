@@ -2,7 +2,7 @@ import { MAX_MOVES, RULES, LEVELS, TUTORIAL, validateDiagram, targetDiagram, ava
 import { DAILY_START } from '../lib/zx-calculus/leaderboard.js';
 import { diagramLayout, renderDiagram, updateDiagramPositions, nodeGlyph, ruleGlyph, phaseSector } from '../lib/zx-calculus/rendering.js';
 import { animateDiagramMove, createRewriteScene, rewriteDuration, REPLAY_MOVE_DURATION } from '../lib/zx-calculus/animation.js';
-import { curvePoint } from '../lib/zx-calculus/wires.js';
+import { curvePoint, curveParameter } from '../lib/zx-calculus/wires.js';
 import { bindNodeDragging } from '../lib/zx-calculus/drag.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
@@ -23,7 +23,7 @@ const explanations = {
   fusion: 'Connected spiders of the same colour fuse, adding their phases modulo one full turn.',
   identity: 'A fully filled spider with two wires can be removed.',
   hh: 'The yellow squares are Hadamard gates. Two consecutive Hadamards compose to the identity.',
-  color: 'Changing a spider\'s colour adds a Hadamard on every attached wire. Cancel neighbouring pairs with HH.',
+  color: 'Change the spider\'s colour. If every leg has a Hadamard, remove them; otherwise add one on each leg.',
   hopf: 'The Hopf rule removes a pair of parallel wires between spiders of opposite colours.',
 };
 const coreRules = Object.keys(labels);
@@ -75,9 +75,7 @@ const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => ({ t
 function moveNode(id, point) {
   const wire = layout.routes.find(route => route.ids.slice(1, -1).includes(id));
   if (wire) {
-    const dx = wire.b.x - wire.a.x, dy = wire.b.y - wire.a.y;
-    const t = ((point.x - wire.a.x) * dx + (point.y - wire.a.y) * dy) / (dx * dx + dy * dy || 1);
-    point = curvePoint(wire, Math.max(0, Math.min(1, t)));
+    point = curvePoint(wire, Math.max(0, Math.min(1, curveParameter(wire, point))));
   }
   const current = layout.positions.get(id);
   if (current.x === point.x && current.y === point.y) return;
@@ -334,7 +332,7 @@ const tutorial = createTutorial({ get, intro: 'The green and red circles are cal
   onRender: focus => rulePalette.prioritize(focus?.dataset.rule),
   controls: '#zx-board button, #zx-rules button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select',
   steps: TUTORIAL.solution.map((move, index) => ({
-    text: index === 0 ? 'A fully filled spider has zero phase. A cut-out marks a quarter, half or three-quarter turn. Fuse the green pair: their phases add to a full turn, filling the circle again.' : explanations[move.rule],
+    text: index === 0 ? 'A fully filled spider has zero phase. A cut-out marks a quarter, half or three-quarter turn. Fuse the green pair: their phases add to a full turn, filling the circle again.' : move.rule === 'color' ? 'Change the spider\'s colour to absorb the Hadamards on all its legs.' : explanations[move.rule],
     target: `#zx-rules [data-rule="${move.rule}"]`,
     prepare: () => { selected = new Set(move.nodes); selectedEdge = null; update(); }, action: () => playMove(move),
   })),

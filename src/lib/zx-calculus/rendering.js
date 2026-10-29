@@ -1,5 +1,5 @@
 import { svgNode } from '../games/circuit-graphics.js';
-import { decoratedWires, curvePoint, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardSlots } from './wires.js';
+import { decoratedWires, curvePoint, curveParameter, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardSlots } from './wires.js';
 
 export const ZX_COLORS = { z: '#9ad9b2', x: '#efa99e', h: '#f2d572', wire: '#e5ece7', ink: '#1b2822', selection: '#f2d572' };
 const RADIUS = 15, MARGIN = 36;
@@ -7,6 +7,9 @@ export const HADAMARD_SIZE = 18;
 const PLACEMENT_DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];
 const WIRE_TARGET_SAMPLES = [.5, .45, .55, .4, .6, .35, .65, .3, .7, .25, .75, .2, .8, .15, .85, .1, .9]
   .map(t => [(1 - t) ** 2, 2 * (1 - t) * t, t * t]);
+// Keep even crowded wires inside the 12px half-width of their native buttons.
+const WIRE_TARGET_OFFSETS = [[0, 0], ...[8, 11.5].flatMap(d =>
+  [[d, 0], [-d, 0], [0, d], [0, -d], [d, d], [-d, d], [d, -d], [-d, -d]])];
 export const PHASE_RADIUS = 10;
 const PHASE_SECTORS = ['no turn', 'quarter turn', 'half turn', 'three-quarter turn'].map((label, phase) => ({
   label, startAngle: -Math.PI / 2, endAngle: (phase - 1) * Math.PI / 2,
@@ -161,7 +164,7 @@ export function diagramLayout(diagram, { positions: previous, width: minimumWidt
     for (const index of indices) {
       const saved = wires[index].ids.slice(1, -1).map(id => previous instanceof Map ? previous.get(id) : previous?.[id]).find(Boolean);
       if (!saved) continue;
-      const t = ((saved.x - a.x) * (b.x - a.x) + (saved.y - a.y) * (b.y - a.y)) / (length * length);
+      const t = curveParameter({ a, b }, saved);
       if (t <= 0 || t >= 1) continue;
       const bend = ((saved.y - a.y) * (b.x - a.x) - (saved.x - a.x) * (b.y - a.y)) / length / (2 * t * (1 - t));
       let nearest = 0;
@@ -242,8 +245,7 @@ export function diagramLayout(diagram, { positions: previous, width: minimumWidt
   const nearbyPoints = target => target.nearby ||= target.samples.flatMap(point =>
     [[8, 0], [-8, 0], [0, 8], [0, -8]].map(([x, y]) => ({ x: point.x + x, y: point.y + y }))).filter(clearOfNodes);
   const compactPoints = target => target.compact ||= target.samples.flatMap(point =>
-    [[0, 0], [8, 0], [-8, 0], [0, 8], [0, -8], [8, 8], [-8, 8], [8, -8], [-8, -8]]
-      .map(([x, y]) => ({ x: point.x + x, y: point.y + y }))).filter(reachable);
+    WIRE_TARGET_OFFSETS.map(([x, y]) => ({ x: point.x + x, y: point.y + y }))).filter(reachable);
   const place = (target, points, alternatives = other => other.points, gap = 24) => {
     const { edge } = target;
     const clear = (a, b) => separate(a, b, gap);
@@ -358,9 +360,8 @@ export function nodeGlyph(kind, phase = 0) {
   appendNode(svg, { kind, phase }, 22, 22); return svg;
 }
 
-/** Colour change adds Hadamards; the other equations also have reverse choices. */
+/** A single equation glyph covers both directions of each rule. */
 export function ruleGlyph(rule, { direction = 0 } = {}) {
-  if (rule === 'color') direction = 1;
   const svg = svgNode('svg', { viewBox: '0 0 160 56', width: 144, height: 50.4, class: 'zx-rule-glyph', 'aria-hidden': 'true' });
   const wire = d => svg.appendChild(svgNode('path', { d, fill: 'none', stroke: ZX_COLORS.wire, 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
   const dot = (kind, x, y, radius = 8) => svg.appendChild(kind === 'h'

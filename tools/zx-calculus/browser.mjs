@@ -45,6 +45,7 @@ async function chooseRule(page, activate, move) {
     'Applicable equations precede the unavailable equations');
   await activate(page.locator(`#zx-rules [data-rule="${ruleFamily(move.rule)}"]`));
   const dialog = page.locator('#zx-rule-options');
+  if (move.rule === 'color') assert.equal(await dialog.isVisible(), false, 'Colour change has exactly one applicable direction and needs no chooser');
   if (await dialog.isVisible()) {
     const option = move.rule === 'insert' ? Number(move.kind === 'x') : move.rule === 'split' ? move.phase : Number(move.rule === 'add-hopf');
     const count = move.rule === 'split' ? 4 : 2;
@@ -279,7 +280,6 @@ try {
       { rule: 'split', nodes: [4], phase: 1 }, { rule: 'fusion', nodes: [4, 6] },
       { rule: 'insert-hh', edge: [0, 4] }, { rule: 'hh', nodes: [6, 7] },
       { rule: 'color', nodes: [4] }, { rule: 'color', nodes: [4] },
-      { rule: 'hh', nodes: [6, 8] }, { rule: 'hh', nodes: [7, 9] },
       { rule: 'add-hopf', nodes: [4, 5] }, { rule: 'hopf', nodes: [4, 5] },
       { rule: 'identity', nodes: [4] }, { rule: 'identity', nodes: [5] },
     ]);

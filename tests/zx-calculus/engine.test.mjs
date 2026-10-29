@@ -144,28 +144,16 @@ test('spider fusion adds phases modulo 2π and preserves all external legs', () 
   assert.equal(isSolved(applyMove(after, { rule: 'identity', nodes: [4] })), true);
 });
 
-function restoreColourWithHH(before, changed, node) {
-  const original = new Set(before.nodes.map(node => node.id));
-  const first = new Set(changed.nodes.filter(node => !original.has(node.id)).map(node => node.id));
-  let restored = applyMove(changed, { rule: 'color', nodes: [node] });
-  const second = restored.nodes.filter(node => !changed.nodes.some(old => old.id === node.id));
-  assert.equal(second.length, first.size, 'Changing colour again adds a second Hadamard on every leg');
-  for (const hadamard of second) {
-    const pair = restored.edges.find(edge => edge.includes(hadamard.id) && edge.some(id => first.has(id)));
-    assert.ok(pair, 'The two colour changes leave an explicit adjacent HH pair');
-    restored = applyMove(restored, { rule: 'hh', nodes: pair });
-  }
-  return restored;
-}
-
-test('colour change adds Hadamards on every leg; only explicit HH steps remove them', () => {
+test('colour change adds Hadamards, then absorbs them when every leg has one', () => {
   let diagram = insert(identity(), [0, 2], 'z');
   diagram = insert(diagram, [1, 3], 'x');
   diagram = applyMove(diagram, { rule: 'add-hopf', nodes: [4, 5] });
   const changed = applyMove(diagram, { rule: 'color', nodes: [4] });
   assert.equal(changed.nodes.filter(node => node.kind === 'h').length, 4);
   assertEquivalent(diagram, changed);
-  assert.deepEqual(restoreColourWithHH(diagram, changed, 4), diagram);
+  assert.deepEqual(applyMove(changed, { rule: 'color', nodes: [4] }), diagram);
+  assert.equal(availableMoves(changed).filter(move => move.rule === 'color' && move.nodes[0] === 4).length, 1,
+    'The absorbing and expanding directions never compete');
   const withPair = applyMove(changed, { rule: 'insert-hh', edge: changed.edges[0] });
   const ids = withPair.nodes.filter(node => !changed.nodes.some(old => old.id === node.id)).map(node => node.id);
   assertEquivalent(changed, withPair);
@@ -233,7 +221,7 @@ function colourSurroundings(kind, phase) {
   ];
 }
 
-test('colour change keeps existing Hadamards across phases, parallel wires and loops', () => {
+test('a partial Hadamard surround expands every leg across phases, parallel wires and loops', () => {
   for (const kind of ['z', 'x']) for (let phase = 0; phase < 4; phase++) for (const diagram of colourSurroundings(kind, phase)) {
     const before = validateDiagram(diagram), changed = applyMove(before, { rule: 'color', nodes: [4] });
     const existing = before.nodes.filter(node => node.kind === 'h');
@@ -244,8 +232,48 @@ test('colour change keeps existing Hadamards across phases, parallel wires and l
     assert.equal(changed.nodes.find(node => node.id === 4).kind, kind === 'z' ? 'x' : 'z');
     assert.equal(changed.nodes.find(node => node.id === 4).phase ?? 0, phase);
     assertEquivalent(before, changed, `${kind} phase ${phase}: adding H preserves the tensor`);
-    assert.deepEqual(restoreColourWithHH(before, changed, 4), before);
+    assert.deepEqual(applyMove(changed, { rule: 'color', nodes: [4] }), before);
   }
+});
+
+test('a complete Hadamard surround absorbs exactly one layer and preserves phases', () => {
+  for (const kind of ['z', 'x']) for (let phase = 0; phase < 4; phase++) {
+    const before = validateDiagram({
+      nodes: [...identity().nodes, { id: 4, kind, phase }, { id: 5, kind: 'h' }, { id: 6, kind: 'h' },
+        { id: 7, kind: 'h' }, { id: 8, kind: 'h' }],
+      edges: [[0, 5], [4, 5], [4, 6], [6, 2], [1, 3], [4, 7], [7, 8], [4, 8]],
+    });
+    const changed = applyMove(before, { rule: 'color', nodes: [4] });
+    assert.equal(changed.nodes.filter(node => node.kind === 'h').length, 0);
+    assert.equal(changed.nodes.find(node => node.id === 4).kind, kind === 'z' ? 'x' : 'z');
+    assert.equal(changed.nodes.find(node => node.id === 4).phase ?? 0, phase);
+    assertEquivalent(before, changed, `${kind} phase ${phase}: full-surround absorption`);
+  }
+});
+
+test('a Hadamard joined to the same spider twice remains an odd-H loop during absorption', () => {
+  for (const phase of [0, 1, 2, 3]) {
+    const before = validateDiagram({
+      nodes: [...identity().nodes, { id: 4, kind: 'z', phase }, { id: 5, kind: 'h' }, { id: 6, kind: 'h' }, { id: 7, kind: 'h' }],
+      edges: [[0, 5], [4, 5], [4, 6], [6, 2], [1, 3], [4, 7], [4, 7]],
+    });
+    const changed = applyMove(before, { rule: 'color', nodes: [4] });
+    assert.deepEqual(changed.nodes.filter(node => node.kind === 'h').map(node => node.id), [7]);
+    assert.equal(changed.edges.filter(edge => edge[0] === 4 && edge[1] === 7).length, 2);
+    assertEquivalent(before, changed, `Odd-H loop phase ${phase}`);
+  }
+});
+
+test('absorption remains available at the node limit and consumes only the adjacent H layer', () => {
+  const before = validateDiagram({
+    nodes: Array.from({ length: MAX_NODES }, (_, id) => ({ id, kind: id < 4 ? 'boundary' : [5, 6, 7, 8].includes(id) ? 'h' : 'z' })),
+    edges: [[0, 7], [7, 5], [5, 4], [4, 6], [6, 8], [8, 2], [1, 3]],
+  });
+  const changed = applyMove(before, { rule: 'color', nodes: [4] });
+  assert.equal(changed.nodes.length, MAX_NODES - 2);
+  assert.deepEqual(changed.nodes.filter(node => node.kind === 'h').map(node => node.id), [7, 8]);
+  assert.equal(availableMoves(before).filter(move => move.rule === 'color' && move.nodes[0] === 4).length, 1);
+  assertEquivalent(before, changed);
 });
 
 test('colour growth respects node and edge limits without consuming existing Hadamards', () => {

@@ -27,12 +27,12 @@ export function createRewriteScene(input, move, result, { layout, nextLayout } =
   const from = beforeLayout, to = afterLayout;
   const oldNodes = new Map(before.nodes.map(node => [node.id, node])), newNodes = new Map(after.nodes.map(node => [node.id, node]));
   const selected = move.nodes || [], added = after.nodes.filter(node => !oldNodes.has(node.id));
-  const fusion = move.rule === 'fusion', splitting = move.rule === 'split';
+  const fusion = move.rule === 'fusion', splitting = move.rule === 'split', colorChange = move.rule === 'color';
   const survivor = fusion ? Math.min(...selected) : selected[0];
   const removedId = fusion ? Math.max(...selected) : null;
   const destinations = selected.map(id => to.positions.get(id) || from.positions.get(id));
   const centre = destinations.length ? destinations.reduce((p, q) => ({ x: p.x + q.x / destinations.length, y: p.y + q.y / destinations.length }), { x: 0, y: 0 }) : { x: width / 2, y: height / 2 };
-  const anchor = fusion || splitting || move.rule === 'color' ? (to.positions.get(survivor) || from.positions.get(survivor)) : centre;
+  const anchor = fusion || splitting || colorChange ? (to.positions.get(survivor) || from.positions.get(survivor)) : centre;
   const selectedEdge = move.edge ? key(move.edge) : null;
   const oldWire = selectedEdge ? before.edges.findIndex(edge => key(edge) === selectedEdge) : -1;
   const insertionPoint = oldWire >= 0 ? at(from.edges[oldWire], .5) : (from.positions.get(survivor) || anchor);
@@ -49,9 +49,8 @@ export function createRewriteScene(input, move, result, { layout, nextLayout } =
       to: next ? to.positions.get(id) : anchor, phaseFrom, phaseTo });
   }
   for (const node of added) if (node.kind !== 'boundary') nodes.push({ id: node.id, before: null, after: node,
-    from: move.rule === 'color' ? to.positions.get(node.id) : insertionPoint, to: to.positions.get(node.id),
+    from: colorChange ? to.positions.get(node.id) : insertionPoint, to: to.positions.get(node.id),
     phaseFrom: 0, phaseTo: node.phase ?? 0 });
-  const colorChange = move.rule === 'color';
   let colorWires;
   if (colorChange && from.routes && to.routes && from.routes.length === to.routes.length) {
     const available = new Set(to.routes), tracks = [];
@@ -66,14 +65,14 @@ export function createRewriteScene(input, move, result, { layout, nextLayout } =
     }
     if (!available.size) colorWires = tracks;
   }
-  if (colorWires) for (const node of nodes) if (node.after?.kind === 'h') {
-    const wire = colorWires.find(wire => wire.to.ids.slice(1, -1).includes(node.id));
+  if (colorWires) for (const node of nodes) if (node.after?.kind === 'h' || node.before?.kind === 'h') {
+    const wire = colorWires.find(wire => (node.after ? wire.to : wire.from).ids.slice(1, -1).includes(node.id));
     if (wire) {
-      const dx = wire.from.b.x - wire.from.a.x, dy = wire.from.b.y - wire.from.a.y;
-      const end = wire.to.parameters[wire.to.ids.indexOf(node.id)];
-      const start = node.before ? ((node.from.x - wire.from.a.x) * dx + (node.from.y - wire.from.a.y) * dy) / (dx * dx + dy * dy || 1) : end;
+      const start = node.before ? wire.from.parameters[wire.from.ids.indexOf(node.id)] : wire.to.parameters[wire.to.ids.indexOf(node.id)];
+      const end = node.after ? wire.to.parameters[wire.to.ids.indexOf(node.id)] : wire.to.ids[0] === survivor ? 0 : 1;
       node.slide = { wire, from: start, to: end };
       if (!node.before) node.from = at(wire.from, start);
+      if (!node.after) node.to = at(wire.to, end);
     }
   }
   const nodeTracks = new Map(nodes.map(node => [node.id, node]));

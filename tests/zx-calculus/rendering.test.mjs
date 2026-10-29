@@ -213,11 +213,12 @@ test('reversible equations reuse their diagram for either direction', context =>
   }
 });
 
-test('colour change always points toward newly added Hadamards', context => {
+test('colour change displays a bidirectional equation with Hadamards on one side', context => {
   dom(context);
   for (const direction of [0, 1, -1]) {
     const glyph = ruleGlyph('color', { direction });
-    assert.equal(glyph.children[0].attributes.d, 'M72 28H90M85 23L90 28L85 33');
+    assert.equal(glyph.children[0].attributes.d,
+      `M72 28H90${direction <= 0 ? 'M77 23L72 28L77 33' : ''}${direction >= 0 ? 'M85 23L90 28L85 33' : ''}`);
     const boxes = descendants(glyph).filter(node => node.tag === 'rect');
     assert.equal(boxes.length, 3);
     assert.ok(boxes.every(box => Number(box.attributes.x) > 100), 'Hadamards are produced on the right of the arrow');

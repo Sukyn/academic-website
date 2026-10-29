@@ -158,7 +158,18 @@ function transform(diagram, move) {
       const [node] = requireNodes(1);
       if (!spider(node)) fail('Select a spider to change its colour.');
       node.kind = node.kind === 'z' ? 'x' : 'z';
-      for (const leg of legs.get(node.id)) {
+      const ends = legs.get(node.id);
+      if (ends.every(leg => nodes.get(leg.to).kind === 'h')) {
+        const neighbours = new Set(ends.map(leg => leg.to));
+        for (const id of neighbours) {
+          const outside = legs.get(id).find(leg => leg.to !== node.id);
+          // Conjugating an H loop by two H gates leaves the same odd-H loop.
+          if (!outside) continue;
+          removed.add(id);
+          // An adjacent HH loop contracts to an ordinary spider self-loop.
+          if (!neighbours.has(outside.to)) connect(node.id, outside.to);
+        }
+      } else for (const leg of ends) {
         removedEdges.add(leg.index);
         const h = addNode('h');
         connect(node.id, h);
@@ -279,27 +290,22 @@ function builder() {
       const ids = new Set(before.nodes.map(node => node.id));
       const added = after.nodes.filter(node => !ids.has(node.id)).map(node => node.id);
       let inverse;
-      if (move.rule === 'insert') inverse = [{ rule: 'identity', nodes: added }];
-      else if (move.rule === 'insert-hh') inverse = [{ rule: 'hh', nodes: added }];
-      else if (move.rule === 'split') inverse = [{ rule: 'fusion', nodes: [...move.nodes, ...added].sort((a, b) => a - b) }];
-      else if (move.rule === 'add-hopf') inverse = [{ rule: 'hopf', nodes: move.nodes }];
+      if (move.rule === 'insert') inverse = { rule: 'identity', nodes: added };
+      else if (move.rule === 'insert-hh') inverse = { rule: 'hh', nodes: added };
+      else if (move.rule === 'split') inverse = { rule: 'fusion', nodes: [...move.nodes, ...added].sort((a, b) => a - b) };
+      else if (move.rule === 'add-hopf') inverse = { rule: 'hopf', nodes: move.nodes };
       else if (move.rule === 'color') {
+        inverse = move;
         try {
-          const flipped = applyMove(after, move), afterIds = new Set(after.nodes.map(node => node.id));
-          const firstLayer = new Set(added), { legs } = context(flipped);
-          // A second colour change adds another layer; only HH removes the two layers.
-          inverse = [move, ...flipped.nodes.filter(node => !afterIds.has(node.id)).map(node => ({
-            rule: 'hh', nodes: [node.id, legs.get(node.id).find(leg => firstLayer.has(leg.to)).to].sort((a, b) => a - b),
-          }))];
-          const restored = inverse.slice(1).reduce((value, step) => applyMove(value, step), flipped);
-          if (JSON.stringify(restored) !== JSON.stringify(before)) return false;
+          // Keep IDs stable for the earlier steps in the generated solution.
+          if (JSON.stringify(applyMove(after, inverse)) !== JSON.stringify(before)) return false;
         } catch (error) {
           if (!(error instanceof RangeError)) throw error;
           return false;
         }
       } else fail('Use an expansion to build a puzzle.');
       diagram = after;
-      solution.unshift(...inverse);
+      solution.unshift(inverse);
       return true;
     },
   };

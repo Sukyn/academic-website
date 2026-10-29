@@ -2,9 +2,9 @@ import { applyMove, generatePuzzle, isSolved, LEVELS, MAX_MOVES, ruleFamily } fr
 import { dailyBounds, dailyDate, dateTimestamp, validDailyDate } from '../games/daily-calendar.js';
 import { checkSubmissionSize, scoreName, SubmissionError } from '../games/submission.js';
 
-export const CAMPAIGN = 'zx-calculus-campaign-v2';
+export const CAMPAIGN = 'zx-calculus-campaign-v3';
 export const DAILY_START = '2026-10-22';
-export const DAILY_VERSION = 'zx-calculus-daily-v2';
+export const DAILY_VERSION = 'zx-calculus-daily-v3';
 export const MAX_SUBMISSION_BYTES = 24_000;
 
 export function dailyPuzzle(date) {

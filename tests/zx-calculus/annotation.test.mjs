@@ -12,7 +12,8 @@ test('H chains subdivide one spider-to-spider curve without kinks or moving spid
   const positions = new Map([[0, { x: 36, y: 140 }], [1, { x: 36, y: 280 }], [2, { x: 764, y: 140 }],
     [3, { x: 764, y: 280 }], [4, { x: 400, y: 140 }]]);
   const initial = diagramLayout(before, { positions, width: 800, height: 500 });
-  const after = applyMove(applyMove(before, { rule: 'color', nodes: [4] }), { rule: 'color', nodes: [4] });
+  const coloured = applyMove(before, { rule: 'color', nodes: [4] });
+  const after = applyMove(coloured, { rule: 'insert-hh', edge: coloured.edges[0] });
   const layout = diagramLayout(after, initial), kinds = new Map(after.nodes.map(node => [node.id, node.kind]));
   for (const [id, point] of initial.positions) closePoint(layout.positions.get(id), point);
   for (const route of layout.routes) {
@@ -78,6 +79,24 @@ function parallelExample() {
     [3, { x: 364, y: 250 }], [4, { x: 160, y: 160 }], [5, { x: 240, y: 160 }]]);
   return { diagram, layout: diagramLayout(diagram, { positions, width: 400, height: 400 }) };
 }
+
+test('absorbed H boxes follow their own curved wire into the fixed spider', () => {
+  const initial = parallelExample(), before = applyMove(initial.diagram, { rule: 'color', nodes: [4] });
+  const layout = diagramLayout(before, initial.layout);
+  const scene = createRewriteScene(before, { rule: 'color', nodes: [4] }, undefined, { layout });
+  const removed = scene.nodes.filter(node => node.before?.kind === 'h' && !node.after);
+  assert.equal(removed.length, 5);
+  assert.ok(scene.colorWires);
+  assert.equal(scene.wires.length, 0, 'Absorption reuses full wires instead of fading their subdivisions');
+  closePoint(scene.afterLayout.positions.get(4), layout.positions.get(4));
+  for (const node of removed) {
+    assert.ok(node.slide, 'Every absorbed box stays on a wire throughout its movement');
+    assert.ok(node.slide.wire.from.ids.includes(node.id), 'Parallel wires keep their own boxes');
+    closePoint(node.from, curvePoint(node.slide.wire.from, node.slide.from));
+    closePoint(node.to, curvePoint(node.slide.wire.to, node.slide.to));
+    closePoint(node.to, scene.afterLayout.positions.get(4));
+  }
+});
 
 test('making room for H boxes never merges parallel wires into the same curve', () => {
   let { diagram, layout } = parallelExample();

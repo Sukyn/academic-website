@@ -39,6 +39,12 @@ export function curvePoint({ a, b, control }, t) {
     y: s * s * a.y + 2 * s * t * control.y + t * t * b.y };
 }
 
+/** Chord projection recovers the unclamped parameter on midpoint-normal routes. */
+export function curveParameter({ a, b }, point) {
+  const dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
+  return lengthSquared > 0 ? ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared : 0;
+}
+
 /** A small shared polyline supplies routing distances and arc-length placement. */
 export function curveMetrics(curve) {
   const segments = [];
@@ -91,13 +97,13 @@ export function curveSlice(curve, start, end) {
 export function hadamardSlots(ids, previousPositions, a, b, { minimumGap = 0, parameter = t => t } = {}) {
   const count = ids.length - 2;
   if (count <= 0) return [];
-  const dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
+  const chord = { a, b }, hasLength = a.x !== b.x || a.y !== b.y;
   const gap = Math.min(1 / (count + 1), Math.max(Math.min(.04, .5 / (count + 1)), minimumGap));
   const anchors = [{ index: -1, t: 0 }];
   for (let index = 0; index < count; index++) {
     const position = previousPositions instanceof Map ? previousPositions.get(ids[index + 1]) : previousPositions?.[ids[index + 1]];
-    if (!(lengthSquared > 0) || !Number.isFinite(position?.x) || !Number.isFinite(position?.y)) continue;
-    const projected = parameter(((position.x - a.x) * dx + (position.y - a.y) * dy) / lengthSquared);
+    if (!hasLength || !Number.isFinite(position?.x) || !Number.isFinite(position?.y)) continue;
+    const projected = parameter(curveParameter(chord, position));
     const previous = anchors.at(-1), minimum = previous.t + (index - previous.index) * gap;
     anchors.push({ index, t: Math.min(1 - (count - index) * gap, Math.max(minimum, projected)) });
   }

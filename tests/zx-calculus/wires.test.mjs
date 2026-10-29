@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decoratedWires, curvePoint, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardSlots } from '../../src/lib/zx-calculus/wires.js';
+import { decoratedWires, curvePoint, curveParameter, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardSlots } from '../../src/lib/zx-calculus/wires.js';
 import { applyMove, targetDiagram } from '../../src/lib/zx-calculus/engine.js';
 
 const boundaries = () => targetDiagram().nodes;
@@ -72,6 +72,14 @@ test('quadratic slices agree with the full curve at every sampled local paramete
     }
     assert.deepEqual(curve, saved);
   }
+});
+
+test('midpoint-normal chord projection round-trips parameters without clamping', () => {
+  const a = { x: 20, y: 30 }, b = { x: 220, y: 130 }, control = { x: 80, y: 160 };
+  for (const curve of [{ a, b, control }, { a: b, b: a, control }]) {
+    for (const t of [-1, 0, .25, .5, .75, 1, 2]) close(curveParameter(curve, curvePoint(curve, t)), t);
+  }
+  assert.equal(curveParameter({ a, b: a }, { x: 400, y: 200 }), 0);
 });
 
 test('new H boxes fill only the gaps around saved positions', () => {

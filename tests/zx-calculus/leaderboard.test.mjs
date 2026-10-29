@@ -15,13 +15,8 @@ const valid = changes => ({ level: 1, name: 'Ada', sequence: LEVELS[0].solution,
 function inversePrefix(diagram, move) {
   const after = applyMove(diagram, move), added = after.nodes.filter(node => !diagram.nodes.some(old => old.id === node.id)).map(node => node.id);
   if (move.rule === 'color') {
-    const twice = applyMove(after, move), firstLayer = new Set(added);
-    const secondLayer = new Set(twice.nodes.filter(node => !after.nodes.some(old => old.id === node.id)).map(node => node.id));
-    const cancellations = twice.edges.filter(([a, b]) =>
-      firstLayer.has(a) && secondLayer.has(b) || firstLayer.has(b) && secondLayer.has(a))
-      .map(nodes => ({ rule: 'hh', nodes }));
-    const sequence = [move, move, ...cancellations];
-    assert.deepEqual(sequence.reduce(applyMove, diagram), diagram, 'Two colour changes need explicit HH cancellations to restore the diagram');
+    const sequence = [move, move];
+    assert.deepEqual(sequence.reduce(applyMove, diagram), diagram, 'A colour expansion is reversed by absorbing its H layer');
     return sequence;
   }
   const inverse = move.rule === 'insert' ? { rule: 'identity', nodes: added } :
@@ -41,13 +36,12 @@ test('every official ZX witness is validated and scores count the replay', () =>
   assert.equal(getBoard({ level: '1' }, now).level, 1);
 });
 
-test('a colour change cannot silently remove the Hadamards from a scored solution', () => {
+test('absorbing a complete Hadamard surround counts as one scored colour rewrite', () => {
   const index = LEVELS.findIndex(level => level.solution[0]?.rule === 'color');
   assert.ok(index >= 0, 'An authored lesson introduces colour change');
   const colour = LEVELS[index].solution[0];
-  const legacyShortcut = [colour, { rule: 'identity', nodes: colour.nodes }];
-  assert.throws(() => validateSubmission(valid({ level: index + 1, sequence: legacyShortcut }), now),
-    error => error instanceof SubmissionError && /does not reach the target/.test(error.message));
+  const sequence = [colour, { rule: 'identity', nodes: colour.nodes }];
+  assert.equal(validateSubmission(valid({ level: index + 1, sequence }), now).moves, 2);
 });
 
 test('both directions of each unlocked equation can be used in scored campaign solutions', () => {

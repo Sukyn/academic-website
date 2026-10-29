@@ -37,6 +37,7 @@ function examples() {
   return [
     [split, { rule: 'fusion', nodes: [5, 4] }], [single, { rule: 'identity', nodes: [4] }],
     [hh, { rule: 'hh', nodes: [4, 5] }], [single, { rule: 'color', nodes: [4] }],
+    [applyMove(linked, { rule: 'color', nodes: [4] }), { rule: 'color', nodes: [4] }],
     [linked, { rule: 'hopf', nodes: [4, 5] }], [identity, { rule: 'insert', edge: [0, 2], kind: 'x' }],
     [identity, { rule: 'insert-hh', edge: [0, 2] }], [single, { rule: 'split', nodes: [4], phase: 3 }],
     [opposite, { rule: 'add-hopf', nodes: [4, 5] }],
@@ -206,7 +207,7 @@ test('splitting sectors stays continuous at the beginning and matches both final
 });
 
 test('Hopf contracts exactly two parallel wires and HH squares converge and shrink', () => {
-  const [before, move] = examples()[4], extra = applyMove(before, { rule: 'add-hopf', nodes: [4, 5] });
+  const [before, move] = examples().find(([, move]) => move.rule === 'hopf'), extra = applyMove(before, { rule: 'add-hopf', nodes: [4, 5] });
   const after = applyMove(extra, move), scene = createRewriteScene(extra, move, after);
   assert.equal(scene.wires.filter(wire => wire.mode === 'hopf-out').length, 2);
   const start = recorder(), moving = recorder(), final = recorder();

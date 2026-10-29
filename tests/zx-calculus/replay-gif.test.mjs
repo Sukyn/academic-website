@@ -221,7 +221,7 @@ test('Hopf replay animates the disappearing parallel wires', context => {
   assert.equal(curves(frames.at(-1)).length, 2);
 });
 
-test('ordinary-play replay exports inverse equations and colour changes with explicit HH cleanup', context => {
+test('ordinary-play replay exports inverse equations and both colour-change directions', context => {
   const surfaces = canvases(context), source = {
     label: 'ZX puzzle', puzzle: LEVELS[4].diagram,
     sequence: [
@@ -230,8 +230,6 @@ test('ordinary-play replay exports inverse equations and colour changes with exp
       { rule: 'insert-hh', edge: [0, 4] }, { rule: 'hh', nodes: [6, 7] },
       { rule: 'add-hopf', nodes: [4, 5] }, { rule: 'hopf', nodes: [4, 5] },
       { rule: 'color', nodes: [4] }, { rule: 'color', nodes: [4] },
-      { rule: 'hh', nodes: [6, 10] }, { rule: 'hh', nodes: [7, 11] },
-      { rule: 'hh', nodes: [8, 12] }, { rule: 'hh', nodes: [9, 13] },
       ...solutions[4],
     ],
   }, saved = structuredClone(source), progress = [];
