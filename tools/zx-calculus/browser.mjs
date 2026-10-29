@@ -18,6 +18,7 @@ const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
 await mkdir(output, { recursive: true });
 const errors = [], reports = [];
+const trace = message => { if (process.env.ZX_BROWSER_TRACE) console.log(message); };
 const positions = page => page.locator('#zx-board [data-zx-node]').evaluateAll(nodes => Object.fromEntries(nodes.map(node => [node.dataset.zxNode, node.getAttribute('transform')])));
 
 async function assertDiagram(page, diagram) {
@@ -55,9 +56,12 @@ async function solve(page, activate, initial, solution, measure = false) {
   let diagram = initial;
   let performanceReport;
   for (const [index, move] of solution.entries()) {
+    trace(`Move ${index + 1}: ${move.rule}`);
     const beforePositions = await positions(page);
     await selectMove(page, activate, diagram, move);
-    const frames = measure && index === 0 ? page.evaluate(() => new Promise(resolve => {
+    if (measure && index === 0) await page.bringToFront();
+    const frames = measure && index === 0 ? page.evaluate(() => new Promise((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error(`Rewrite sampling timed out (hidden=${document.hidden}, animating=${document.getElementById('zx-board').dataset.zxAnimating})`)), 10000);
       document.getElementById('zx-rules').addEventListener('click', () => {
         const board = document.getElementById('zx-board'), samples = [];
         let mutations = 0, started = false;
@@ -68,6 +72,7 @@ async function solve(page, activate, initial, solution, measure = false) {
           else if (!started) requestAnimationFrame(sample);
           else {
             observer.disconnect();
+            clearTimeout(deadline);
             const gaps = samples.slice(1).map((value, index) => value - samples[index]).sort((a, b) => a - b);
             resolve({ frames: samples.length, elapsedMs: samples.at(-1) - samples[0],
               p95FrameMs: gaps[Math.floor(gaps.length * .95)], childMutations: mutations });
@@ -85,17 +90,24 @@ async function solve(page, activate, initial, solution, measure = false) {
     }
     diagram = applyMove(diagram, move); await assertDiagram(page, diagram);
     const afterPositions = await positions(page);
-    for (const [id, point] of Object.entries(afterPositions)) if (beforePositions[id]) assert.equal(point, beforePositions[id], `Rewrite leaves surviving node ${id} in place`);
+    for (const node of diagram.nodes) if (node.kind !== 'h' && beforePositions[node.id]) {
+      assert.equal(afterPositions[node.id], beforePositions[node.id], `Rewrite leaves surviving spider ${node.id} in place`);
+    }
   }
   await page.locator('#win-dialog[open]').waitFor();
   await page.waitForFunction(() => getComputedStyle(document.getElementById('win-dialog')).opacity === '1');
   return performanceReport;
 }
-async function canvasControls(page, mobile, label) {
+async function canvasControls(page, mobile, label, sliding = false) {
   const original = await positions(page), node = page.locator('#zx-board [data-node="4"]');
   await node.scrollIntoViewIfNeeded();
   await node.evaluate(element => { element.dataset.dragProbe = 'same button'; });
   const box = await node.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+  if (sliding) {
+    assert.ok(box.width >= 32 && box.height >= 32, 'Small H boxes retain a padded native touch target');
+    const glyph = await page.locator('#zx-board [data-zx-node="4"] rect').boundingBox();
+    assert.ok(glyph.width > 0 && glyph.width <= 20 && glyph.height <= 20, 'The visible H is smaller than its touch target');
+  }
   const dx = x > page.viewportSize().width / 2 ? -44 : 44;
   if (mobile) {
     const touch = await page.context().newCDPSession(page);
@@ -111,7 +123,13 @@ async function canvasControls(page, mobile, label) {
   }
   const moved = await positions(page);
   assert.notEqual(moved[4], original[4], 'Dragging moves the node');
-  assert.equal(moved[5], original[5], 'Dragging does not rearrange other nodes');
+  if (sliding) {
+    const coordinates = value => value.match(/[-+]?(?:\d*\.?\d+)(?:e[-+]?\d+)?/gi).map(Number);
+    assert.ok(Math.abs(coordinates(moved[4])[1] - coordinates(original[4])[1]) < 1e-7,
+      'Dragging an H diagonally slides it along the straight wire');
+    assert.ok(coordinates(moved[5]).every((value, index) => Math.abs(value - coordinates(original[5])[index]) < 1e-7),
+      'Sliding one H keeps the other H fixed');
+  } else assert.equal(moved[5], original[5], 'Dragging does not rearrange other nodes');
   assert.equal(await node.getAttribute('data-drag-probe'), 'same button', 'Dragging reuses the existing controls');
   assert.equal(await node.getAttribute('aria-pressed'), 'false', 'Dragging does not toggle selection');
   assert.equal(await page.locator('#sequence [data-step]').count(), 0, 'Moving the drawing costs no rewrite');
@@ -137,7 +155,7 @@ async function audit(page) {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Page overflow stays inside the diagram');
   const hitAreas = await page.locator('#zx-board button').evaluateAll(nodes => nodes.map(node => {
     const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height,
-      minimum: node.classList.contains('zx-node') ? 44 : 24, appearance: getComputedStyle(node).appearance };
+      minimum: node.classList.contains('zx-hadamard') ? 32 : node.classList.contains('zx-node') ? 44 : 24, appearance: getComputedStyle(node).appearance };
   }));
   assert.ok(hitAreas.every(rect => rect.width >= rect.minimum && rect.height >= rect.minimum && rect.appearance === 'none'));
   await page.evaluate(axe);
@@ -154,6 +172,7 @@ try {
       : { viewport: { width: 1280, height: 900 } });
     await createBrowserApi({ now: Date.parse(`${date}T10:00:00Z`) }).install(context);
     const page = await context.newPage();
+    await page.bringToFront();
     page.on('pageerror', error => errors.push(`${label}: ${error.message}`));
     const activate = node => mobile ? node.tap() : node.click();
     await page.goto(`${base}/games/zx-calculus/`);
@@ -186,13 +205,16 @@ try {
     await activate(page.locator('#tutorial-levels'));
     let phaseFusionAnimation;
     for (const [index, level] of LEVELS.entries()) {
+      trace(`${label}: level ${index + 1}`);
       await page.locator('#level').selectOption(String(index + 1));
       await assertDiagram(page, level.diagram);
       if (index === 0) {
         await canvasControls(page, mobile, label);
         for (const id of level.solution[0].nodes) await activate(page.locator(`#zx-board [data-node="${id}"]`));
         const observed = page.evaluate(() => new Promise(resolve => {
+          const deadline = setTimeout(() => resolve(false), 5000);
           document.getElementById('zx-rules').addEventListener('click', () => {
+            clearTimeout(deadline);
             resolve(Boolean(document.querySelector('#zx-board[data-zx-animating="true"][aria-busy="true"] canvas')));
           }, { once: true });
         }));
@@ -247,6 +269,8 @@ try {
     assert.ok(gif.length < 1_000_000, 'Replay stays compact');
     await activate(page.locator('#close-share'));
     await activate(page.locator('#mode-random'));
+    await importDiagram(page, activate, applyMove(targetDiagram(), { rule: 'insert-hh', edge: [0, 2] }));
+    await canvasControls(page, mobile, `${label}-hadamard`, true);
     let opposite = applyMove(targetDiagram(), { rule: 'insert', edge: [0, 2], kind: 'z' });
     opposite = applyMove(opposite, { rule: 'insert', edge: [1, 3], kind: 'x' });
     await importDiagram(page, activate, opposite);

@@ -1,7 +1,9 @@
 import { svgNode } from '../games/circuit-graphics.js';
+import { decoratedWires, curvePoint, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardSlots } from './wires.js';
 
 export const ZX_COLORS = { z: '#9ad9b2', x: '#efa99e', h: '#f2d572', wire: '#e5ece7', ink: '#1b2822', selection: '#f2d572' };
 const RADIUS = 15, MARGIN = 36;
+export const HADAMARD_SIZE = 18;
 const PLACEMENT_DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];
 const WIRE_TARGET_SAMPLES = [.5, .45, .55, .4, .6, .35, .65, .3, .7, .25, .75, .2, .8, .15, .85, .1, .9]
   .map(t => [(1 - t) ** 2, 2 * (1 - t) * t, t * t]);
@@ -27,26 +29,9 @@ function distances(adjacency, sources) {
   return distance;
 }
 
-function routeScore(a, b, control, obstacles) {
+function routeScore(metrics, obstacles) {
   if (!obstacles.length) return 0;
-  const segments = [];
-  let previous = a;
-  for (let step = 1; step <= 16; step++) {
-    const t = step / 16, s = 1 - t;
-    const next = { x: s * s * a.x + 2 * s * t * control.x + t * t * b.x, y: s * s * a.y + 2 * s * t * control.y + t * t * b.y };
-    const dx = next.x - previous.x, dy = next.y - previous.y;
-    segments.push({ start: previous, dx, dy, lengthSquared: dx * dx + dy * dy || 1 }); previous = next;
-  }
-  let score = 0;
-  for (const point of obstacles) {
-    let nearest = Infinity;
-    for (const { start, dx, dy, lengthSquared } of segments) {
-      const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
-      nearest = Math.min(nearest, Math.hypot(point.x - start.x - t * dx, point.y - start.y - t * dy));
-    }
-    score += Math.max(0, 36 - nearest) ** 2;
-  }
-  return score;
+  return obstacles.reduce((score, point) => score + Math.max(0, 36 - curveDistance(point, metrics)) ** 2, 0);
 }
 
 function bendBounds(a, b, width, height) {
@@ -147,44 +132,107 @@ function fixedLayout(diagram, previous, width, height) {
   return { positions, ...extent };
 }
 
-/** Saved positions are fixed. Only a fresh layout, or new vertices, need placement. */
+/** Spiders stay fixed; Hadamards follow their continuous wire, including while dragged. */
 export function diagramLayout(diagram, { positions: previous, width: minimumWidth = 0, height: minimumHeight = 0 } = {}) {
-  const initial = previous ? fixedLayout(diagram, previous, minimumWidth, minimumHeight) : automaticLayout(diagram);
+  const wires = decoratedWires(diagram);
+  const endpoints = new Set(wires.flatMap(wire => [wire.ids[0], wire.ids.at(-1)]));
+  const topology = { nodes: diagram.nodes.filter(node => node.kind !== 'h' || endpoints.has(node.id)),
+    edges: wires.map(wire => [wire.ids[0], wire.ids.at(-1)]) };
+  const initial = previous ? fixedLayout(topology, previous, minimumWidth, minimumHeight) : automaticLayout(diagram);
   const positions = initial.positions, width = Math.max(minimumWidth, initial.width), height = Math.max(minimumHeight, initial.height);
-  const internal = diagram.nodes.filter(node => node.kind !== 'boundary');
+  for (const node of diagram.nodes) if (node.kind === 'h' && !endpoints.has(node.id)) positions.delete(node.id);
+  const internal = topology.nodes.filter(node => node.kind !== 'boundary');
   const groups = new Map();
-  diagram.edges.forEach(([a, b], index) => {
+  wires.forEach((wire, index) => {
+    const [a, b] = [wire.ids[0], wire.ids.at(-1)];
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(index);
   });
   const offsets = new Map();
   for (const indices of groups.values()) {
-    const [u, v] = diagram.edges[indices[0]], a = positions.get(Math.min(u, v)), b = positions.get(Math.max(u, v));
+    const ids = wires[indices[0]].ids, u = ids[0], v = ids.at(-1);
+    const a = positions.get(Math.min(u, v)), b = positions.get(Math.max(u, v));
     const { minimum, maximum } = bendBounds(a, b, width, height);
     const spacing = Math.min(56, 2 * Math.min(-minimum, maximum) / Math.max(1, indices.length - 1));
-    indices.forEach((index, order) => offsets.set(index, (order - (indices.length - 1) / 2) * spacing));
+    const available = indices.map((_, order) => (order - (indices.length - 1) / 2) * spacing);
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    // Recover a saved lane from an H on it, so another colour change cannot shuffle parallel wires.
+    for (const index of indices) {
+      const saved = wires[index].ids.slice(1, -1).map(id => previous instanceof Map ? previous.get(id) : previous?.[id]).find(Boolean);
+      if (!saved) continue;
+      const t = ((saved.x - a.x) * (b.x - a.x) + (saved.y - a.y) * (b.y - a.y)) / (length * length);
+      if (t <= 0 || t >= 1) continue;
+      const bend = ((saved.y - a.y) * (b.x - a.x) - (saved.x - a.x) * (b.y - a.y)) / length / (2 * t * (1 - t));
+      let nearest = 0;
+      for (let slot = 1; slot < available.length; slot++) if (Math.abs(available[slot] - bend) < Math.abs(available[nearest] - bend)) nearest = slot;
+      const nominal = available.splice(nearest, 1)[0];
+      offsets.set(index, indices.length > 1 ? bend : nominal);
+    }
+    for (const index of indices) if (!offsets.has(index)) offsets.set(index, available.shift());
   }
-  const edges = diagram.edges.map(([u, v], index) => {
+  const edges = Array(diagram.edges.length);
+  const claimed = new Map();
+  const routes = wires.map((wire, index) => {
+    const u = wire.ids[0], v = wire.ids.at(-1);
     const a = positions.get(u), b = positions.get(v), length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     const bend = offsets.get(index) * (u < v ? 1 : -1);
     const { minimum, maximum } = bendBounds(a, b, width, height);
     const obstacles = internal.filter(node => node.id !== u && node.id !== v).map(node => positions.get(node.id));
+    const requiredLength = wire.ids.length > 2 ? 68 * (wire.ids.length - 1) : 0;
+    const laneKey = u < v ? `${u}:${v}` : `${v}:${u}`, neighbours = claimed.get(laneKey) || [];
     let control, score = Infinity;
     // A wire crossing is harmless, but passing through another spider changes its meaning.
-    for (const detour of [0, 56, -56, 112, -112]) {
+    for (const detour of requiredLength ? [0, 56, -56, 112, -112, 168, -168, 224, -224] : [0, 56, -56, 112, -112]) {
       const bounded = Math.max(minimum, Math.min(maximum, bend + detour));
       const candidate = { x: (a.x + b.x) / 2 - (b.y - a.y) / length * bounded, y: (a.y + b.y) / 2 + (b.x - a.x) / length * bounded };
-      const candidateScore = routeScore(a, b, candidate, obstacles);
+      const metrics = curveMetrics({ a, b, control: candidate });
+      const coincident = neighbours.some(other => Math.hypot(other.x - candidate.x, other.y - candidate.y) < .01);
+      const candidateScore = routeScore(metrics, obstacles) + Math.max(0, requiredLength - metrics.length) ** 2 + (coincident ? 1_000_000 : 0);
       if (candidateScore < score) { control = candidate; score = candidateScore; }
       if (score === 0) break;
     }
-    return { index, a, b, control, midpoint: { x: (a.x + 2 * control.x + b.x) / 4, y: (a.y + 2 * control.y + b.y) / 4 }, path: `M${a.x} ${a.y}Q${control.x} ${control.y} ${b.x} ${b.y}` };
+    neighbours.push(control); claimed.set(laneKey, neighbours);
+    return { ...wire, a, b, control };
+  });
+  const polylines = routes.map(curveMetrics);
+  routes.forEach((route, index) => {
+    const metrics = polylines[index], minimumGap = 48 / (metrics.length || 1);
+    const slots = hadamardSlots(route.ids, previous, route.a, route.b, { minimumGap,
+      parameter: t => arcFraction(t, metrics) });
+    const fractions = [0, ...slots, 1];
+    // Boxes sit on the wire but keep clear of crossings, spiders and previously placed boxes.
+    for (let slot = 1; slot < fractions.length - 1; slot++) {
+      const gap = Math.min(minimumGap, 1 / (fractions.length - 1));
+      const desired = fractions[slot], left = fractions[slot - 1] + gap, right = fractions[slot + 1] - gap;
+      let best = desired, score = Infinity;
+      const candidates = [desired, ...Array.from({ length: 17 }, (_, sample) => left + (right - left) * sample / 16)];
+      for (const t of candidates) {
+        if (t < left || t > right) continue;
+        const point = curvePoint(route, arcParameter(t, metrics));
+        let penalty = 0;
+        for (const other of positions.values()) penalty += Math.max(0, 30 - Math.hypot(point.x - other.x, point.y - other.y)) ** 2;
+        polylines.forEach((line, other) => { if (other !== index) penalty += Math.max(0, 18 - curveDistance(point, line)) ** 2; });
+        if (penalty < score) { best = t; score = penalty; }
+        if (score === 0) break;
+      }
+      fractions[slot] = best;
+      positions.set(route.ids[slot], curvePoint(route, arcParameter(best, metrics)));
+    }
+    route.parameters = fractions.map(fraction => arcParameter(fraction, metrics));
+    route.indices.forEach((edgeIndex, order) => {
+      let segment = curveSlice(route, route.parameters[order], route.parameters[order + 1]);
+      if (diagram.edges[edgeIndex][0] !== route.ids[order]) segment = { a: segment.b, b: segment.a, control: segment.control };
+      const { a, b, control } = segment;
+      edges[edgeIndex] = { index: edgeIndex, ...segment, midpoint: curvePoint(segment, .5),
+        path: `M${a.x} ${a.y}Q${control.x} ${control.y} ${b.x} ${b.y}` };
+    });
   });
   // Native wire controls need their own clear space, including beside parallel wires.
-  const nodes = internal.map(node => positions.get(node.id)), assigned = [];
-  const separate = (a, b) => Math.abs(a.x - b.x) >= 24 || Math.abs(a.y - b.y) >= 24;
+  const nodes = diagram.nodes.filter(node => node.kind !== 'boundary').map(node => ({ ...positions.get(node.id), radius: node.kind === 'h' ? 16 : 22 })), assigned = [];
+  const separate = (a, b, gap = 24) => Math.abs(a.x - b.x) >= gap || Math.abs(a.y - b.y) >= gap;
   const clearOfNodes = point => nodes.every(other => Math.abs(point.x - other.x) >= 34 || Math.abs(point.y - other.y) >= 34);
+  const reachable = point => nodes.every(other => Math.hypot(point.x - other.x, point.y - other.y) >= other.radius + 1);
   const targets = edges.map(edge => {
     const samples = WIRE_TARGET_SAMPLES.map(([a, control, b]) => ({ x: a * edge.a.x + control * edge.control.x + b * edge.b.x,
       y: a * edge.a.y + control * edge.control.y + b * edge.b.y }));
@@ -193,32 +241,41 @@ export function diagramLayout(diagram, { positions: previous, width: minimumWidt
   // An 8px offset still keeps the wire inside its 24px button when crossed wires have no clear centres.
   const nearbyPoints = target => target.nearby ||= target.samples.flatMap(point =>
     [[8, 0], [-8, 0], [0, 8], [0, -8]].map(([x, y]) => ({ x: point.x + x, y: point.y + y }))).filter(clearOfNodes);
-  const place = (target, points, alternatives = other => other.points) => {
+  const compactPoints = target => target.compact ||= target.samples.flatMap(point =>
+    [[0, 0], [8, 0], [-8, 0], [0, 8], [0, -8], [8, 8], [-8, 8], [8, -8], [-8, -8]]
+      .map(([x, y]) => ({ x: point.x + x, y: point.y + y }))).filter(reachable);
+  const place = (target, points, alternatives = other => other.points, gap = 24) => {
     const { edge } = target;
-    edge.hit = points.find(point => assigned.every(other => separate(point, other.edge.hit)));
+    const clear = (a, b) => separate(a, b, gap);
+    edge.hit = points.find(point => assigned.every(other => clear(point, other.edge.hit)));
     // One earlier flexible target may be moved; never recurse through the diagram.
     if (!edge.hit) for (const point of points) {
-      const collisions = assigned.filter(other => !separate(point, other.edge.hit));
+      const collisions = assigned.filter(other => !clear(point, other.edge.hit));
       if (collisions.length !== 1) continue;
-      const other = collisions[0], alternative = alternatives(other).find(candidate => separate(candidate, point) && assigned.every(previous => previous === other || separate(candidate, previous.edge.hit)));
+      const other = collisions[0], alternative = alternatives(other).find(candidate => clear(candidate, point) && assigned.every(previous => previous === other || clear(candidate, previous.edge.hit)));
       if (alternative) { other.edge.hit = alternative; edge.hit = point; break; }
     }
   };
   // Reserve short or crowded wire segments before more flexible ones.
-  for (const target of targets.sort((a, b) => a.points.length - b.points.length || a.edge.index - b.edge.index)) {
+  for (const target of targets.sort((a, b) => a.points.length - b.points.length ||
+    Math.hypot(a.edge.b.x - a.edge.a.x, a.edge.b.y - a.edge.a.y) - Math.hypot(b.edge.b.x - b.edge.a.x, b.edge.b.y - b.edge.a.y) ||
+    a.edge.index - b.edge.index)) {
     const { edge, points } = target;
     place(target, points);
     if (!edge.hit) place(target, [...points, ...nearbyPoints(target)], other => [...other.points, ...nearbyPoints(other)]);
+    // Short H segments can share the surrounding tap area; their centres must stay outside the round node buttons.
+    if (!edge.hit) place(target, compactPoints(target), compactPoints);
+    if (!edge.hit) place(target, compactPoints(target), compactPoints, 13);
     edge.hit ||= edge.midpoint;
     assigned.push(target);
   }
-  return { width, height, positions, edges };
+  return { width, height, positions, edges, routes };
 }
 
 function appendNode(svg, node, x, y, { selected = false } = {}) {
   const group = svgNode('g', { ...(node.id !== undefined ? { 'data-zx-node': node.id } : {}), transform: `translate(${x} ${y})` });
   if (selected) group.appendChild(svgNode('circle', { r: 23, fill: 'none', stroke: ZX_COLORS.selection, 'stroke-width': 2.5 }));
-  if (node.kind === 'h') group.appendChild(svgNode('rect', { x: -13, y: -13, width: 26, height: 26, rx: 1.5, fill: ZX_COLORS.h }));
+  if (node.kind === 'h') group.appendChild(svgNode('rect', { x: -HADAMARD_SIZE / 2, y: -HADAMARD_SIZE / 2, width: HADAMARD_SIZE, height: HADAMARD_SIZE, rx: 1.5, fill: ZX_COLORS.h }));
   else {
     group.appendChild(svgNode('circle', { r: RADIUS, fill: ZX_COLORS[node.kind], stroke: ZX_COLORS.ink, 'stroke-width': 1.5 }));
     const sector = phaseSector(node.phase);
@@ -285,7 +342,7 @@ export function renderDiagram(container, diagram, { selected = new Set(), select
       element.setAttribute('aria-pressed', String(edge.index === selectedEdge));
     }
     for (const node of diagram.nodes) if (node.kind !== 'boundary') {
-      const element = button('zx-node', label(node), 'node', node.id); drawing.nodeButtons.set(node.id, element);
+      const element = button(node.kind === 'h' ? 'zx-node zx-hadamard' : 'zx-node', label(node), 'node', node.id); drawing.nodeButtons.set(node.id, element);
       element.setAttribute('aria-pressed', String(selected.has(node.id)));
     }
   }
@@ -307,7 +364,7 @@ export function ruleGlyph(rule, { direction = 0 } = {}) {
   const svg = svgNode('svg', { viewBox: '0 0 160 56', width: 144, height: 50.4, class: 'zx-rule-glyph', 'aria-hidden': 'true' });
   const wire = d => svg.appendChild(svgNode('path', { d, fill: 'none', stroke: ZX_COLORS.wire, 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
   const dot = (kind, x, y, radius = 8) => svg.appendChild(kind === 'h'
-    ? svgNode('rect', { x: x - radius, y: y - radius, width: radius * 2, height: radius * 2, rx: 1, fill: ZX_COLORS.h })
+    ? svgNode('rect', { x: x - radius * .7, y: y - radius * .7, width: radius * 1.4, height: radius * 1.4, rx: 1, fill: ZX_COLORS.h })
     : svgNode('circle', { cx: x, cy: y, r: radius, fill: ZX_COLORS[kind], stroke: ZX_COLORS.ink, 'stroke-width': 1 }));
   wire(`M72 28H90${direction <= 0 ? 'M77 23L72 28L77 33' : ''}${direction >= 0 ? 'M85 23L90 28L85 33' : ''}`);
   if (rule === 'fusion') {
@@ -339,7 +396,7 @@ export function drawPhaseSector(ctx, x, y, phase, { scale = 1, start = 0 } = {})
 /** Fractional turns use the static glyph convention; a full turn leaves a filled spider. */
 export function drawDiagramNode(ctx, kind, x, y, { scale = 1, phase = 0 } = {}) {
   ctx.fillStyle = ZX_COLORS[kind];
-  if (kind === 'h') ctx.fillRect(x - 13 * scale, y - 13 * scale, 26 * scale, 26 * scale);
+  if (kind === 'h') ctx.fillRect(x - HADAMARD_SIZE / 2 * scale, y - HADAMARD_SIZE / 2 * scale, HADAMARD_SIZE * scale, HADAMARD_SIZE * scale);
   else {
     ctx.beginPath(); ctx.arc(x, y, RADIUS * scale, 0, 2 * Math.PI); ctx.fill(); ctx.strokeStyle = ZX_COLORS.ink; ctx.lineWidth = 1.5 * scale; ctx.stroke();
     drawPhaseSector(ctx, x, y, (phase % 4 + 4) % 4, { scale });

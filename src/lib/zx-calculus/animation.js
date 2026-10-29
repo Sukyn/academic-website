@@ -1,5 +1,6 @@
 import { applyMove, validateDiagram } from './engine.js';
 import { diagramLayout, drawDiagramNode, drawPhaseSector, ZX_COLORS } from './rendering.js';
+import { curvePoint as at, curveSlice } from './wires.js';
 
 export const MOVE_DURATION = 800;
 export const REPLAY_MOVE_DURATION = 560;
@@ -9,11 +10,6 @@ const ease = value => { const t = clamp(value); return t * t * (3 - 2 * t); };
 const mix = (a, b, t) => a + (b - a) * t;
 const point = (a, b, t) => ({ x: mix(a.x, b.x, t), y: mix(a.y, b.y, t) });
 const key = ([a, b]) => a < b ? `${a}:${b}` : `${b}:${a}`;
-const at = (curve, t) => {
-  const s = 1 - t;
-  return { x: s * s * curve.a.x + 2 * s * t * curve.control.x + t * t * curve.b.x,
-    y: s * s * curve.a.y + 2 * s * t * curve.control.y + t * t * curve.b.y };
-};
 
 const moveCurveEnds = (curve, a, b) => ({ a, b, control: {
   x: curve.control.x + (a.x + b.x - curve.a.x - curve.b.x) / 2,
@@ -53,48 +49,69 @@ export function createRewriteScene(input, move, result, { layout, nextLayout } =
       to: next ? to.positions.get(id) : anchor, phaseFrom, phaseTo });
   }
   for (const node of added) if (node.kind !== 'boundary') nodes.push({ id: node.id, before: null, after: node,
-    from: move.rule === 'color' ? from.positions.get(survivor) : insertionPoint, to: to.positions.get(node.id),
+    from: move.rule === 'color' ? to.positions.get(node.id) : insertionPoint, to: to.positions.get(node.id),
     phaseFrom: 0, phaseTo: node.phase ?? 0 });
+  const colorChange = move.rule === 'color';
+  let colorWires;
+  if (colorChange && from.routes && to.routes && from.routes.length === to.routes.length) {
+    const available = new Set(to.routes), tracks = [];
+    for (const curve of from.routes) {
+      const candidates = [...available].filter(next => key([next.ids[0], next.ids.at(-1)]) === key([curve.ids[0], curve.ids.at(-1)]));
+      const oldBoxes = new Set(curve.ids.slice(1, -1));
+      const shared = route => route.ids.slice(1, -1).filter(id => oldBoxes.has(id)).length;
+      candidates.sort((a, b) => shared(b) - shared(a) ||
+        Math.hypot(a.control.x - curve.control.x, a.control.y - curve.control.y) - Math.hypot(b.control.x - curve.control.x, b.control.y - curve.control.y));
+      if (!candidates.length) break;
+      available.delete(candidates[0]); tracks.push({ from: curve, to: candidates[0] });
+    }
+    if (!available.size) colorWires = tracks;
+  }
+  if (colorWires) for (const node of nodes) if (node.after?.kind === 'h') {
+    const wire = colorWires.find(wire => wire.to.ids.slice(1, -1).includes(node.id));
+    if (wire) {
+      const dx = wire.from.b.x - wire.from.a.x, dy = wire.from.b.y - wire.from.a.y;
+      const end = wire.to.parameters[wire.to.ids.indexOf(node.id)];
+      const start = node.before ? ((node.from.x - wire.from.a.x) * dx + (node.from.y - wire.from.a.y) * dy) / (dx * dx + dy * dy || 1) : end;
+      node.slide = { wire, from: start, to: end };
+      if (!node.before) node.from = at(wire.from, start);
+    }
+  }
   const nodeTracks = new Map(nodes.map(node => [node.id, node]));
   const source = id => nodeTracks.get(id)?.from || from.positions.get(id);
   const destination = id => nodeTracks.get(id)?.to || to.positions.get(id);
 
-  const unmatched = new Map();
-  after.edges.forEach((edge, index) => { const value = key(edge); if (!unmatched.has(value)) unmatched.set(value, []); unmatched.get(value).push(index); });
-  const wires = [], used = new Set();
-  const take = value => { const index = unmatched.get(value)?.shift(); if (index !== undefined) used.add(index); return index; };
-  before.edges.forEach((edge, index) => {
-    let target = take(key(edge));
-    let reversed = false;
-    if (target === undefined && fusion) {
-      const mapped = edge.map(id => id === removedId ? survivor : id);
-      target = take(key(mapped)); reversed = mapped[0] > mapped[1];
-    }
-    const end = target === undefined ? moveCurveEnds(from.edges[index], destination(edge[0]), destination(edge[1])) : to.edges[target];
-    wires.push({ from: from.edges[index], to: reversed ? { a: end.b, b: end.a, control: end.control } : end,
-      mode: target !== undefined ? 'keep' : move.rule === 'hopf' ? 'hopf-out' : 'out' });
-  });
-  after.edges.forEach((edge, index) => {
-    if (!used.has(index)) wires.push({ from: moveCurveEnds(to.edges[index], source(edge[0]), source(edge[1])), to: to.edges[index], mode: move.rule === 'add-hopf' ? 'hopf-in' : 'in' });
-  });
+  const wires = [];
+  if (!colorWires) {
+    const unmatched = new Map(), used = new Set();
+    after.edges.forEach((edge, index) => { const value = key(edge); if (!unmatched.has(value)) unmatched.set(value, []); unmatched.get(value).push(index); });
+    const take = value => { const index = unmatched.get(value)?.shift(); if (index !== undefined) used.add(index); return index; };
+    before.edges.forEach((edge, index) => {
+      let target = take(key(edge));
+      let reversed = false;
+      if (target === undefined && fusion) {
+        const mapped = edge.map(id => id === removedId ? survivor : id);
+        target = take(key(mapped)); reversed = mapped[0] > mapped[1];
+      }
+      const end = target === undefined ? moveCurveEnds(from.edges[index], destination(edge[0]), destination(edge[1])) : to.edges[target];
+      wires.push({ from: from.edges[index], to: reversed ? { a: end.b, b: end.a, control: end.control } : end,
+        mode: target !== undefined ? 'keep' : move.rule === 'hopf' ? 'hopf-out' : 'out' });
+    });
+    after.edges.forEach((edge, index) => {
+      if (!used.has(index)) wires.push({ from: moveCurveEnds(to.edges[index], source(edge[0]), source(edge[1])), to: to.edges[index], mode: move.rule === 'add-hopf' ? 'hopf-in' : 'in' });
+    });
+  }
 
   const target = nodeTracks.get(survivor), sourceNode = nodeTracks.get(removedId);
   const phaseFusion = fusion && target.phaseTo > 0
     ? { target, source: sourceNode, fullTurn: target.phaseTo >= 4 } : null;
-  return { beforeLayout, afterLayout, width, height, nodes, wires, phaseFusion };
+  return { beforeLayout, afterLayout, width, height, nodes, wires, phaseFusion, colorWires };
 }
 
 function strokeCurve(ctx, curve, start = 0, end = 1) {
   if (end <= start) return;
-  if (start === 0 && end === 1) {
-    ctx.beginPath(); ctx.moveTo(curve.a.x, curve.a.y); ctx.quadraticCurveTo(curve.control.x, curve.control.y, curve.b.x, curve.b.y); ctx.stroke(); return;
-  }
-  const a = at(curve, start), b = at(curve, end), tangent = {
-    x: (1 - start) * (curve.control.x - curve.a.x) + start * (curve.b.x - curve.control.x),
-    y: (1 - start) * (curve.control.y - curve.a.y) + start * (curve.b.y - curve.control.y),
-  };
+  const { a, b, control } = start === 0 && end === 1 ? curve : curveSlice(curve, start, end);
   ctx.beginPath(); ctx.moveTo(a.x, a.y);
-  ctx.quadraticCurveTo(a.x + (end - start) * tangent.x, a.y + (end - start) * tangent.y, b.x, b.y); ctx.stroke();
+  ctx.quadraticCurveTo(control.x, control.y, b.x, b.y); ctx.stroke();
 }
 
 /** Geometry interpolation only: no layout, graph queries, DOM access or validation. */
@@ -106,7 +123,13 @@ export function drawRewriteFrame(ctx, scene, progress, rect) {
   const scale = rect.scale ?? Math.min(rect.width / scene.width, rect.height / scene.height);
   ctx.save(); ctx.translate(rect.x + (rect.width - scene.width * scale) / 2, rect.y + (rect.height - scene.height * scale) / 2); ctx.scale(scale, scale);
   ctx.strokeStyle = ZX_COLORS.wire; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-  for (const wire of scene.wires) {
+  if (scene.colorWires) {
+    // Subdivision never fades a wire; a short crowded wire can gently bow to make room.
+    ctx.globalAlpha = 1;
+    if (p <= .15 || p >= .84) {
+      for (const curve of (p >= .84 ? scene.afterLayout : scene.beforeLayout).edges) strokeCurve(ctx, curve);
+    } else for (const wire of scene.colorWires) strokeCurve(ctx, mixCurve(wire.from, wire.to, movement));
+  } else for (const wire of scene.wires) {
     const curve = mixCurve(wire.from, wire.to, movement);
     if (wire.mode === 'keep') {
       ctx.globalAlpha = 1; strokeCurve(ctx, curve);
@@ -122,7 +145,9 @@ export function drawRewriteFrame(ctx, scene, progress, rect) {
     }
   }
   for (const node of scene.nodes) {
-    const position = point(node.from, node.to, movement), shrinking = !node.after;
+    const position = node.slide && movement > 0 && movement < 1 ?
+      at(mixCurve(node.slide.wire.from, node.slide.wire.to, movement), mix(node.slide.from, node.slide.to, movement)) : point(node.from, node.to, movement);
+    const shrinking = !node.after;
     const size = fusion && node === fusion.source ? 1 - ease((p - .35) / .15)
       : fusion && node === fusion.target ? fusionSize : shrinking ? disappearance : !node.before ? appearance : 1;
     let phase = mix(node.phaseFrom, node.phaseTo, phaseChange);

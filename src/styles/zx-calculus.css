@@ -12,6 +12,7 @@
 .zx-game .zx-diagram button { appearance: none; position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%); border: 0; padding: 0; margin: 0; background: transparent; box-shadow: none; cursor: pointer; touch-action: manipulation; }
 .zx-game .zx-diagram button:disabled { opacity: 1; cursor: default; }
 .zx-game .zx-diagram .zx-node { z-index: 2; border-radius: 50%; cursor: grab; touch-action: none; }
+.zx-game .zx-diagram .zx-hadamard { width: 32px; height: 32px; }
 .zx-game .zx-diagram .zx-node:active { cursor: grabbing; }
 .zx-game .zx-diagram .zx-edge { z-index: 1; width: 24px; height: 24px; min-width: 24px; min-height: 24px; border-radius: .5rem; }
 .zx-game .zx-diagram button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }

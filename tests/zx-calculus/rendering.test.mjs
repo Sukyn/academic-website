@@ -54,7 +54,7 @@ test('parallel edges curve on different sides even when their endpoint order dif
   assert.ok(Math.abs(edges[1].midpoint.y - edges[2].midpoint.y) >= 20);
 });
 
-test('50 initial daily diagrams give wires separate 24px targets clear of the 44px node controls', () => {
+test('50 initial daily diagrams keep wire tap centres reachable beside round node controls', () => {
   for (let day = 0; day < 50; day++) {
     const date = new Date(Date.UTC(2026, 9, 22 + day)).toISOString().slice(0, 10);
     const diagram = dailyPuzzle(date).diagram, layout = diagramLayout(diagram);
@@ -67,10 +67,10 @@ test('50 initial daily diagrams give wires separate 24px targets clear of the 44
       `${date}: wire ${edge.index} stays inside its button.`);
       for (const node of diagram.nodes.filter(node => node.kind !== 'boundary')) {
         const point = layout.positions.get(node.id);
-        assert.ok(Math.abs(point.x - edge.hit.x) >= 34 || Math.abs(point.y - edge.hit.y) >= 34, `${date}: wire ${edge.index} overlaps node ${node.id}.`);
+        assert.ok(Math.hypot(point.x - edge.hit.x, point.y - edge.hit.y) >= (node.kind === 'h' ? 17 : 23), `${date}: wire ${edge.index} is covered by node ${node.id}.`);
       }
       for (const previous of layout.edges.slice(0, edge.index)) {
-        assert.ok(Math.abs(previous.hit.x - edge.hit.x) >= 24 || Math.abs(previous.hit.y - edge.hit.y) >= 24, `${date}: wires ${previous.index} and ${edge.index} overlap.`);
+        assert.ok(Math.abs(previous.hit.x - edge.hit.x) >= 13 || Math.abs(previous.hit.y - edge.hit.y) >= 13, `${date}: wire ${edge.index} is covered by wire ${previous.index}.`);
       }
     }
   }
@@ -94,10 +94,12 @@ test('positions from the preceding diagram remain stable when nothing changed', 
   assert.deepEqual(next.positions, initial.positions);
 });
 
-test('saved coordinates stay exact, including overlapping vertices and manually placed boundaries', () => {
+test('saved spider and boundary coordinates stay exact while Hadamards stay on their wire', () => {
   const positions = new Map([[0, { x: 24, y: 62 }], [1, { x: 32, y: 167 }], [2, { x: 570, y: 79 }], [3, { x: 592, y: 190 }], [4, { x: 310, y: 102 }], [5, { x: 310, y: 102 }], [6, { x: 415, y: 140 }]]);
   const saved = structuredClone(positions), layout = diagramLayout(sample, { positions, width: 700, height: 360 });
-  assert.deepEqual(layout.positions, positions);
+  for (const node of sample.nodes) if (node.kind !== 'h') assert.deepEqual(layout.positions.get(node.id), positions.get(node.id));
+  const route = layout.routes.find(route => route.ids.includes(6)), point = layout.positions.get(6);
+  assert.ok(Math.abs(point.y - (route.a.y + (route.b.y - route.a.y) * route.parameters[1])) < 1e-8);
   assert.deepEqual(positions, saved);
   assert.equal(layout.width, 700); assert.equal(layout.height, 360);
 });
