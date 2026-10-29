@@ -1,8 +1,7 @@
 import { MAX_MOVES, RULES, LEVELS, TUTORIAL, validateDiagram, targetDiagram, availableMoves, applyMove, isSolved, generatePuzzle, ruleFamily } from '../lib/zx-calculus/engine.js';
 import { DAILY_START } from '../lib/zx-calculus/leaderboard.js';
-import { diagramLayout, renderDiagram, updateDiagramPositions, nodeGlyph, ruleGlyph, phaseSector } from '../lib/zx-calculus/rendering.js';
+import { diagramLayout, renderDiagram, updateDiagramPositions, constrainNodePosition, nodeGlyph, ruleGlyph, phaseSector } from '../lib/zx-calculus/rendering.js';
 import { animateDiagramMove, createRewriteScene, rewriteDuration, REPLAY_MOVE_DURATION } from '../lib/zx-calculus/animation.js';
-import { curvePoint, curveParameter } from '../lib/zx-calculus/wires.js';
 import { bindNodeDragging } from '../lib/zx-calculus/drag.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { createScoreboard } from '../lib/games/scoreboard.js';
@@ -73,10 +72,7 @@ const review = createStepReplay({ length: () => sequence.length, interval: 160,
 });
 const renderTimeline = createMoveTimeline(get('sequence'), (move, index) => ({ text: String(index + 1), label: `${index + 1}: ${labels[ruleFamily(move.rule)]}` }));
 function moveNode(id, point) {
-  const wire = layout.routes.find(route => route.ids.slice(1, -1).includes(id));
-  if (wire) {
-    point = curvePoint(wire, Math.max(0, Math.min(1, curveParameter(wire, point))));
-  }
+  point = constrainNodePosition(layout, id, point);
   const current = layout.positions.get(id);
   if (current.x === point.x && current.y === point.y) return;
   const positions = new Map(layout.positions); positions.set(id, point);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diagramLayout, drawDiagram, drawDiagramNode, nodeGlyph, phaseSector, PHASE_RADIUS, renderDiagram, ruleGlyph, updateDiagramPositions, ZX_COLORS } from '../../src/lib/zx-calculus/rendering.js';
+import { diagramLayout, constrainNodePosition, drawDiagram, drawDiagramNode, nodeGlyph, phaseSector, PHASE_RADIUS, renderDiagram, ruleGlyph, updateDiagramPositions, ZX_COLORS } from '../../src/lib/zx-calculus/rendering.js';
 import { applyMove } from '../../src/lib/zx-calculus/engine.js';
 import { dailyPuzzle } from '../../src/lib/zx-calculus/leaderboard.js';
 
@@ -94,6 +94,26 @@ test('a large parallel-wire fan stays inside the diagram instead of being clippe
 test('positions from the preceding diagram remain stable when nothing changed', () => {
   const initial = diagramLayout(sample), next = diagramLayout(sample, { positions: initial.positions });
   assert.deepEqual(next.positions, initial.positions);
+});
+
+test('sliding either H stops before its neighbour and leaves all other nodes fixed', () => {
+  const diagram = applyMove(identity, { rule: 'insert-hh', edge: [0, 2] });
+  const straight = diagramLayout(diagram);
+  const widePositions = new Map(straight.positions);
+  widePositions.set(2, { x: 2236, y: 72 }); widePositions.set(3, { x: 2236, y: 144 });
+  const wide = diagramLayout(diagram, { positions: widePositions });
+  for (const initial of [straight, wide]) for (const id of [4, 5]) for (const x of [-1000, initial.positions.get(id).x + 44, 4000]) {
+    const positions = new Map(initial.positions);
+    positions.set(id, constrainNodePosition(initial, id, { x, y: 300 }));
+    const moved = diagramLayout(diagram, { ...initial, positions });
+    for (const [otherId, point] of initial.positions) if (otherId !== id) {
+      assert.ok(Math.hypot(moved.positions.get(otherId).x - point.x, moved.positions.get(otherId).y - point.y) < 1e-8,
+        `Moving H ${id} leaves node ${otherId} fixed.`);
+    }
+    assert.ok(Math.abs(moved.positions.get(id).y - initial.positions.get(id).y) < 1e-8);
+  }
+  const point = { x: 101, y: 73 };
+  assert.equal(constrainNodePosition(straight, 0, point), point, 'Other nodes still move freely.');
 });
 
 test('saved spider and boundary coordinates stay exact while Hadamards stay on their wire', () => {

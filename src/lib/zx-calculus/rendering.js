@@ -1,5 +1,5 @@
 import { svgNode } from '../games/circuit-graphics.js';
-import { decoratedWires, curvePoint, curveParameter, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardSlots } from './wires.js';
+import { decoratedWires, curvePoint, curveParameter, curveSlice, curveMetrics, curveDistance, arcFraction, arcParameter, hadamardGap, hadamardSlots } from './wires.js';
 
 export const ZX_COLORS = { z: '#9ad9b2', x: '#efa99e', h: '#f2d572', wire: '#e5ece7', ink: '#1b2822', selection: '#f2d572' };
 const RADIUS = 15, MARGIN = 36, WIRE_SPACING = 80;
@@ -229,13 +229,12 @@ export function diagramLayout(diagram, { positions: previous, width: minimumWidt
   });
   const polylines = routes.map(curveMetrics);
   routes.forEach((route, index) => {
-    const metrics = polylines[index], minimumGap = CONTROL_SPACING / (metrics.length || 1);
-    const slots = hadamardSlots(route.ids, previous, route.a, route.b, { minimumGap,
+    const metrics = polylines[index], gap = hadamardGap(route.ids.length - 2, CONTROL_SPACING / (metrics.length || 1));
+    const slots = hadamardSlots(route.ids, previous, route.a, route.b, { minimumGap: gap,
       parameter: t => arcFraction(t, metrics) });
     const fractions = [0, ...slots, 1];
     // Boxes sit on the wire but keep clear of crossings, spiders and previously placed boxes.
     for (let slot = 1; slot < fractions.length - 1; slot++) {
-      const gap = Math.min(minimumGap, 1 / (fractions.length - 1));
       const desired = fractions[slot], left = fractions[slot - 1] + gap, right = fractions[slot + 1] - gap;
       let best = desired, score = Infinity;
       const candidates = [desired, ...Array.from({ length: 17 }, (_, sample) => left + (right - left) * sample / 16)]
@@ -300,6 +299,18 @@ export function diagramLayout(diagram, { positions: previous, width: minimumWidt
     assigned.push(target);
   }
   return { width, height, positions, edges, routes };
+}
+
+/** Slide one H along its wire without pushing its neighbours out of place. */
+export function constrainNodePosition(layout, id, point) {
+  const route = layout.routes.find(route => route.ids.slice(1, -1).includes(id));
+  if (!route) return point;
+  const index = route.ids.indexOf(id), metrics = curveMetrics(route);
+  const gap = hadamardGap(route.ids.length - 2, CONTROL_SPACING / (metrics.length || 1));
+  const left = arcFraction(route.parameters[index - 1], metrics) + gap;
+  const right = arcFraction(route.parameters[index + 1], metrics) - gap;
+  const fraction = arcFraction(curveParameter(route, point), metrics);
+  return curvePoint(route, arcParameter(Math.max(left, Math.min(right, fraction)), metrics));
 }
 
 function appendNode(svg, node, x, y, { selected = false } = {}) {

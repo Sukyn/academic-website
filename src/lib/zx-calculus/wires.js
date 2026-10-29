@@ -94,11 +94,16 @@ export function curveSlice(curve, start, end) {
 }
 
 /** Chord projection recovers t on midpoint-normal curves; new boxes fill gaps. */
+/** Shared separation for laying out and sliding H boxes along a wire. */
+export function hadamardGap(count, minimumGap = 0) {
+  return Math.min(1 / (count + 1), Math.max(Math.min(.04, .5 / (count + 1)), minimumGap));
+}
+
 export function hadamardSlots(ids, previousPositions, a, b, { minimumGap = 0, parameter = t => t } = {}) {
   const count = ids.length - 2;
   if (count <= 0) return [];
   const chord = { a, b }, hasLength = a.x !== b.x || a.y !== b.y;
-  const gap = Math.min(1 / (count + 1), Math.max(Math.min(.04, .5 / (count + 1)), minimumGap));
+  const gap = hadamardGap(count, minimumGap);
   const anchors = [{ index: -1, t: 0 }];
   for (let index = 0; index < count; index++) {
     const position = previousPositions instanceof Map ? previousPositions.get(ids[index + 1]) : previousPositions?.[ids[index + 1]];

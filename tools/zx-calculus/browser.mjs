@@ -134,7 +134,7 @@ async function canvasControls(page, mobile, label, sliding = false) {
   assert.equal(await node.getAttribute('data-drag-probe'), 'same button', 'Dragging reuses the existing controls');
   assert.equal(await node.getAttribute('aria-pressed'), 'false', 'Dragging does not toggle selection');
   assert.equal(await page.locator('#sequence [data-step]').count(), 0, 'Moving the drawing costs no rewrite');
-  await node.focus(); await page.keyboard.press('ArrowRight');
+  await node.focus(); await page.keyboard.press(dx > 0 ? 'ArrowLeft' : 'ArrowRight');
   assert.notEqual((await positions(page))[4], moved[4], 'Keyboard users can move the focused node');
   await page.screenshot({ path: resolve(output, `${label}-dragged.png`), fullPage: true });
   await page.locator('#restart').click();
