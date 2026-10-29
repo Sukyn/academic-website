@@ -54,7 +54,7 @@ test('parallel edges curve on different sides even when their endpoint order dif
   assert.ok(Math.abs(edges[1].midpoint.y - edges[2].midpoint.y) >= 20);
 });
 
-test('50 initial daily diagrams keep wire tap centres reachable beside round node controls', () => {
+test('50 initial daily diagrams leave unobscured 24px wire targets beside node controls', () => {
   for (let day = 0; day < 50; day++) {
     const date = new Date(Date.UTC(2026, 9, 22 + day)).toISOString().slice(0, 10);
     const diagram = dailyPuzzle(date).diagram, layout = diagramLayout(diagram);
@@ -67,10 +67,12 @@ test('50 initial daily diagrams keep wire tap centres reachable beside round nod
       `${date}: wire ${edge.index} stays inside its button.`);
       for (const node of diagram.nodes.filter(node => node.kind !== 'boundary')) {
         const point = layout.positions.get(node.id);
-        assert.ok(Math.hypot(point.x - edge.hit.x, point.y - edge.hit.y) >= (node.kind === 'h' ? 17 : 23), `${date}: wire ${edge.index} is covered by node ${node.id}.`);
+        const clearance = (node.kind === 'h' ? 16 : 22) + 12;
+        assert.ok(Math.abs(point.x - edge.hit.x) >= clearance || Math.abs(point.y - edge.hit.y) >= clearance,
+          `${date}: wire ${edge.index} is covered by node ${node.id}.`);
       }
       for (const previous of layout.edges.slice(0, edge.index)) {
-        assert.ok(Math.abs(previous.hit.x - edge.hit.x) >= 13 || Math.abs(previous.hit.y - edge.hit.y) >= 13, `${date}: wire ${edge.index} is covered by wire ${previous.index}.`);
+        assert.ok(Math.abs(previous.hit.x - edge.hit.x) >= 24 || Math.abs(previous.hit.y - edge.hit.y) >= 24, `${date}: wire ${edge.index} is covered by wire ${previous.index}.`);
       }
     }
   }
