@@ -354,8 +354,13 @@ const tutorial = createTutorial({
   onReset: () => { tutorialChapter = -1; setPuzzle('tutorial', TUTORIAL_PUZZLE); },
   onLeave() { tutorialStep = null; syncTutorialFocus(); },
 });
-for (const type of ['toggle', 'click', 'keydown']) get('signal-memo').addEventListener(type, tutorial.reveal);
-get('signal-memo').addEventListener('toggle', () => {
-  if (tutorial.active && mobileTutorial.matches) revealTutorialFocus();
+const signalMemo = get('signal-memo');
+for (const type of ['click', 'keydown']) signalMemo.addEventListener(type, event => {
+  if (!event.target.closest?.('summary')) tutorial.reveal();
+});
+signalMemo.addEventListener('toggle', () => {
+  // Only the short, wide layout moves the scene when this reference opens.
+  if (tutorial.active && mobileTutorial.matches && window.innerWidth > 600) revealTutorialFocus();
+  tutorial.reveal();
 });
 if (!startDailyFromLink(daily)) tutorial.enter();

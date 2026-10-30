@@ -35,13 +35,28 @@ function fixture(side, menuBounds) {
     },
   };
   const bubble = createTutorialBubble(panel, () => ({ element: summary, avoid: [memo, goal], preferredSide: side }));
-  return { bubble, panel, summary, map, scrolls, flush() {
+  return { bubble, panel, summary, map, scrolls, flushOne() { frames.shift()(); }, flush() {
     for (let count = 0; frames.length; count++) {
       assert.ok(count < 4, 'Revealing settles without a scroll loop');
       frames.shift()();
     }
   } };
 }
+
+test('an instant reveal scroll repaints its body and tail in the same frame', () => {
+  const { bubble, panel, summary, scrolls, flush, flushOne } = fixture('above');
+  bubble.update(true); flush();
+  assert.equal(panel.dataset.placement, 'below', 'The initial context has too little room above.');
+  bubble.reveal(); flushOne();
+  assert.equal(scrolls.length, 1);
+  assert.equal(panel.dataset.placement, 'above', 'The reveal does not leave the previous placement on screen for another frame.');
+  const coordinates = panel.children[0].firstElementChild.getAttribute('d')
+    .match(/[-+]?(?:\d*\.?\d+)(?:e[-+]?\d+)?/gi).map(Number);
+  const tipY = coordinates[7] + Number.parseFloat(panel.style.top);
+  assert.ok(Math.abs(tipY - (summary.getBoundingClientRect().top - 4)) < 1e-8,
+    'The speech tail uses the anchor position after scrolling.');
+  bubble.hide();
+});
 
 test('rounded page scrolling preserves a clear speech tail when a preferred fit misses by a fraction of a pixel', () => {
   for (const side of ['above', 'below']) {

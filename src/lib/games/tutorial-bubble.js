@@ -69,7 +69,11 @@ export function createTutorialBubble(panel, getAnchor) {
           const targetTop = side === 'above' ? bounds.top + size.height + 24 + headroom :
             bounds.top + bounds.height - context.height - size.height - 24 - headroom;
           const shift = context.top - targetTop;
-          if (Math.abs(shift) > .5) { view.scrollBy({ top: shift, behavior: 'instant' }); schedule(); return; }
+          if (Math.abs(shift) > .5) {
+            view.scrollBy({ top: shift, behavior: 'instant' });
+            // Remeasure before painting. revealPending is already false, so this runs at most once.
+            position(); return;
+          }
         }
       }
     }
