@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { applyOperation, holeOperation, selectionCells } from '../../src/lib/categorical-circuits/engine.js';
 import { getLevels, getTutorial, randomIdentity, generateSignals, signalsData } from '../../src/lib/categorical-circuits/puzzles.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { advanceTutorial } from '../games/tutorial-input.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const qualityRequire = createRequire(resolve(process.env.QUALITY_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
@@ -1145,7 +1146,7 @@ try {
           assert.ok(hole.x >= viewport.x - 1 && hole.x + hole.width <= viewport.x + viewport.width + 1,
             'The mobile tutorial keeps its selected hole visible and aligned with the paths');
         }
-        await tap(page.locator('#tutorial-next'));
+        await advanceTutorial(page, options.hasTouch);
         await page.waitForFunction(({ final, step, count }) => document.getElementById('tutorial-heading').textContent ===
           (final ? 'Tutorial complete' : `Step ${step} of ${count}`),
         { final: index === tutorial.steps.length - 1, step: index + 2, count: tutorial.steps.length });

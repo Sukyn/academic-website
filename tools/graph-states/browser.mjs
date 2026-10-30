@@ -9,6 +9,7 @@ import { GRAPH_NODE_RADIUS, graphPositions } from '../../src/lib/graph-states/re
 import { LEVELS } from '../../src/lib/graph-states/puzzles.js';
 import { TUTORIAL } from '../../src/lib/graph-states/tutorial.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { advanceTutorial } from '../games/tutorial-input.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const qualityRequire = createRequire(resolve(process.env.QUALITY_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
@@ -383,7 +384,7 @@ async function animatedMoves(name, options) {
 
     await tap(page.locator('#mode-tutorial'));
     await tap(page.locator('#tutorial-start'));
-    await tap(page.locator('#tutorial-next'));
+    await advanceTutorial(page, Boolean(options.hasTouch));
     await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating === 'true');
     assert.equal(await page.locator('#tutorial-heading').innerText(), `Step 1 of ${TUTORIAL.steps.length}`);
     assert.equal(await page.locator('#tutorial-next').isDisabled(), true, 'The guide waits for the entire local complementation');
@@ -391,7 +392,7 @@ async function animatedMoves(name, options) {
     assert.equal(await board.locator('[data-tutorial-focus]').count(), 1);
     assert.equal(await board.locator('[data-tutorial-focus]').isDisabled(), true, 'The highlighted vertex remains read-only');
     const tutorialGraph = await edges(page);
-    await tap(page.locator('#tutorial-next'));
+    await advanceTutorial(page, Boolean(options.hasTouch));
     await page.waitForFunction(() => document.getElementById('graph-board').dataset.graphAnimating === 'true');
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
@@ -491,7 +492,7 @@ try {
         assert.equal(await focus.getAttribute('data-edge'), null, 'Pivoting is introduced only at the end');
       }
       assert.match(await page.locator('#tutorial-heading').innerText(), new RegExp(`^Step ${++tutorialStep} of `));
-      await tap(page.locator('#tutorial-next'));
+      await advanceTutorial(page, Boolean(options.hasTouch));
       await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text,
         tutorialStep === TUTORIAL.steps.length ? 'Tutorial complete' : `Step ${tutorialStep + 1} of ${TUTORIAL.steps.length}`);
     }

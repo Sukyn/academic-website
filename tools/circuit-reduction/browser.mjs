@@ -9,6 +9,7 @@ import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove, gate
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../../src/lib/circuit-reduction/tutorial.js';
 import { createBrowserApi } from './browser-api.mjs';
 import { layoutMoves } from './layout-moves.js';
+import { advanceTutorial } from '../games/tutorial-input.mjs';
 
 const require = createRequire(process.env.PLAYWRIGHT_MODULE_DIR ? resolve(process.env.PLAYWRIGHT_MODULE_DIR, 'package.json') : import.meta.url);
 const { chromium } = require('playwright');
@@ -369,7 +370,7 @@ async function focusedTutorial() {
         assert.deepEqual(applicableFirst.dom, expectedOrder, 'The highlighted tutorial equation comes before unavailable rules');
         assert.deepEqual(applicableFirst.visual, expectedOrder, 'Keyboard and visual equation order stay consistent');
         if (index < 2) assert.equal(step.move.rule, index ? 'cancel-h' : 'cancel-x', 'The first two steps teach simple cancellations');
-        await activate(page, page.locator('#tutorial-next'));
+        await advanceTutorial(page, touchPages.has(page));
         await page.waitForFunction(heading => document.getElementById('tutorial-heading').textContent === heading,
           index + 1 === TUTORIAL_STEPS.length ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL_STEPS.length}`);
         expected = applyMove(expected, step.move); moves += moveCost(step.move);
@@ -392,7 +393,7 @@ async function focusedTutorial() {
       assert.equal(await page.locator('#tutorial-panel').isVisible(), false);
       await activate(page, page.locator('#mode-tutorial'));
       await activate(page, page.locator('#tutorial-start'));
-      await activate(page, page.locator('#tutorial-next'));
+      await advanceTutorial(page, touchPages.has(page));
       await page.waitForFunction(count => document.getElementById('tutorial-heading').textContent === `Step 2 of ${count}`, TUTORIAL_STEPS.length);
       await activate(page, page.locator('#tutorial-start'));
       assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT, 'Restart restores the simple prefix and worked example');

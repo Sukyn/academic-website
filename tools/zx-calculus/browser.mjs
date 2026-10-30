@@ -6,6 +6,7 @@ import { LEVELS as LESSONS, TUTORIAL, applyMove, targetDiagram, ruleFamily } fro
 import solutions from './solutions.json' with { type: 'json' };
 import { dailyPuzzle } from '../../src/lib/zx-calculus/leaderboard.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { advanceTutorial } from '../games/tutorial-input.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const { chromium } = require('playwright');
@@ -196,7 +197,7 @@ try {
     for (const [index, move] of TUTORIAL.solution.entries()) {
       const rule = page.locator(`#zx-rules [data-rule="${move.rule}"]`);
       assert.equal(await rule.isDisabled(), true, 'The highlighted rewrite remains read-only');
-      await activate(page.locator('#tutorial-next'));
+      await advanceTutorial(page, mobile);
       await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text,
         index + 1 === TUTORIAL.solution.length ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL.solution.length}`);
     }

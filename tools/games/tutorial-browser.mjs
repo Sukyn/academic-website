@@ -10,6 +10,7 @@ import { TUTORIAL as GRAPH_TUTORIAL } from '../../src/lib/graph-states/tutorial.
 import { TUTORIAL as ZX_TUTORIAL } from '../../src/lib/zx-calculus/engine.js';
 import { getTutorial } from '../../src/lib/categorical-circuits/puzzles.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { advanceTutorial } from './tutorial-input.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const qualityRequire = createRequire(resolve(process.env.QUALITY_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
@@ -36,8 +37,7 @@ const games = [
 await mkdir(output, { recursive: true });
 
 async function activate(locator, touch) {
-  // Walkthrough taps represent reading a new explanation, not a native double-tap.
-  if (touch && await locator.getAttribute('id') === 'tutorial-next') await locator.page().waitForTimeout(700);
+  if (touch && await locator.getAttribute('id') === 'tutorial-next') return advanceTutorial(locator.page(), true);
   if (touch) await locator.tap(); else await locator.click();
 }
 

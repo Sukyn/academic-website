@@ -12,6 +12,7 @@ import { phaseColor, phasePathColor, PHASE_COLORS, GOAL_COLOR, GOAL_RADIUS, CANC
 import { TUTORIAL_PUZZLES, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
 import { CIRCUIT_COLORS } from '../../src/lib/games/circuit-graphics.js';
+import { advanceTutorial } from '../games/tutorial-input.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const { chromium } = require('playwright');
@@ -285,6 +286,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
         dash: computed.strokeDasharray, label: node.getAttribute('aria-label') };
     };
     return {
+    viewBox: { width: svg.viewBox.baseVal.width, height: svg.viewBox.baseVal.height },
     nodes: [...svg.querySelectorAll('[data-boundary][data-basis][data-amplitude]')].map(node => ({
       boundary: Number(node.dataset.boundary), basis: Number(node.dataset.basis), amplitude: Number(node.dataset.amplitude),
       x: node.cx.baseVal.value, y: node.cy.baseVal.value, ...style(node),
@@ -303,11 +305,21 @@ async function basisFlow(page, puzzle, placements = undefined) {
   }; });
   const order = Array.from({ length: 2 ** puzzle.wires }, (_, row) => row);
   assert.deepEqual(actual.lanes.map(lane => lane.basis), order, 'Every complete basis state has its own binary-ordered lane');
+  const firstY = actual.lanes[0].y, rowHeight = actual.lanes[1].y - firstY;
+  const compact = actual.viewBox.height === order.length * 26 + 32;
+  if (compact) assert.equal(await page.locator('#mode-tutorial').getAttribute('aria-pressed'), 'true',
+    'Compact spacing is reserved for the tutorial.');
+  assert.deepEqual({ height: actual.viewBox.height, top: firstY, rowHeight }, compact
+    ? { height: order.length * 26 + 32, top: 32, rowHeight: 26 }
+    : { height: order.length * 34 + 62, top: 44, rowHeight: 34 },
+  'The mirror uses its complete native tutorial or normal-game geometry.');
+  assert.equal(actual.viewBox.width, 104 + puzzle.columns.length * 88, 'Both densities keep the same circuit columns.');
+  const y = basis => firstY + rowHeight * basis;
   assert.deepEqual(actual.labels.map(label => label.text), order.map(basis => basis.toString(2).padStart(puzzle.wires, '0')),
     'Pinned basis labels follow the same binary order');
   for (const label of actual.labels) assert.deepEqual(label.bits, [...label.text].map((value, wire) => ({ wire, value })),
     'Every label bit identifies the corresponding circuit wire');
-  for (const lane of actual.lanes) assert.equal(lane.y, 44 + lane.basis * 34);
+  for (const lane of actual.lanes) assert.equal(lane.y, y(lane.basis));
   assert.deepEqual(actual.cancellations.map(({ boundary, basis }) => ({ boundary, basis })),
     expected.cancellations.flatMap((bases, column) => bases.map(basis => ({ boundary: column + 1, basis }))),
     'Walls mark exactly the outcomes whose opposite contributions cancel');
@@ -316,7 +328,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
     assert.equal(wall.fill, 'none');
     assert.equal(wall.strokeWidth, 2);
     assert.equal(wall.path, CANCELLATION_WALL.map(([dx, dy], index) =>
-      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (44 + wall.basis * 34 + dy)).join(' '));
+      (index ? 'L' : 'M') + (92 + (wall.boundary - .5) * 88 + dx) + ',' + (y(wall.basis) + dy)).join(' '));
     assert.ok(wall.label.includes('opposite phases cancel'));
     assert.ok(!actual.nodes.some(node => node.boundary === wall.boundary && node.basis === wall.basis),
       'Canceled outcomes have a wall instead of a photon dot');
@@ -324,7 +336,7 @@ async function basisFlow(page, puzzle, placements = undefined) {
       'No amplitude leaves a wall in the next column');
   }
   for (const item of actual.nodes) {
-    assert.equal(item.y, 44 + item.basis * 34, 'Intermediate and target amplitudes occupy the same binary-ordered lane');
+    assert.equal(item.y, y(item.basis), 'Intermediate and target amplitudes occupy the same binary-ordered lane');
     assert.equal(item.fill, phaseColor(item.amplitude), 'Positive phases have black dots; negative phases have white dots');
     assert.ok(item.strokeWidth > 0, 'The phase outline remains visible, including matched targets');
   }
@@ -332,11 +344,11 @@ async function basisFlow(page, puzzle, placements = undefined) {
   assert.equal(actual.targets.length, 1, 'There is one fixed goal marker');
   const goal = actual.targets[0];
   assert.deepEqual([goal.basis, goal.amplitude, goal.radius, goal.fill, goal.stroke], [2 ** puzzle.wires - 1, 1, GOAL_RADIUS, 'none', GOAL_COLOR]);
-  assert.equal(goal.y, 44 + goal.basis * 34);
+  assert.equal(goal.y, y(goal.basis));
   assert.ok(goal.label.includes('1'.repeat(puzzle.wires)), 'The goal names the all-ones label');
   for (const edge of actual.edges) {
     assert.equal(edge.stroke, phasePathColor(edge.amplitude), 'Negative paths are white; positive paths are darker');
-    const start = 48 + edge.column * 88, fromY = 44 + edge.from * 34, toY = 44 + edge.to * 34;
+    const start = 48 + edge.column * 88, fromY = y(edge.from), toY = y(edge.to);
     assert.equal(edge.path, `M${start},${fromY} C${start + 44},${fromY} ${start + 44},${toY} ${start + 88},${toY}`,
       'Amplitude paths connect the original basis states at their binary-ordered positions');
   }
@@ -1527,7 +1539,7 @@ async function cancellationTutorial(page, profile) {
   await activate(page, page.locator('#tutorial-start'));
   const restartAt = TUTORIAL_STEPS.findIndex((step, index) => step.gate && TUTORIAL_STEPS[index + 1]?.chapter === step.chapter);
   for (let index = 0; index <= restartAt; index++) {
-    await activate(page, page.locator('#tutorial-next'));
+    await advanceTutorial(page, touchPages.has(page));
     await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text, `Step ${index + 2} of ${TUTORIAL_STEPS.length}`);
   }
   await page.waitForFunction(() => document.querySelectorAll('#signal-board [data-hole][data-filled="true"]').length === 1);
@@ -1548,8 +1560,8 @@ async function cancellationTutorial(page, profile) {
     if (touchPages.has(page) && page.viewportSize().width <= 600) {
       const checkView = async view => {
         assert.equal(await page.locator('.signals-game').getAttribute('data-signal-tutorial-view'), view);
-        assert.equal(await page.locator('#signal-scroll').isVisible(), view === 'circuit');
-        assert.equal(await page.locator('#flow-panel').isVisible(), view === 'paths');
+        assert.equal(await page.locator('#signal-scroll').isVisible(), true, 'The circuit remains visible beside the explanation.');
+        assert.equal(await page.locator('#flow-panel').isVisible(), true, 'The expanded paths remain visible with the circuit.');
         const controls = await page.locator('#tutorial-panel').evaluate(panel => {
           const box=panel.getBoundingClientRect(), next=document.getElementById('tutorial-next').getBoundingClientRect();
           return { position:getComputedStyle(panel).position, top:box.top, bottom:box.bottom, nextBottom:next.bottom, height:innerHeight };
@@ -1588,7 +1600,7 @@ async function cancellationTutorial(page, profile) {
       await page.screenshot({path:resolve(output,`${profile}-tutorial-phase.png`),fullPage:true});
     }
     const history = await page.locator('#sequence').innerHTML();
-    await activate(page,page.locator('#tutorial-next'));
+    await advanceTutorial(page, touchPages.has(page));
     if (step.gate) placements[step.hole] = step.gate;
     const heading = index === TUTORIAL_STEPS.length - 1 ? 'Tutorial complete' : `Step ${index+2} of ${TUTORIAL_STEPS.length}`;
     await page.waitForFunction(text=>document.getElementById('tutorial-heading').textContent===text,heading);
