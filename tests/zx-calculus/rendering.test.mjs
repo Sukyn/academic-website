@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diagramLayout, constrainNodePosition, drawDiagram, drawDiagramNode, nodeGlyph, phaseSector, PHASE_RADIUS, renderDiagram, ruleGlyph, updateDiagramPositions, ZX_COLORS } from '../../src/lib/zx-calculus/rendering.js';
+import { diagramLayout, constrainNodePosition, drawDiagram, drawDiagramNode, nodeGlyph, phaseSector, PHASE_RADIUS, renderDiagram, ruleGlyph, hopfResultGlyph, updateDiagramPositions, ZX_COLORS } from '../../src/lib/zx-calculus/rendering.js';
 import { applyMove } from '../../src/lib/zx-calculus/engine.js';
 import { dailyPuzzle } from '../../src/lib/zx-calculus/leaderboard.js';
 
@@ -222,28 +222,32 @@ test('all rule thumbnails have actual colored symbols and no font-dependent gate
   assert.ok(descendants(hadamard).some(node => node.tag === 'rect' && node.attributes.fill === ZX_COLORS.h));
 });
 
-test('reversible equations reuse their diagram for either direction', context => {
+test('rule thumbnails keep both sides of their reversible equation', context => {
   dom(context);
-  const body = glyph => glyph.children.slice(1).map(({ tag, attributes }) => ({ tag, attributes }));
-  for (const rule of ['fusion', 'identity', 'hh', 'hopf']) {
-    const equation = ruleGlyph(rule), forward = ruleGlyph(rule, { direction: 1 }), reverse = ruleGlyph(rule, { direction: -1 });
+  for (const rule of ['fusion', 'identity', 'hh', 'color', 'hopf']) {
+    const equation = ruleGlyph(rule);
     assert.equal(equation.children[0].attributes.d, 'M72 28H90M77 23L72 28L77 33M85 23L90 28L85 33');
-    assert.equal(forward.children[0].attributes.d, 'M72 28H90M85 23L90 28L85 33');
-    assert.equal(reverse.children[0].attributes.d, 'M72 28H90M77 23L72 28L77 33');
-    assert.deepEqual(body(forward), body(equation));
-    assert.deepEqual(body(reverse), body(equation));
   }
 });
 
 test('colour change displays a bidirectional equation with Hadamards on one side', context => {
   dom(context);
-  for (const direction of [0, 1, -1]) {
-    const glyph = ruleGlyph('color', { direction });
-    assert.equal(glyph.children[0].attributes.d,
-      `M72 28H90${direction <= 0 ? 'M77 23L72 28L77 33' : ''}${direction >= 0 ? 'M85 23L90 28L85 33' : ''}`);
-    const boxes = descendants(glyph).filter(node => node.tag === 'rect');
-    assert.equal(boxes.length, 3);
-    assert.ok(boxes.every(box => Number(box.attributes.x) > 100), 'Hadamards are produced on the right of the arrow');
+  const glyph = ruleGlyph('color');
+  const boxes = descendants(glyph).filter(node => node.tag === 'rect');
+  assert.equal(boxes.length, 3);
+  assert.ok(boxes.every(box => Number(box.attributes.x) > 100), 'Hadamards are produced on the right of the arrow');
+});
+
+test('Hopf choices show only the resulting pair, with or without the two links', context => {
+  dom(context);
+  for (const linked of [false, true]) {
+    const glyph = hopfResultGlyph(linked), elements = descendants(glyph);
+    assert.equal(glyph.attributes['aria-hidden'], 'true');
+    assert.ok(Number(glyph.attributes.width) <= 80);
+    assert.deepEqual(elements.filter(node => node.tag === 'circle').map(node => node.attributes.fill), [ZX_COLORS.z, ZX_COLORS.x]);
+    const paths = elements.filter(node => node.tag === 'path').map(node => node.attributes.d).join('');
+    assert.equal((paths.match(/Q/g) || []).length, linked ? 2 : 0);
+    assert.doesNotMatch(paths, /M72 28H90/, 'The chooser does not repeat the equation arrow');
   }
 });
 

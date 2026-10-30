@@ -399,14 +399,32 @@ export function nodeGlyph(kind, phase = 0) {
   appendNode(svg, { kind, phase }, 22, 22); return svg;
 }
 
-/** A single equation glyph covers both directions of each rule. */
-export function ruleGlyph(rule, { direction = 0 } = {}) {
-  const svg = svgNode('svg', { viewBox: '0 0 160 56', width: 144, height: 50.4, class: 'zx-rule-glyph', 'aria-hidden': 'true' });
+function ruleDrawing(width = 160, displayWidth = 144) {
+  const svg = svgNode('svg', { viewBox: `0 0 ${width} 56`, width: displayWidth, height: displayWidth * 56 / width, class: 'zx-rule-glyph', 'aria-hidden': 'true' });
   const wire = d => svg.appendChild(svgNode('path', { d, fill: 'none', stroke: ZX_COLORS.wire, 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
   const dot = (kind, x, y, radius = 8) => svg.appendChild(kind === 'h'
     ? svgNode('rect', { x: x - radius * .7, y: y - radius * .7, width: radius * 1.4, height: radius * 1.4, rx: 1, fill: ZX_COLORS.h })
     : svgNode('circle', { cx: x, cy: y, r: radius, fill: ZX_COLORS[kind], stroke: ZX_COLORS.ink, 'stroke-width': 1 }));
-  wire(`M72 28H90${direction <= 0 ? 'M77 23L72 28L77 33' : ''}${direction >= 0 ? 'M85 23L90 28L85 33' : ''}`);
+  return { svg, wire, dot };
+}
+
+function hopfSide({ wire, dot }, offset, linked) {
+  wire(`M${offset + 3} 10L${offset + 17} 28 ${offset + 3} 46M${offset + 47} 28L${offset + 61} 10M${offset + 47} 28L${offset + 61} 46` +
+    (linked ? `M${offset + 17} 28Q${offset + 32} 6 ${offset + 47} 28M${offset + 17} 28Q${offset + 32} 50 ${offset + 47} 28` : ''));
+  dot('z', offset + 17, 28); dot('x', offset + 47, 28);
+}
+
+/** Show only the result of adding or removing the pair of links. */
+export function hopfResultGlyph(linked) {
+  const drawing = ruleDrawing(64, 72);
+  hopfSide(drawing, 0, linked);
+  return drawing.svg;
+}
+
+/** A single equation glyph covers both directions of each rule. */
+export function ruleGlyph(rule) {
+  const drawing = ruleDrawing(), { svg, wire, dot } = drawing;
+  wire('M72 28H90M77 23L72 28L77 33M85 23L90 28L85 33');
   if (rule === 'fusion') {
     wire('M3 28H61M102 28H157'); dot('z', 18, 28); dot('z', 46, 28); dot('z', 129, 28);
   } else if (rule === 'identity') {
@@ -418,8 +436,7 @@ export function ruleGlyph(rule, { direction = 0 } = {}) {
     dot('z', 33, 28); dot('x', 131, 28);
     dot('h', 114, 15, 5); dot('h', 114, 41, 5); dot('h', 148, 28, 5);
   } else if (rule === 'hopf') {
-    wire('M3 10L17 28 3 46M47 28L61 10M47 28L61 46M17 28Q32 6 47 28M17 28Q32 50 47 28M102 10L116 28 102 46M143 28L157 10M143 28L157 46');
-    dot('z', 17, 28); dot('x', 47, 28); dot('z', 116, 28); dot('x', 143, 28);
+    hopfSide(drawing, 0, true); hopfSide(drawing, 96, false);
   }
   return svg;
 }

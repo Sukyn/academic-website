@@ -1,6 +1,6 @@
 import { MAX_MOVES, RULES, LEVELS, TUTORIAL, validateDiagram, targetDiagram, availableMoves, applyMove, isSolved, generatePuzzle, ruleFamily } from '../lib/zx-calculus/engine.js';
 import { DAILY_START } from '../lib/zx-calculus/leaderboard.js';
-import { diagramLayout, renderDiagram, updateDiagramPositions, constrainNodePosition, nodeGlyph, ruleGlyph, phaseSector } from '../lib/zx-calculus/rendering.js';
+import { diagramLayout, renderDiagram, updateDiagramPositions, constrainNodePosition, nodeGlyph, ruleGlyph, hopfResultGlyph, phaseSector } from '../lib/zx-calculus/rendering.js';
 import { animateDiagramMove, createRewriteScene, rewriteDuration, REPLAY_MOVE_DURATION } from '../lib/zx-calculus/animation.js';
 import { bindNodeDragging } from '../lib/zx-calculus/drag.js';
 import { createTutorial } from '../lib/games/tutorial.js';
@@ -133,7 +133,7 @@ function chooseRule(options, trigger) {
       button.append(nodeGlyph(node.kind, (node.phase ?? 0) - move.phase), wire, nodeGlyph(node.kind, move.phase));
     } else {
       button.setAttribute('aria-label', move.rule === 'hopf' ? 'Remove two links' : 'Add two links');
-      button.append(ruleGlyph('hopf', { direction: move.rule === 'hopf' ? 1 : -1 }));
+      button.append(hopfResultGlyph(move.rule === 'add-hopf'));
     }
     return button;
   }));
@@ -169,6 +169,7 @@ function update(board = true) {
   get('zx-generator').hidden = editing;
   for (const id of ['new-diagram', 'new-puzzle', 'difficulty']) get(id).disabled = locked;
   get('undo').disabled = locked || !sequence.length; get('restart').disabled = daily.loading;
+  get('tidy').disabled = locked;
   get('show-results').hidden = mode === 'tutorial' || !won;
   get('leaderboard-section').hidden = mode !== 'campaign' && mode !== 'daily';
   updateDailyHeading(get, { mode, date: puzzleDate, available: daily.info, acceptingScores: scorable });
@@ -300,6 +301,10 @@ click('undo', () => {
   selected = new Set(); selectedEdge = null; update(); scores.load();
 });
 click('restart', reset); click('try-again', reset); click('show-results', openWin);
+click('tidy', () => {
+  if (blocked()) return;
+  layout = diagramLayout(diagram); views[sequence.length] = viewOf(layout); update();
+});
 click('mode-tutorial', () => tutorial.enter());
 click('mode-campaign', () => setPuzzle('campaign', LEVELS[levelIndex].diagram));
 click('mode-random', () => { if (mode !== 'random') randomPuzzle(); });

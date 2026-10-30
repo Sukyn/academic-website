@@ -51,6 +51,18 @@ async function chooseRule(page, activate, move) {
     const option = move.rule === 'insert' ? Number(move.kind === 'x') : move.rule === 'split' ? move.phase : Number(move.rule === 'add-hopf');
     const count = move.rule === 'split' ? 4 : 2;
     assert.equal(await dialog.locator('[data-option]').count(), count, 'The dialog contains only the applicable alternatives');
+    if (ruleFamily(move.rule) === 'hopf') {
+      const previews = await dialog.locator('[data-option] svg').evaluateAll(nodes => nodes.map(svg => ({
+        spiders: svg.querySelectorAll('circle').length, width: svg.getBoundingClientRect().width,
+        paths: [...svg.querySelectorAll('path')].map(path => path.getAttribute('d')),
+      })));
+      assert.equal(previews.length, 2);
+      assert.ok(previews.every(preview => preview.spiders === 2 && preview.width <= 80),
+        'Hopf choices show only the resulting pair of spiders');
+      assert.ok(previews.every(preview => preview.paths.every(path => !path.includes('M72 28H90'))),
+        'Result choices do not repeat the equation arrow');
+      if (move.rule === 'hopf') await page.screenshot({ path: resolve(output, `${page.viewportSize().width}-hopf-choices.png`), fullPage: true });
+    }
     await activate(dialog.locator(`[data-option="${option}"]`));
   }
 }
@@ -102,6 +114,8 @@ async function solve(page, activate, initial, solution, measure = false) {
 }
 async function canvasControls(page, mobile, label, sliding = false) {
   const original = await positions(page), node = page.locator('#zx-board [data-node="4"]');
+  const target = await page.locator('#zx-target').innerHTML();
+  const activate = control => mobile ? control.tap() : control.click();
   await node.scrollIntoViewIfNeeded();
   await node.evaluate(element => { element.dataset.dragProbe = 'same button'; });
   const box = await node.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
@@ -138,6 +152,15 @@ async function canvasControls(page, mobile, label, sliding = false) {
   await node.focus(); await page.keyboard.press(dx > 0 ? 'ArrowLeft' : 'ArrowRight');
   assert.notEqual((await positions(page))[4], moved[4], 'Keyboard users can move the focused node');
   await page.screenshot({ path: resolve(output, `${label}-dragged.png`), fullPage: true });
+  await activate(node);
+  assert.equal(await node.getAttribute('aria-pressed'), 'true');
+  await activate(page.locator('#tidy'));
+  assert.deepEqual(await positions(page), original, 'Tidy restores the compact automatic layout');
+  assert.equal(await node.getAttribute('aria-pressed'), 'true', 'Tidy preserves the selected spider or Hadamard');
+  assert.equal(await page.locator('#sequence [data-step]').count(), 0, 'Tidy costs no rewrite');
+  assert.equal(await page.locator('#undo').isDisabled(), true, 'Layout adjustments do not add semantic undo steps');
+  assert.equal(await page.locator('#zx-target').innerHTML(), target, 'Tidy leaves the fixed target untouched');
+  await activate(node);
   await page.locator('#restart').click();
   assert.deepEqual(await positions(page), original, 'Reset restores the initial node positions');
 }
@@ -197,6 +220,7 @@ try {
     for (const [index, move] of TUTORIAL.solution.entries()) {
       const rule = page.locator(`#zx-rules [data-rule="${move.rule}"]`);
       assert.equal(await rule.isDisabled(), true, 'The highlighted rewrite remains read-only');
+      assert.equal(await page.locator('#tidy').isDisabled(), true, 'The cinematic tutorial locks layout controls');
       await advanceTutorial(page, mobile);
       await page.waitForFunction(text => document.getElementById('tutorial-heading').textContent === text,
         index + 1 === TUTORIAL.solution.length ? 'Tutorial complete' : `Step ${index + 2} of ${TUTORIAL.solution.length}`);
@@ -217,11 +241,13 @@ try {
           const deadline = setTimeout(() => resolve(false), 5000);
           document.getElementById('zx-rules').addEventListener('click', () => {
             clearTimeout(deadline);
-            resolve(Boolean(document.querySelector('#zx-board[data-zx-animating="true"][aria-busy="true"] canvas')));
+            resolve({ animated: Boolean(document.querySelector('#zx-board[data-zx-animating="true"][aria-busy="true"] canvas')),
+              tidyDisabled: document.getElementById('tidy').disabled });
           }, { once: true });
         }));
         await activate(page.locator(`[data-rule="${level.solution[0].rule}"]`));
-        assert.equal(await observed, true, 'Rewrites have an animation layer and lock their controls');
+        assert.deepEqual(await observed, { animated: true, tidyDisabled: true },
+          'Rewrites have an animation layer and lock layout controls');
         await activate(page.locator('#restart'));
         await assertDiagram(page, level.diagram);
         assert.equal(await page.locator('#zx-board canvas').count(), 0, 'Reset cancels and removes the animation');
@@ -256,6 +282,7 @@ try {
     await page.locator('#advanced-features').evaluate(node => { node.open = true; });
     await activate(page.locator('#replay'));
     await page.locator('#zx-board canvas').waitFor();
+    assert.equal(await page.locator('#tidy').isDisabled(), true, 'Replay locks layout controls');
     assert.equal(await page.locator('#share-replay').isVisible(), true, 'Replay keeps completed-round actions in place');
     await page.waitForFunction(length => document.getElementById('review-note').textContent === `Rewrite ${length} / ${length}`,
       LEVELS.at(-1).solution.length);
