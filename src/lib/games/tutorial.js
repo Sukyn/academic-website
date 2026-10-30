@@ -10,7 +10,7 @@ export function createTutorial({ get, steps, onReset, controls, onLeave = () => 
   renderText = (node, text) => { node.textContent = text; },
   intro = 'Next step plays the demonstration. Restart returns to the beginning.' }) {
   let active = false, executing = false, index = -1, revision = 0, focus = null, failed = false;
-  let renderedText;
+  let renderedText, nextPress = null;
   const panel = get('tutorial-panel'), startButton = get('tutorial-start'), nextButton = get('tutorial-next');
   const content = panel.closest('.game-content');
   const locked = new Map();
@@ -110,8 +110,22 @@ export function createTutorial({ get, steps, onReset, controls, onLeave = () => 
       if (active && current === revision) { executing = false; render(); reveal(); }
     }
   }
+  // A delayed touch click belongs to the step where its press began, even if an
+  // animation finished or the bubble moved before the browser delivered it.
+  function rememberNextPress() { nextPress = { step: currentStep(), revision }; }
+  function activateNext(event) {
+    const pressed = nextPress; nextPress = null;
+    if (event?.detail > 1) return;
+    if ((event?.detail > 0 || pressed) &&
+      (!pressed?.step || pressed.step !== currentStep() || pressed.revision !== revision)) return;
+    return next();
+  }
   startButton.addEventListener('click', start);
-  nextButton.addEventListener('click', next);
+  nextButton.addEventListener('pointerdown', event => {
+    if (event.button === 0 && event.isPrimary !== false) rememberNextPress();
+  });
+  nextButton.addEventListener('pointercancel', () => { nextPress = null; });
+  nextButton.addEventListener('click', activateNext);
   get('tutorial-levels').addEventListener('click', () => get('mode-campaign').click());
   get('tutorial-close').addEventListener('click', () => get('mode-campaign').click());
   const view = panel.ownerDocument?.defaultView;
@@ -132,6 +146,10 @@ export function createTutorial({ get, steps, onReset, controls, onLeave = () => 
   for (const type of ['pointerdown', 'pointermove', 'click', 'contextmenu', 'wheel']) document.addEventListener(type, blockPlay, true);
   document.addEventListener('keydown', event => {
     if (!active) return;
+    if (['Enter', ' '].includes(event.key)) {
+      if (event.repeat && event.target.closest?.('#tutorial-next, #tutorial-start')) event.preventDefault();
+      else if (event.target.closest?.('#tutorial-next')) rememberNextPress();
+    }
     // Reference tabs stay usable without exposing the game's keyboard shortcuts.
     const referenceTab = ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) &&
       event.target.closest?.('[role="tablist"]') && !event.target.closest?.(controls);

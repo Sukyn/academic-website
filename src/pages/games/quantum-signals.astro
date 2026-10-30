@@ -34,6 +34,7 @@ import SignalGateMemo from '../../components/games/SignalGateMemo.astro';
         <GameToolbar levels={LEVELS} />
         <GameTutorial intro={TUTORIAL_INTRO} />
         <section aria-label="Quantum signals">
+          <div id="signal-stage">
           <div class="game-scroll signal-scroll" id="signal-scroll" role="region" aria-label="Circuit board. Scroll horizontally for longer circuits." tabindex="0">
             <div id="signal-board" aria-label="Circuit with gate holes"></div>
           </div>
@@ -48,6 +49,7 @@ import SignalGateMemo from '../../components/games/SignalGateMemo.astro';
               </div>
               <svg id="signal-target" role="img" aria-label="Target quantum state"></svg>
             </div>
+          </div>
           </div>
           <SignalGateMemo />
           <GameRoundControls resultLabel="Results" />

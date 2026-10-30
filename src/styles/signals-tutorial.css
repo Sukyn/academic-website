@@ -1,8 +1,39 @@
-@media (max-width: 600px) {
-  .signals-game[data-signal-tutorial-view="paths"] #signal-scroll,
-  .signals-game[data-signal-tutorial-view="circuit"] #flow-panel {
-    visibility: hidden; height: 0; min-height: 0; max-height: 0; overflow: hidden; margin: 0; padding: 0; border: 0;
+@media (max-width: 600px), (max-height: 500px) and (max-width: 1000px) {
+  /* Both views stay in the scene; leave scroll room for the floating explanation. */
+  .game-layout:has(.signals-game[data-signal-tutorial-view]) { grid-template-columns: minmax(0, 1fr); }
+  .game-layout:has(.signals-game[data-signal-tutorial-view]) > .mode-menu { display: none; }
+  .signals-game[data-signal-tutorial-view] { padding-bottom: calc(40svh + 24px); }
+  .signals-game[data-signal-tutorial-side="above"] { padding-top: calc(40svh + 24px); }
+  .signals-game[data-signal-tutorial-view] #signal-scroll { margin-top: 0; padding-block: .25rem; }
+  .signals-game[data-signal-tutorial-view] #flow-panel {
+    margin-top: .5rem; padding-block: .25rem;
+    max-height: max(112px, calc(60svh - 56px - var(--signal-circuit-height)));
   }
-  .signals-game[data-signal-tutorial-view] #flow-panel { max-height: 340px; }
-  .signals-game[data-signal-tutorial-view] .signal-palette { margin-top: .45rem; }
+  .signals-game[data-signal-tutorial-view] .signal-palette { display: none; }
+  .signals-game[data-signal-tutorial-view] #tutorial-panel[data-tutorial-bubble] {
+    --signal-bubble-height: min(var(--tutorial-height), calc(40svh - 12px));
+    max-height: var(--signal-bubble-height); padding: .6rem;
+    font-size: .85rem; line-height: 1.45;
+  }
+  .signals-game[data-signal-tutorial-view] #tutorial-panel[data-tutorial-bubble] .tutorial-body {
+    display: flex; flex-direction: column; overflow: hidden;
+    max-height: calc(var(--signal-bubble-height) - 1.2rem + 10px);
+  }
+  .signals-game[data-signal-tutorial-view] #tutorial-panel [aria-live] { min-height: 0; overflow: auto; }
+  .signals-game[data-signal-tutorial-view] .tutorial-actions { flex-shrink: 0; margin-top: .5rem; }
+}
+
+@media (max-height: 500px) and (min-width: 601px) and (max-width: 1000px) {
+  .signals-game[data-signal-tutorial-view] #signal-stage {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .5rem; align-items: center;
+  }
+  .signals-game[data-signal-tutorial-view] #flow-panel { margin-top: 0; max-height: 44svh; }
+  .signals-game[data-signal-tutorial-view] > section:has(#signal-memo[open]) {
+    display: grid; grid-template-columns: minmax(0, 1fr) 14rem; gap: .5rem; align-items: start;
+  }
+  .signals-game[data-signal-tutorial-view] #signal-memo { min-width: 0; margin: 0; }
+  .signals-game[data-signal-tutorial-view] #signal-memo .signal-memo-tabs { margin-block: .25rem; gap: .25rem; }
+  .signals-game[data-signal-tutorial-view] #signal-memo .signal-memo-map { max-height: 30svh; }
+  .signals-game[data-signal-tutorial-view] #signal-memo:has(.signal-memo-key:not([hidden])) .signal-memo-map { max-height: calc(30svh - 3.25rem); }
+  .signals-game[data-signal-tutorial-view] > section:has(#signal-memo[open]) > :not(#signal-stage, #signal-memo) { grid-column: 1 / -1; }
 }

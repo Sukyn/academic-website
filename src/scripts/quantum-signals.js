@@ -29,7 +29,7 @@ const isWon = () => evaluate(puzzle, placements);
 const choices = [...document.querySelectorAll('[data-choice]')];
 const paletteWires = new WeakMap();
 const memo = createGateMemo({ get });
-const mobileTutorial = window.matchMedia('(max-width: 600px)');
+const mobileTutorial = window.matchMedia('(max-width: 600px), (max-height: 500px) and (max-width: 1000px)');
 const tutorialBlocked = () => tutorial.active && !tutorial.executing;
 const canRecord = () => mode === 'campaign' || mode === 'daily';
 const selector = () => mode === 'tutorial' || mode === 'random' ? null : { game: GAME, ...(mode === 'daily' ? { date: puzzle.date } : { level: campaignIndex + 1 }) };
@@ -63,6 +63,7 @@ function closeResult() { sharing.close(); get('win-dialog').close(); }
 const holeButton = id => id ? get('signal-board').querySelector('[data-hole="' + id + '"]') : null;
 function focusSelected() { holeButton(selected)?.focus({ preventScroll: true }); }
 const viewport = createCircuitViewport(get('signal-scroll'), get('flow-scroll'), left => pinFlowLabels(get('signal-flow'), left));
+const tutorialSide = () => tutorialStep.anchor.kind === 'gate' ? 'above' : 'below';
 function followProgress(hole, finished) {
   viewport.follow(holeButton(hole), finished);
 }
@@ -71,16 +72,21 @@ function syncTutorialFocus() {
   // Returning from an interrupted movie restores the step's original view.
   if (active && !tutorial.executing) tutorialView = tutorialStep.view;
   const content = get('signal-scroll').closest('.game-content');
-  if (active) content.dataset.signalTutorialView = tutorialView;
-  else delete content.dataset.signalTutorialView;
-  get('signal-scroll').inert = Boolean(active && mobileTutorial.matches && tutorialView !== 'circuit');
-  get('flow-panel').inert = Boolean(active && mobileTutorial.matches && tutorialView !== 'paths');
+  if (active) {
+    content.dataset.signalTutorialView = tutorialView;
+    content.dataset.signalTutorialSide = tutorialSide();
+    content.style.setProperty('--signal-circuit-height', get('signal-board').style.height);
+  } else {
+    delete content.dataset.signalTutorialView;
+    delete content.dataset.signalTutorialSide;
+    content.style.removeProperty('--signal-circuit-height');
+  }
   highlightSignalFocus(get('signal-board'), get('signal-flow'), active ? tutorialStep.focus : {});
 }
 function tutorialAnchor() {
   if (!tutorialStep) return null;
   const inPaths = tutorialView === 'paths';
-  const anchor = inPaths && tutorial.executing ? tutorialStep.animationAnchor ?? tutorialStep.anchor : tutorialStep.anchor;
+  const anchor = inPaths && tutorial.executing && !mobileTutorial.matches ? tutorialStep.animationAnchor ?? tutorialStep.anchor : tutorialStep.anchor;
   const flow = get('signal-flow');
   let elements;
   if (anchor.kind === 'gate') elements = [anchor.hole ? holeButton(anchor.hole) :
@@ -92,13 +98,15 @@ function tutorialAnchor() {
     .map(basis => flow.querySelector(`.signal-flow-node[data-basis="${basis}"][data-boundary="${anchor.boundary}"]`));
   else elements = [flow.querySelector(`.${anchor.kind === 'wall' ? 'signal-flow-cancellation' : 'signal-flow-node'}[data-basis="${anchor.basis}"][data-boundary="${anchor.boundary}"]`)];
   elements = elements.filter(Boolean);
-  const region = get(inPaths ? 'flow-panel' : 'signal-scroll'), panel = region.getBoundingClientRect();
+  const region = get(mobileTutorial.matches ? 'signal-stage' : inPaths ? 'flow-panel' : 'signal-scroll'), panel = region.getBoundingClientRect();
   const memo = anchor.kind === 'memo' ? get('signal-memo') : null;
+  const besideMemo = mobileTutorial.matches && window.innerWidth > 600;
   const speaker = anchor.kind === 'node' ? elements.find(node => Number(node.dataset.basis) === anchor.basis) : elements[0];
   const speakerBounds = speaker?.getBoundingClientRect();
   return { elements, ...(anchor.kind === 'node' ? { rect: speakerBounds } : {}),
-    avoid: memo ? [memo, memo.open ? get('signal-target').querySelector('.signal-flow-target') : region] : [region],
-    preferredSide: memo?.open || speakerBounds?.top < panel.top + panel.height / 2 ? 'above' : 'below' };
+    avoid: memo ? [memo, memo.open && !besideMemo ? get('signal-target').querySelector('.signal-flow-target') : region] : [region],
+    preferredSide: mobileTutorial.matches && !memo?.open ? tutorialSide() :
+      memo?.open || speakerBounds?.top < panel.top + panel.height / 2 ? 'above' : 'below' };
 }
 function revealTutorialFocus() {
   syncTutorialFocus();
@@ -106,7 +114,7 @@ function revealTutorialFocus() {
   const column = tutorialStep.focus.column;
   get('signal-scroll').scrollTop = 0;
   viewport.follow(holeButton(tutorialStep.hole) ?? get('signal-board').querySelector('.signal-gate-focus') ?? get('signal-board').querySelector('[data-column="' + column + '"]'));
-  if (tutorialView === 'paths') {
+  if (mobileTutorial.matches || tutorialView === 'paths') {
     const panel = get('flow-panel'), bounds = panel.getBoundingClientRect();
     const focused = [...get('signal-flow').querySelectorAll('.signal-flow-focus.signal-flow-node, .signal-flow-focus.signal-flow-cancellation')];
     if (focused.length) {
@@ -115,10 +123,13 @@ function revealTutorialFocus() {
       panel.scrollTop += (top + bottom - bounds.top - bounds.bottom) / 2;
     }
   }
-  const region = get(tutorialView === 'paths' ? 'flow-panel' : 'signal-scroll');
-  region.scrollIntoView({ block: 'center', inline: 'nearest' });
+  const region = get(mobileTutorial.matches ? 'signal-stage' : tutorialView === 'paths' ? 'flow-panel' : 'signal-scroll');
+  region.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
 }
-mobileTutorial.addEventListener('change', () => { revealTutorialFocus(); tutorial.reposition(); });
+mobileTutorial.addEventListener('change', () => {
+  if (mode !== 'tutorial') return;
+  update(); revealTutorialFocus(); tutorial.reposition();
+});
 function selectHole(id) {
   if (tutorialBlocked() || daily.loading || review.step !== null || selected === id) return;
   selected = id;
@@ -144,8 +155,9 @@ function update({ board = true, follow = false, animateFrom = null } = {}) {
     flowAnimation?.cancel(); flowAnimation = null;
     previousFlow = animateFrom === null ? null : flowElements(get('signal-flow'));
     const focused = document.activeElement?.closest('[data-hole]');
-    renderBoard(get('signal-board'), puzzle, visible, { selected: activeHole, locked });
-    renderFlow(get('signal-flow'), get('signal-target'), puzzle, visible, activeHole);
+    const compact = mode === 'tutorial' && mobileTutorial.matches;
+    renderBoard(get('signal-board'), puzzle, visible, { selected: activeHole, locked, compact });
+    renderFlow(get('signal-flow'), get('signal-target'), puzzle, visible, activeHole, { compact });
     if (focused) focusSelected();
   } else {
     for (const button of get('signal-board').querySelectorAll('[data-hole]')) button.disabled = locked;
@@ -343,4 +355,7 @@ const tutorial = createTutorial({
   onLeave() { tutorialStep = null; syncTutorialFocus(); },
 });
 for (const type of ['toggle', 'click', 'keydown']) get('signal-memo').addEventListener(type, tutorial.reveal);
+get('signal-memo').addEventListener('toggle', () => {
+  if (tutorial.active && mobileTutorial.matches) revealTutorialFocus();
+});
 if (!startDailyFromLink(daily)) tutorial.enter();

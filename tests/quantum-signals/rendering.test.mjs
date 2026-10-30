@@ -195,3 +195,78 @@ test('Applying a global phase or changing relative phases never moves or recolou
   assert.notEqual(resized[0], nodes[0]);
   assert.equal(target.attrs.height, String(8 * 34 + 62));
 });
+
+test('Compact tutorial geometry keeps native gate sizes, paired endpoints and corresponding path columns aligned', context => {
+  const { board, svg, target } = surface(context);
+  const puzzle = { wires: 3, columns: [
+    [{ gate: 'H', wires: [0] }, { gate: 'X', wires: [2] }],
+    [{ id: 'a', wires: [0, 2], choices: ['I', 'CX', 'XC', 'CZ'] }],
+    [{ id: 'b', wires: [1], choices: ['I', 'H'] }]], target: goalState(3) };
+  const placements = { a: 'CX', b: 'H' }, saved = structuredClone(puzzle);
+  const draw = compact => {
+    renderBoard(board, puzzle, placements, { compact });
+    renderFlow(svg, target, puzzle, placements, 'a', { compact });
+    const wires = board.querySelectorAll('.signal-path').map(node => Number(node.children[0].attrs.y1));
+    const gates = board.querySelectorAll('[data-column]');
+    assert.equal(Number(board.style.width.slice(0, -2)), Number(svg.attrs.width) + 52,
+      'The circuit and paths retain the same horizontal extent, including the fixed target.');
+    for (const gate of gates) {
+      const rows = gate.dataset.wires.split(':').map(Number), top = parseFloat(gate.style.top);
+      const endpoints = gate.querySelectorAll('.signal-endpoint');
+      assert.equal(endpoints.length, rows.length);
+      endpoints.forEach((endpoint, index) => assert.equal(top + parseFloat(endpoint.style['--endpoint-top']), wires[rows[index]],
+        'Every visible gate endpoint stays centred on its wire.'));
+      assert.equal(parseFloat(gate.style.height), wires[rows.at(-1)] - wires[rows[0]] + 44,
+        'Compaction preserves a full 44px target at each end of the gate.');
+      assert.ok(top - 22 >= 0 && top - 22 + parseFloat(gate.style.height) <= parseFloat(board.style.height));
+      const link = gate.querySelector('.signal-link');
+      if (link) assert.equal(parseFloat(link.style.height), wires[rows.at(-1)] - wires[rows[0]]);
+      for (const path of svg.querySelectorAll('.signal-flow-path').filter(path => path.dataset.column === gate.dataset.column)) {
+        const coordinates = path.attrs.d.match(/-?\d+(?:\.\d+)?/g).map(Number);
+        assert.equal((coordinates[0] + coordinates[6]) / 2, parseFloat(gate.style.left),
+          'The gate remains above the middle of the corresponding expanded path transition.');
+      }
+    }
+    return {
+      boardHeight: parseFloat(board.style.height), flowHeight: Number(svg.attrs.height),
+      left: gates.map(node => node.style.left),
+      glyphs: board.querySelectorAll('.gate-glyph').map(node => ({ ...node.attrs })),
+      dots: svg.querySelectorAll('.signal-flow-node').map(node => ({ basis: node.dataset.basis, boundary: node.dataset.boundary,
+        x: node.attrs.cx, radius: node.attrs.r, fill: node.attrs.fill, stroke: node.attrs.stroke })),
+      labels: svg.querySelectorAll('.signal-flow-label').map(node => node.textContent),
+    };
+  };
+  const regular = draw(false), compact = draw(true);
+  assert.ok(compact.boardHeight < regular.boardHeight && compact.flowHeight < regular.flowHeight);
+  assert.ok(regular.glyphs.length > 0 && regular.dots.length > 0);
+  for (const key of ['left', 'glyphs', 'dots', 'labels']) assert.deepEqual(compact[key], regular[key],
+    'Compact spacing preserves horizontal scrolling, glyphs, amplitudes and readable state labels.');
+  assert.deepEqual(draw(false), regular, 'Leaving the tutorial restores the original rendering.');
+  assert.deepEqual(puzzle, saved, 'Layout changes never modify the puzzle.');
+});
+
+test('Changing tutorial density updates target geometry once; placements preserve the fixed target in either density', context => {
+  const { svg, target } = surface(context);
+  const puzzle = { wires: 2, columns: [[{ gate: 'X', wires: [0] }, { gate: 'X', wires: [1] }],
+    [{ id: 'a', wires: [0], choices: ['I', 'Z'] }], [{ id: 'b', wires: [1], choices: ['I', 'Z'] }]], target: goalState(2) };
+  renderFlow(svg, target, puzzle, {});
+  const regular = target.querySelector('.signal-flow-target'), regularAttributes = { ...regular.attrs };
+  let preceding = regular;
+  for (const compact of [true, false, true]) {
+    renderFlow(svg, target, puzzle, {}, undefined, { compact });
+    const marker = target.querySelector('.signal-flow-target'), attributes = { ...marker.attrs };
+    assert.notEqual(marker, preceding, 'A density transition refreshes the goal position.');
+    assert.equal(target.attrs.height, svg.attrs.height, 'The fixed target and expanded paths share their new vertical scale.');
+    assert.equal(marker.attrs.cy, svg.querySelectorAll('.signal-flow-lane').at(-1).attrs.y1);
+    for (const key of ['cx', 'r', 'fill', 'stroke', 'aria-label']) assert.equal(attributes[key], regularAttributes[key],
+      'Changing density preserves the goal size, appearance and meaning.');
+    if (!compact) assert.deepEqual(attributes, regularAttributes, 'Normal gameplay restores the original target geometry.');
+    for (const placements of [{ a: 'Z' }, { b: 'Z' }, { a: 'Z', b: 'Z' }, {}]) {
+      renderFlow(svg, target, { ...puzzle, target: [...puzzle.target] }, placements, undefined, { compact });
+      assert.equal(target.querySelector('.signal-flow-target'), marker, 'Gate edits never rebuild the target.');
+      assert.deepEqual(marker.attrs, attributes, 'Phase edits never move or recolour the target.');
+      assert.equal(target.dataset.match, 'true');
+    }
+    preceding = marker;
+  }
+});

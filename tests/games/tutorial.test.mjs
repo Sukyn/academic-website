@@ -9,7 +9,7 @@ function fixture(context, actions = [() => {}, () => {}], options = {}) {
     if (!nodes.has(id)) nodes.set(id, {
       disabled: false, hidden: false, attrs: new Map(), listeners: new Map(),
       addEventListener(type, handler) { this.listeners.set(type, handler); },
-      click() { return this.listeners.get('click')?.(); },
+      click(event) { return this.listeners.get('click')?.(event); },
       setAttribute(key, value) { this.attrs.set(key, value); }, removeAttribute(key) { this.attrs.delete(key); },
       closest(selector) {
         if (selector === '#tutorial-panel' && id.startsWith('tutorial-')) return get('tutorial-panel');
@@ -124,6 +124,66 @@ test('only Next advances the demonstration and rapid input cannot skip an animat
   assert.deepEqual(calls.filter(call => call.startsWith('move:')), ['move:0']);
   resolve(); await advancing;
   assert.equal(guide.executing, false); assert.equal(get('tutorial-heading').textContent, 'Step 2 of 2');
+});
+
+test('a delayed duplicate click cannot advance the next explanation, but a fresh press can', async context => {
+  const { guide, get, calls } = fixture(context, [() => {}, () => {}, () => {}]);
+  const button = get('tutorial-next');
+  const press = () => button.listeners.get('pointerdown')?.({ button: 0, isPrimary: true });
+  guide.enter(); guide.start();
+  press(); await button.click({ detail: 1 });
+  assert.equal(get('tutorial-heading').textContent, 'Step 2 of 3');
+  await button.click({ detail: 1 });
+  press(); await button.click({ detail: 2 });
+  assert.equal(get('tutorial-heading').textContent, 'Step 2 of 3', 'Duplicate delivery and double taps cannot skip an explanation.');
+  press(); await button.click({ detail: 1 });
+  assert.equal(get('tutorial-heading').textContent, 'Step 3 of 3');
+  assert.deepEqual(calls.filter(call => call.startsWith('move:')), ['move:0', 'move:1']);
+});
+
+test('a touch begun during an animation cannot advance its replacement explanation', async context => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const { guide, get } = fixture(context, [() => pending, () => {}]);
+  const button = get('tutorial-next');
+  guide.enter(); guide.start();
+  const advancing = guide.next();
+  button.listeners.get('pointerdown')?.({ button: 0, isPrimary: true });
+  finish(); await advancing;
+  await button.click({ detail: 1 });
+  assert.equal(get('tutorial-heading').textContent, 'Step 2 of 2');
+  assert.equal(guide.finished, false);
+});
+
+test('cancelled touches do not activate Next and assistive clicks keep working', async context => {
+  const { guide, get } = fixture(context);
+  const button = get('tutorial-next');
+  guide.enter(); guide.start();
+  button.listeners.get('pointerdown')?.({ button: 0, isPrimary: true });
+  button.listeners.get('pointercancel')?.();
+  await button.click({ detail: 1 });
+  assert.equal(get('tutorial-heading').textContent, 'Step 1 of 2');
+  await button.click({ detail: 0 });
+  assert.equal(get('tutorial-heading').textContent, 'Step 2 of 2');
+});
+
+test('keyboard holds do not repeat Next and Space keeps ownership of its starting step', async context => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const { guide, get, dispatch } = fixture(context, [() => pending, () => {}]);
+  const button = get('tutorial-next');
+  guide.enter(); guide.start();
+  dispatch('keydown', button, { key: 'Enter', repeat: false });
+  const advancing = button.click({ detail: 0 });
+  dispatch('keydown', button, { key: ' ', repeat: false });
+  finish(); await advancing;
+  await button.click({ detail: 0 });
+  assert.equal(guide.finished, false, 'A Space key released after the animation cannot trigger the new step.');
+  assert.equal(dispatch('keydown', button, { key: 'Enter', repeat: true }).prevented, true);
+  assert.equal(dispatch('keydown', get('tutorial-start'), { key: ' ', repeat: true }).prevented, true);
+  dispatch('keydown', button, { key: 'Enter', repeat: false });
+  await button.click({ detail: 0 });
+  assert.equal(guide.finished, true);
 });
 
 test('game pointer input and hotkeys are blocked while tutorial controls retain native keyboard actions', context => {

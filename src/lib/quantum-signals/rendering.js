@@ -4,7 +4,7 @@ import { flowTrace } from './flow.js';
 import { PHASE_COLORS, GOAL_COLOR, GOAL_RADIUS, CANCELLATION_WALL, phasePathColor, phaseColor } from './state-visuals.js';
 
 const SLOT = 88, ROW = 88, LEFT = 92, TOP = 46;
-const targetWires = new WeakMap();
+const targetHeights = new WeakMap();
 export const signalBoardWidth = columns => LEFT + columns * SLOT + 64;
 const boardWidth = puzzle => signalBoardWidth(puzzle.columns.length);
 export const flowColumnX = boundary => LEFT + (boundary - .5) * SLOT;
@@ -31,14 +31,15 @@ export function gateIcon(gate, wires = [0, 1]) {
   return gateGlyph(gate);
 }
 
-export function renderBoard(board, puzzle, placements, { selected, locked = false } = {}) {
-  const width = boardWidth(puzzle), height = puzzle.wires * ROW + 8;
+export function renderBoard(board, puzzle, placements, { selected, locked = false, compact = false } = {}) {
+  const rowHeight = compact ? 48 : ROW, top = compact ? 30 : TOP;
+  const width = boardWidth(puzzle), height = puzzle.wires * rowHeight + 8;
   board.style.width = width + 'px'; board.style.height = height + 'px';
   const fragment = document.createDocumentFragment();
   const svg = svgNode('svg', { width, height, viewBox: '0 0 ' + width + ' ' + height, class: 'signal-wires', 'aria-hidden': true });
   for (let row = 0; row < puzzle.wires; row++) {
     const group = svgNode('g', { class: 'signal-path', 'data-wire': row });
-    group.appendChild(svgNode('line', { x1: 16, x2: width - 96, y1: TOP + row * ROW, y2: TOP + row * ROW,
+    group.appendChild(svgNode('line', { x1: 16, x2: width - 96, y1: top + row * rowHeight, y2: top + row * rowHeight,
       stroke: '#f5f5f2', 'stroke-width': 1.8 }));
     svg.appendChild(group);
   }
@@ -50,8 +51,8 @@ export function renderBoard(board, puzzle, placements, { selected, locked = fals
     node.className = hole ? 'signal-hole' : 'signal-fixed';
     node.dataset.column = String(index);
     node.dataset.wires = entry.wires.join(':');
-    node.style.left = (LEFT + index * SLOT) + 'px'; node.style.top = (TOP + first * ROW) + 'px';
-    node.style.height = ((last - first) * ROW + 44) + 'px';
+    node.style.left = (LEFT + index * SLOT) + 'px'; node.style.top = (top + first * rowHeight) + 'px';
+    node.style.height = ((last - first) * rowHeight + 44) + 'px';
     if (hole) {
       node.type = 'button'; node.dataset.hole = entry.id; node.dataset.filled = String(gate !== undefined);
       node.setAttribute('aria-pressed', String(selected === entry.id)); node.disabled = locked;
@@ -59,11 +60,11 @@ export function renderBoard(board, puzzle, placements, { selected, locked = fals
     } else node.setAttribute('aria-hidden', 'true');
     if (entry.wires.length === 2 && gate && gate !== 'I') {
       const link = span('signal-link', '');
-      link.style.top = '22px'; link.style.height = ((last - first) * ROW) + 'px'; node.appendChild(link);
+      link.style.top = '22px'; link.style.height = ((last - first) * rowHeight) + 'px'; node.appendChild(link);
     }
     for (const row of gate && gate !== 'I' ? entry.wires : []) {
       const endpoint = span('signal-endpoint', '');
-      endpoint.style.setProperty('--endpoint-top', ((row - first) * ROW) + 'px');
+      endpoint.style.setProperty('--endpoint-top', ((row - first) * rowHeight) + 'px');
       endpoint.appendChild(gateIcon(gate === 'CX' || gate === 'XC' ? row === controlWire(gate, entry.wires) ? 'Z' : 'X' : gate === 'CZ' ? 'Z' : gate));
       node.appendChild(endpoint);
     }
@@ -119,16 +120,16 @@ export function highlightSignalFocus(board, svg, { wires = [], bases = [], toBas
   svg.classList.toggle('signal-flow-context', active);
 }
 
-export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace, selectedColumn } = {}) {
+export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace, selectedColumn, compact = false } = {}) {
   const { snapshots, columns, cancellations } = trace ?? flowTrace(puzzle, placements), output = snapshots.at(-1);
   const count = output.length, goal = count - 1;
   const labels = Array.from({ length: count }, (_, basis) => basis.toString(2).padStart(puzzle.wires, '0'));
   const goalBits = labels[goal];
-  const width = boardWidth(puzzle) - 52, height = count * 34 + 62;
-  const x = flowColumnX, y = basis => 44 + basis * 34;
+  const width = boardWidth(puzzle) - 52, height = compact ? count * 26 + 32 : count * 34 + 62;
+  const x = flowColumnX, y = basis => compact ? 32 + basis * 26 : 44 + basis * 34;
   svg.setAttribute('width', String(width)); svg.setAttribute('height', String(height));
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
-  const targetChanged = targetWires.get(targetSvg) !== puzzle.wires;
+  const targetChanged = targetHeights.get(targetSvg) !== height;
   if (targetChanged) {
     targetSvg.setAttribute('width', '52'); targetSvg.setAttribute('height', String(height));
     targetSvg.setAttribute('viewBox', '0 0 52 ' + height);
@@ -189,7 +190,7 @@ export function renderFlow(svg, targetSvg, puzzle, placements, selected, { trace
       cx: 26, cy: y(goal), r: GOAL_RADIUS, fill: 'none', stroke: GOAL_COLOR, role: 'img',
       'aria-label': 'Collect every path at ' + goalBits }));
     targetSvg.replaceChildren(targetFragment);
-    targetWires.set(targetSvg, puzzle.wires);
+    targetHeights.set(targetSvg, height);
   }
   fragment.appendChild(gutter); svg.replaceChildren(fragment);
   pinFlowLabels(svg, svg.parentElement?.scrollLeft ?? 0);

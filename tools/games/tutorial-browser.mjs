@@ -16,7 +16,7 @@ const qualityRequire = createRequire(resolve(process.env.QUALITY_MODULE_DIR ?? '
 const { chromium } = require('playwright');
 const axe = await readFile(qualityRequire.resolve('axe-core/axe.min.js'), 'utf8');
 const base = process.env.GAME_BASE_URL ?? 'http://127.0.0.1:4323';
-const output = resolve('tmp/tutorial-browser');
+const output = resolve(process.env.GAME_TUTORIAL_OUTPUT ?? 'tmp/tutorial-browser');
 const fixture = createBrowserApi({ now: Date.parse('2026-10-25T10:00:00Z') });
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
@@ -36,6 +36,8 @@ const games = [
 await mkdir(output, { recursive: true });
 
 async function activate(locator, touch) {
+  // Walkthrough taps represent reading a new explanation, not a native double-tap.
+  if (touch && await locator.getAttribute('id') === 'tutorial-next') await locator.page().waitForTimeout(700);
   if (touch) await locator.tap(); else await locator.click();
 }
 
@@ -174,6 +176,29 @@ async function clean(page, label) {
     label + ': focus, referent and floating state are removed');
   assert.equal(await page.locator('[data-tutorial-demo]').count(), 0, label + ': normal gameplay is restored');
   assert.equal(await page.locator('#tutorial-panel').evaluate(node => node.matches(':popover-open')), false, label + ': no open tutorial popover');
+}
+
+async function signalsMobileScene(page, label) {
+  const scene = await page.evaluate(() => {
+    const box = node => {
+      const { left, top, right, bottom, height } = node.getBoundingClientRect();
+      return { left, top, right, bottom, height };
+    };
+    return {
+      circuit: box(document.getElementById('signal-scroll')),
+      paths: box(document.getElementById('flow-panel')),
+      bubble: box(document.getElementById('tutorial-panel')),
+      height: innerHeight,
+    };
+  });
+  for (const name of ['circuit', 'paths']) {
+    const region = scene[name];
+    assert.ok(region.height >= 80 && region.top >= -1 && region.bottom <= scene.height + 1,
+      label + ': circuit and paths stay visible together: ' + JSON.stringify(scene));
+    const overlap = Math.max(0, Math.min(region.right, scene.bubble.right) - Math.max(region.left, scene.bubble.left)) *
+      Math.max(0, Math.min(region.bottom, scene.bubble.bottom) - Math.max(region.top, scene.bubble.top));
+    assert.ok(overlap <= 1, label + ': the explanation leaves both views uncovered: ' + JSON.stringify(scene));
+  }
 }
 
 async function uncovered(page, selector, label) {
@@ -390,7 +415,9 @@ async function interruptedSignals(page, touch, label) {
 
 async function run([game, count, category], touch, fallback = false) {
   const name = [game, category, touch ? 'mobile' : 'desktop', fallback && 'fallback'].filter(Boolean).join('-');
-  const context = await browser.newContext({ viewport: touch ? { width: Number(process.env.GAME_TUTORIAL_MOBILE_WIDTH ?? 390), height: 844 } : { width: 1440, height: 1050 },
+  const context = await browser.newContext({ viewport: touch ? {
+    width: Number(process.env.GAME_TUTORIAL_MOBILE_WIDTH ?? 390), height: Number(process.env.GAME_TUTORIAL_MOBILE_HEIGHT ?? 844),
+  } : { width: 1440, height: 1050 },
     ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 1 } : {}), reducedMotion: 'no-preference' });
   if (fallback) await context.addInitScript(() => {
     for (const name of ['showPopover', 'hidePopover', 'togglePopover']) Object.defineProperty(HTMLElement.prototype, name, { configurable: true, value: undefined });
@@ -399,7 +426,8 @@ async function run([game, count, category], touch, fallback = false) {
     window.testTutorialInputs = [];
     for (const type of ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend']) document.addEventListener(type, event => {
       queueMicrotask(() => {
-        window.testTutorialInputs.push({ type, target: event.target.id || event.target.tagName, prevented: event.defaultPrevented });
+        window.testTutorialInputs.push({ type, target: event.target.id || event.target.tagName,
+          detail: event.detail, pointerType: event.pointerType, prevented: event.defaultPrevented });
         if (window.testTutorialInputs.length > 30) window.testTutorialInputs.shift();
       });
     }, true);
@@ -412,7 +440,7 @@ async function run([game, count, category], touch, fallback = false) {
   try {
     await page.goto(`${base}/games/${game}/${category ? '?category=' + category : ''}`);
     await page.locator('#tutorial-start:enabled').waitFor();
-    if (touch) {
+    if (touch && page.viewportSize().width <= 760) {
       const menu = await page.evaluate(() => {
         const box = id => {
           const { x, y, width, height, right } = document.getElementById(id).getBoundingClientRect();
@@ -582,9 +610,15 @@ async function run([game, count, category], touch, fallback = false) {
       if (game === 'quantum-signals' && !category && touch) {
         const view = SIGNAL_STEPS[index].view;
         assert.equal(await page.locator('.signals-game').getAttribute('data-signal-tutorial-view'), view,
-          label + ': the demonstration automatically reveals its relevant view');
-        assert.equal(await page.locator('#signal-scroll').isVisible(), view === 'circuit');
-        assert.equal(await page.locator('#flow-panel').isVisible(), view === 'paths');
+          label + ': the relevant view still determines the precise speech anchor');
+        assert.equal(await page.locator('#signal-scroll').isVisible(), true);
+        assert.equal(await page.locator('#flow-panel').isVisible(), true);
+        await signalsMobileScene(page, label);
+        if (index >= 9) {
+          await page.waitForTimeout(1200);
+          assert.equal(await page.locator('#tutorial-heading').innerText(), `Step ${index + 1} of ${count}`,
+            label + ': the explanation waits for a new tap after the animation');
+        }
         assert.equal(await page.locator('[data-tutorial-view]').count(), 0, 'The viewer progresses with Next without changing tutorial views manually');
       }
       if (index === 0) {
@@ -644,6 +678,7 @@ async function run([game, count, category], touch, fallback = false) {
     trace(name + ' Close cleanup passed');
     await activate(page.locator('#mode-tutorial'), touch); await activate(page.locator('#tutorial-start'), touch);
     await bubbleGeometry(page, name + ' reenter after close');
+    if (game === 'quantum-signals' && !category && touch) await activate(page.locator('#tutorial-close'), touch);
     await activate(page.locator('#mode-random'), touch); await clean(page, name + ' mode switch');
     trace(name + ' mode cleanup passed');
     await activate(page.locator('#mode-tutorial'), touch); await activate(page.locator('#tutorial-start'), touch);
@@ -670,7 +705,8 @@ try {
   const selected = requested ? games.filter(([game, , category]) =>
     requested.includes([game, category].filter(Boolean).join('-'))) : games;
   assert.ok(selected.length, 'Choose an existing tutorial configuration');
-  for (const game of selected) for (const touch of [false, true]) await run(game, touch);
+  const inputs = process.env.GAME_TUTORIAL_MOBILE_ONLY ? [true] : [false, true];
+  for (const game of selected) for (const touch of inputs) await run(game, touch);
   if (selected.some(([game]) => game === 'quantum-golf')) await run(games[0], true, true);
   assert.deepEqual(errors, [], 'No uncaught tutorial errors');
   await writeFile(resolve(output, 'report.json'), JSON.stringify(reports, null, 2) + '\n');
