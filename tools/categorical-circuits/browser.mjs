@@ -1,3 +1,5 @@
+import { gateMemoMap } from '../../src/lib/quantum-signals/gate-memo.js';
+import { assertGateMemo } from '../games/gate-memo-checks.mjs';
 // Real pointer/touch checks; campaign scores use the real validators with local records.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -413,13 +415,6 @@ async function signalMemo(page, tap, hole, profile, consult = false) {
   assert.equal(await memo.locator('#signal-memo-caption').textContent(), 'Bits from left to right: ' + wires.map(wire => 'wire ' + (wire + 1)).join(', '));
   assert.equal(await memo.locator('#signal-memo-caption').evaluate(node => node.getBoundingClientRect().width <= 1 && node.getBoundingClientRect().height <= 1), true,
     'Wire ordering is available to screen readers without a visible wire heading');
-  const diagram = memo.locator('#signal-memo-body > .signal-memo-circuit');
-  assert.equal(await diagram.count(), 1, 'One expanded reference diagram keeps every basis lane in place');
-  const bases = Array.from({ length: 2 ** wires.length }, (_, basis) => basis.toString(2).padStart(wires.length, '0'));
-  assert.deepEqual(await diagram.locator('.signal-memo-lane').evaluateAll(nodes => nodes.map(node => node.dataset.basis)), bases,
-    'The expanded map retains all constructor-control bits');
-  assert.equal(await memo.locator('#signal-memo-black, #signal-memo-white, .signal-memo-inputs').count(), 0,
-    'The reference describes a linear map without selecting an input colour');
   if (!consult) return;
   const circuit = await page.locator('#categorical-board').innerHTML(), target = await page.locator('#signal-target').innerHTML();
   await tap(memo.locator('summary'));
@@ -428,78 +423,7 @@ async function signalMemo(page, tap, hole, profile, consult = false) {
     const tab = memo.locator(`[data-memo-choice="${gate}"]`);
     await tap(tab);
     assert.equal(await tab.getAttribute('aria-selected'), 'true');
-    const wireCount = Math.max(...wires) + 1, operation = holeOperation(hole, gate);
-    const rows = bases.map(bits => {
-      const state = Array(2 ** wireCount).fill(0);
-      const input = [...bits].reduce((value, bit, index) => value | Number(bit) << (wireCount - wires[index] - 1), 0);
-      state[input] = 1;
-      if (operation) applyOperation(state, operation, wireCount);
-      return { input: bits, outputs: state.flatMap((value, output) => Math.abs(value) < 1e-9 ? [] : [{
-        bits: wires.map(wire => output >> (wireCount - wire - 1) & 1).join(''), flipsColour: value < 0,
-      }]) };
-    });
-    const expectedPaths = rows.flatMap(row => row.outputs.map(output => ({ from: row.input, to: output.bits, flipsColour: output.flipsColour })));
-    const expectedMarkers = expectedPaths.filter(path => path.flipsColour).map(({ from, to }) => ({ from, to }));
-    assert.equal(await memo.locator('#signal-memo-key').evaluate(node => node.hidden), expectedMarkers.length === 0,
-      'The colour-swap key appears only for maps with a negative coefficient');
-    if (expectedMarkers.length) {
-      assert.match(await memo.locator('#signal-memo-key').innerText(), /Swaps colour/);
-      assert.equal(await memo.locator('#signal-memo-key > svg').count(), 1);
-    }
-    for (const row of rows) {
-      await tap(diagram.locator(`[data-memo-input="${row.input}"]`));
-      const shown = await diagram.evaluate(node => {
-        const amplitudes = role => [...node.querySelectorAll(`.signal-memo-node[data-role="${role}"]`)].map(dot => ({
-          bits: dot.dataset.bits, flipsColour: dot.dataset.colourSwap === 'true', active: dot.dataset.active === 'true', y: Number(dot.getAttribute('cy')),
-          fill: dot.getAttribute('fill'), stroke: dot.getAttribute('stroke'), hasPhase: dot.hasAttribute('data-phase'),
-        }));
-        return { input: node.dataset.input, role: node.querySelector('svg.signal-memo-paths')?.getAttribute('role'),
-          lanes: [...node.querySelectorAll('.signal-memo-lane')].map(lane => ({ bits: lane.dataset.basis, y: Number(lane.getAttribute('y1')) })),
-          paths: [...node.querySelectorAll('.signal-memo-path[data-role="output"]')].map(path => ({
-            from: path.dataset.from, to: path.dataset.to, flipsColour: path.dataset.colourSwap === 'true', active: path.dataset.active === 'true',
-            stroke: path.getAttribute('stroke'), hasPhase: path.hasAttribute('data-phase'),
-            fromY: path.getPointAtLength(0).y, toY: path.getPointAtLength(path.getTotalLength()).y,
-          })),
-          inputs: amplitudes('input'), outputs: amplitudes('output'),
-          markers: [...node.querySelectorAll('svg.signal-memo-colour-swap')].map(marker => ({
-            from: marker.dataset.from, to: marker.dataset.to, active: marker.dataset.active === 'true',
-          })),
-          selected: [...node.querySelectorAll('[data-memo-input][aria-pressed="true"]')].map(button => button.dataset.memoInput),
-          graphs: node.querySelectorAll('svg.signal-memo-paths').length,
-          gates: node.querySelectorAll('.signal-memo-circuit-gate > svg').length,
-          controls: node.querySelectorAll('.signal-memo-circuit-gate > svg > circle').length };
-      });
-      assert.equal(shown.input, row.input); assert.equal(shown.role, 'img');
-      assert.equal(shown.graphs, 1); assert.equal(shown.gates, 1);
-      assert.deepEqual(shown.selected, [row.input], 'A native input control selects one independent basis case');
-      assert.deepEqual(shown.inputs.map(({ bits, active }) => ({ bits, active })),
-        bases.map(bits => ({ bits, active: bits === row.input })));
-      assert.deepEqual(shown.paths.map(({ from, to, flipsColour }) => ({ from, to, flipsColour }))
-        .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)), expectedPaths,
-        'All input-to-output maps remain visible without aggregating their amplitudes');
-      assert.deepEqual(shown.paths.filter(path => path.active).map(({ from, to, flipsColour }) => ({ from, to, flipsColour })),
-        expectedPaths.filter(path => path.from === row.input), 'Only the selected input’s map is highlighted');
-      assert.deepEqual(shown.outputs.map(({ bits, flipsColour }) => ({ bits, flipsColour })), row.outputs,
-        `${gate}: ${row.input} outputs match the simulator’s destinations and colour swaps`);
-      assert.deepEqual(shown.markers.map(({ from, to }) => ({ from, to }))
-        .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)), expectedMarkers,
-        'Exactly the negative edges carry a colour-swap symbol');
-      assert.deepEqual(shown.markers.filter(marker => marker.active).map(({ from, to }) => ({ from, to })),
-        expectedMarkers.filter(marker => marker.from === row.input), 'Only the selected input’s colour-swap symbols are highlighted');
-      assert.ok(shown.outputs.every(dot => dot.active), 'Only the selected input produces output amplitudes');
-      const lanes = new Map(shown.lanes.map(({ bits, y }) => [bits, y]));
-      for (const dot of [...shown.inputs, ...shown.outputs]) {
-        assert.equal(dot.y, lanes.get(dot.bits), 'Each amplitude stays on its fixed basis lane');
-        assert.equal(dot.fill, 'none'); assert.equal(dot.stroke, '#dde3d7'); assert.equal(dot.hasPhase, false);
-      }
-      for (const path of shown.paths) {
-        assert.equal(path.stroke, '#dde3d7'); assert.equal(path.hasPhase, false);
-        assert.ok(Math.abs(path.fromY - lanes.get(path.from)) < 0.01);
-        assert.ok(Math.abs(path.toY - lanes.get(path.to)) < 0.01, 'Each independent path arrives on its output basis lane');
-      }
-      if (profile === 'controlled' && hole.controls?.length && gate !== 'I') assert.equal(shown.controls, hole.controls.length,
-        'The inline reference gate retains the constructor controls');
-    }
+    await assertGateMemo(page, gateMemoMap({ ...hole, choices }, gate, { operation: holeOperation, apply: applyOperation }));
   }
   assert.equal(await page.locator('#categorical-board').innerHTML(), circuit, 'Reading any reference gate, including an unavailable choice, places no gates');
   assert.equal(await page.locator('#signal-target').innerHTML(), target);

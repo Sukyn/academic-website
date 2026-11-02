@@ -1,6 +1,6 @@
 import { applyGate } from './engine.js';
 import { gateIcon, gateLabel, flowPath } from './rendering.js';
-import { CIRCUIT_COLORS, svgNode } from '../games/circuit-graphics.js';
+import { svgNode } from '../games/circuit-graphics.js';
 import { PHASE_COLORS } from './state-visuals.js';
 
 const operationFor = (hole, gate) => ({ gate, wires: hole.wires });
@@ -33,60 +33,49 @@ const element = (tag, text, className) => {
   if (className) node.className = className;
   return node;
 };
-function colourSwapGlyph(attrs = {}) {
-  const svg = svgNode('svg', { class: 'signal-memo-colour-swap', viewBox: '0 0 32 22', width: 32, height: 22, 'aria-hidden': true, ...attrs });
-  svg.append(svgNode('rect', { x: .75, y: .75, width: 30.5, height: 20.5, rx: 5,
-    fill: CIRCUIT_COLORS.background, stroke: CIRCUIT_COLORS.z, 'stroke-width': 1.3 }));
-  for (const [x, fill] of [[10, PHASE_COLORS.positive], [22, PHASE_COLORS.negative]]) svg.append(svgNode('circle', {
-    cx: x, cy: 11, r: 3.2, fill, stroke: '#ffffff', 'stroke-width': 1,
-  }));
-  svg.append(svgNode('path', { d: 'M9 5H23l-3-2.5M23 5l-3 2.5M23 17H9l3-2.5M9 17l3 2.5',
-    fill: 'none', stroke: CIRCUIT_COLORS.z, 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-  return svg;
-}
-function circuitDiagram(map, basis, glyph, gateName) {
+function circuitDiagram(map, basis, phase, glyph, gateName) {
   const row = map.rows[basis], outputs = row.outputs;
   const diagram = element('div', undefined, 'signal-memo-circuit'); diagram.dataset.input = row.input;
-  const height = 84 + (map.rows.length - 1) * 44, y = basis => 56 + basis * 44;
-  const svg = svgNode('svg', { class: 'signal-memo-paths', viewBox: `0 0 280 ${height}`, role: 'img',
-    'aria-label': `Input ${row.input} through ${gateName}: ` +
-      outputs.map(output => `${output.bits}, ${output.flipsColour ? 'swap' : 'keep'} colour`).join('; ') + '. Other input mappings are faded.' });
-  const node = (bits, x, y, role, flipsColour = false) => {
-    svg.append(svgNode('circle', { class: 'signal-memo-node', cx: x, cy: y, r: 8, fill: 'none',
-      stroke: CIRCUIT_COLORS.text, 'stroke-width': 1.5, 'data-role': role, 'data-bits': bits, 'data-colour-swap': flipsColour,
-      'data-active': role === 'output' || bits === row.input }));
+  diagram.dataset.phase = String(phase); diagram.dataset.bits = String(map.wires.length);
+  const colour = value => value < 0 ? PHASE_COLORS.negative : PHASE_COLORS.positive;
+  const name = value => value < 0 ? 'white' : 'black';
+  // Large controlled maps omit unused lanes in each independent example.
+  const lanes = map.rows.length > 4 ? map.rows.filter(input => input === row || outputs.some(output => output.bits === input.input)) : map.rows;
+  const height = 84 + (lanes.length - 1) * 44, y = bits => 56 + lanes.findIndex(input => input.input === bits) * 44;
+  const svg = svgNode('svg', { class: 'signal-memo-paths', viewBox: `0 0 240 ${height}`, role: 'img',
+    'aria-label': `${name(phase)} input ${row.input} through ${gateName}: ` +
+      outputs.map(output => `${output.bits}, ${name(output.flipsColour ? -phase : phase)}`).join('; ') });
+  const node = (bits, x, role, value) => {
+    svg.append(svgNode('circle', { class: 'signal-memo-node', cx: x, cy: y(bits), r: 9,
+      fill: colour(value), stroke: '#ffffff', 'stroke-width': 1.5, 'data-role': role, 'data-bits': bits, 'data-phase': value }));
   };
-  map.rows.forEach((input, index) => {
-    svg.append(svgNode('line', { class: 'signal-memo-lane', x1: 60, x2: 220, y1: y(index), y2: y(index), 'data-basis': input.input }));
-    for (const [x, anchor] of [[44, 'end'], [236, 'start']]) {
-      const text = svgNode('text', { class: 'signal-memo-bits', x, y: y(index), 'text-anchor': anchor, 'dominant-baseline': 'middle' });
+  lanes.forEach(input => {
+    svg.append(svgNode('line', { class: 'signal-memo-lane', x1: 56, x2: 184, y1: y(input.input), y2: y(input.input), 'data-basis': input.input }));
+    for (const [x, anchor] of [[42, 'end'], [198, 'start']]) {
+      const text = svgNode('text', { class: 'signal-memo-bits', x, y: y(input.input), 'text-anchor': anchor, 'dominant-baseline': 'middle' });
       text.textContent = input.input; svg.append(text);
     }
   });
-  // Reference columns are separate inputs. Only one is lit, so H does not appear to add them together.
-  for (const input of [...map.rows.filter(input => input !== row), row]) {
-    const fromY = y(Number.parseInt(input.input, 2));
-    for (const output of input.outputs) {
-      const toY = y(Number.parseInt(output.bits, 2));
-      svg.append(svgNode('path', {
-        class: 'signal-memo-path', d: flowPath(60, fromY, 220, toY),
-        fill: 'none', stroke: CIRCUIT_COLORS.text, 'stroke-width': 3, 'stroke-linecap': 'round', 'data-role': 'output',
-        'data-from': input.input, 'data-to': output.bits, 'data-colour-swap': output.flipsColour, 'data-active': input === row,
-      }));
-      if (output.flipsColour) svg.append(colourSwapGlyph({ x: 124, y: (fromY + toY) / 2 - 11,
-        'data-from': input.input, 'data-to': output.bits, 'data-active': input === row }));
+  for (const output of outputs) {
+    const outputPhase = output.flipsColour ? -phase : phase;
+    let stroke = colour(phase);
+    if (output.flipsColour) {
+      const id = `memo-${basis}-${phase}-${output.bits}`;
+      const gradient = svgNode('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: 56, x2: 184, y1: 0, y2: 0 });
+      for (const [offset, value] of [[0, phase], [.5, phase], [.5, outputPhase], [1, outputPhase]]) {
+        gradient.append(svgNode('stop', { offset, 'stop-color': colour(value) }));
+      }
+      const defs = svgNode('defs'); defs.append(gradient); svg.append(defs); stroke = `url(#${id})`;
     }
+    const path = { d: flowPath(56, y(row.input), 184, y(output.bits)), fill: 'none', 'stroke-linecap': 'round' };
+    svg.append(svgNode('path', { ...path, stroke: '#8e9b93', 'stroke-width': 5, class: 'signal-memo-path-outline' }));
+    svg.append(svgNode('path', { ...path, class: 'signal-memo-path', stroke, 'stroke-width': 3,
+      'data-from': row.input, 'data-to': output.bits, 'data-phase': outputPhase }));
   }
-  map.rows.forEach((input, index) => node(input.input, 60, y(index), 'input'));
-  outputs.forEach(output => node(output.bits, 220, y(Number.parseInt(output.bits, 2)), 'output', output.flipsColour));
+  node(row.input, 56, 'input', phase);
+  outputs.forEach(output => node(output.bits, 184, 'output', output.flipsColour ? -phase : phase));
   const gate = element('span', undefined, 'signal-memo-circuit-gate'); gate.setAttribute('aria-hidden', 'true'); gate.append(glyph);
   diagram.append(svg, gate);
-  map.rows.forEach((input, index) => {
-    const button = element('button', undefined, 'signal-memo-input-lane'); button.type = 'button'; button.dataset.memoInput = input.input;
-    button.setAttribute('aria-label', `Use input ${input.input}`); button.setAttribute('aria-pressed', String(index === basis));
-    button.style.top = y(index) / height * 100 + '%'; button.style.height = 44 / height * 100 + '%';
-    diagram.append(button);
-  });
   return diagram;
 }
 
@@ -94,29 +83,20 @@ function circuitDiagram(map, basis, glyph, gateName) {
 export function createGateMemo({ get, choices = gateMemoChoices, operation = operationFor, apply: evolve = apply, icon = iconFor, label = labelFor }) {
   const panel = get('signal-memo'), tabs = get('signal-memo-tabs'), body = get('signal-memo-body');
   const tabpanel = get('signal-memo-map'), caption = get('signal-memo-caption');
-  const key = get('signal-memo-key'); key.append(colourSwapGlyph(), element('span', 'Swaps colour'));
   const gates = new Map();
-  let context, selected, currentHole, basis = 0;
+  let context, selected, currentHole;
   function select(choice) {
     const entry = gates.get(choice); if (!entry) return;
     const { map, button } = entry;
-    const focusedInput = document.activeElement?.closest('[data-memo-input]');
-    basis = Math.min(basis, map.rows.length - 1);
     selected = choice;
     for (const [gate, { button }] of gates) {
       button.setAttribute('aria-selected', String(gate === choice)); button.tabIndex = gate === choice ? 0 : -1;
     }
     tabpanel.setAttribute('aria-labelledby', button.id);
     caption.textContent = 'Bits from left to right: ' + map.wires.map(wire => 'wire ' + (wire + 1)).join(', ');
-    key.hidden = !map.rows.some(row => row.outputs.some(output => output.flipsColour));
-    body.replaceChildren(circuitDiagram(map, basis, icon(map.operation, choice, currentHole), label(map.operation, choice, currentHole)));
-    if (focusedInput) body.querySelector(`[data-memo-input="${map.rows[basis].input}"]`)?.focus({ preventScroll: true });
+    body.replaceChildren(...map.rows.flatMap((_, basis) => [1, -1].map(phase =>
+      circuitDiagram(map, basis, phase, icon(map.operation, choice, currentHole), label(map.operation, choice, currentHole)))));
   }
-  body.addEventListener('click', event => {
-    const input = event.target.closest('[data-memo-input]')?.dataset.memoInput, next = Number.parseInt(input, 2);
-    if (!input || next === basis || gates.get(selected)?.map.rows[next]?.input !== input) return;
-    basis = next; select(selected);
-  });
   tabs.addEventListener('click', event => {
     const button = event.target.closest('[data-memo-choice]');
     if (button && gates.get(button.dataset.memoChoice)?.button === button) select(button.dataset.memoChoice);

@@ -8,7 +8,7 @@ import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
 import { games as navigationGames } from '../../src/data/games.js';
 import { dailyPuzzle as reductionDaily } from '../circuit-reduction/witnesses.js';
 import { layoutMoves } from '../circuit-reduction/layout-moves.js';
-import { RULES, applyMove as reduceMove } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, ruleButtonId, applyMove as reduceMove } from '../../src/lib/circuit-reduction/engine.js';
 import { dailyPuzzle as golfDaily } from '../../src/lib/quantum-golf/daily.js';
 import { solveShortest } from '../../src/lib/quantum-golf/solver.js';
 import { dailyPuzzle as signalsDaily } from '../../src/lib/quantum-signals/puzzles.js';
@@ -70,7 +70,7 @@ async function reductionMove(frame, activate, move) {
       const cell = frame.locator(`[data-cell="${move.row + row}:${move.column + column}"]`);
       if (await cell.getAttribute('aria-pressed') !== 'true') await activate(cell);
     }
-    await activate(frame.locator(`[data-rule="${move.rule}"]`));
+    await activate(frame.locator(`[data-rule="${ruleButtonId(move.rule)}"]`));
   }
 }
 

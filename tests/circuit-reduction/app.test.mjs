@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { RULES, applyMove, cloneCircuit, compactCircuit, isSolved, moveCost, sequenceCost } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, RULE_OPTIONS, ruleButtonId, applyMove, cloneCircuit, compactCircuit, isSolved, moveCost, sequenceCost } from '../../src/lib/circuit-reduction/engine.js';
 import { LEVELS, dailyPuzzle } from '../../tools/circuit-reduction/witnesses.js';
 import { layoutMoves } from '../../tools/circuit-reduction/layout-moves.js';
 import { DAILY_START } from '../../src/lib/circuit-reduction/puzzles.js';
@@ -25,8 +25,8 @@ async function gameMarkup() {
     .replace('<slot name="rules" />', dialogs[1].match(/<Fragment slot="rules">([\s\S]*?)<\/Fragment>/)?.[1] ?? '')
     .replace('<slot name="result-actions" />', ''));
   html = await expandGameControls(html, component);
-  html = html.replace(/\{RULES\.map\(rule => <button[^\n]+/g,
-    RULES.map(rule => `<button type="button" data-rule="${rule.id}" aria-label="${rule.title}" disabled>${rule.title}</button>`).join(''));
+  html = html.replace(/\{RULE_OPTIONS\.map\(rule => <button[^\n]+/g,
+    RULE_OPTIONS.map(rule => `<button type="button" data-rule="${rule.id}" aria-label="${rule.title}" disabled>${rule.title}</button>`).join(''));
   return html.replace(/^---[\s\S]*?---/, '').replace(/<(?:style|script)\b[\s\S]*?<\/(?:style|script)>/g, '');
 }
 
@@ -133,7 +133,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   }
   const get = id => { assert.ok(elements.has(id), `Real game markup contains #${id}`); return elements.get(id); };
   const rules = documentMock.querySelectorAll('[data-rule]');
-  assert.equal(rules.length, RULES.length, 'All printed and Unity rules are playable');
+  assert.equal(rules.length, RULE_OPTIONS.length, 'All printed and Unity rules are playable');
   documentMock.getElementById = get;
   documentMock.createElement = tag => new Element(tag.toUpperCase());
   documentMock.createElementNS = (_namespace, tag) => new Element(tag.toUpperCase());
@@ -255,7 +255,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
         assert.ok(cell, 'The rule window is on the visible board');
         if (cell.getAttribute('aria-pressed') !== 'true') await cell.click();
       }
-      const button = rules.find(button => button.dataset.rule === move.rule);
+      const button = rules.find(button => button.dataset.rule === ruleButtonId(move.rule));
       assert.equal(button.disabled, false, `Selected window enables ${move.rule}`); await button.click();
     }
   }
@@ -652,14 +652,34 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
     await cellAt(row, 0).click();
     await cellAt(row, 2).dispatch('click', { shiftKey: true });
     assert.equal(selected().length, 4, `${rule}: the other wire contributes only its linked endpoint`);
-    const button = rules.find(button => button.dataset.rule === rule);
+    const button = rules.find(button => button.dataset.rule === ruleButtonId(rule));
     assert.equal(button.disabled, false, `${rule}: the complete gate does not enlarge the rule window`);
     const unrelated = cellAt(1 - row, 0);
-    await unrelated.click(); assert.equal(button.disabled, true, 'An explicitly selected unrelated cell still prevents the rewrite');
+    await unrelated.click(); assert.equal(button.disabled, false, 'Empty context is inferred without preventing the rewrite');
     await unrelated.click(); assert.equal(button.disabled, false);
     await button.click();
     assert.deepEqual(boardCircuit(), applyMove(original, { rule, row, column: 0 }));
     assert.equal(moveCount(), 1);
+  }
+
+  // One phase tile handles either CZ endpoint and inserts its own trailing gap.
+  assert.equal(rules.some(button => button.dataset.rule === 'phase-down'), false);
+  for (const row of [0, 1]) {
+    const original = row ? [['.', 'ZU', '.', 'ZU'], ['Z', 'ZD', 'Z', 'ZD']] : [['Z', 'ZU', 'Z', 'ZU'], ['.', 'ZD', '.', 'ZD']];
+    await importCircuit(original);
+    await cellAt(row, 0).click(); await cellAt(row, 1).click();
+    const button = rules.find(button => button.dataset.rule === 'phase-up');
+    assert.equal(button.disabled, false, 'CZ and Z need no selected empty cells');
+    await button.click();
+    assert.equal(moveCount(), 1, 'Automatic padding is free');
+    assert.ok(boardCircuit()[0].length > original[0].length);
+    const expected = boardCircuit();
+    await click('undo');
+    assert.deepEqual(compactCircuit(boardCircuit()), compactCircuit(original), 'Undo restores the original gate order');
+    await click('undo'); assert.deepEqual(boardCircuit(), original, 'The free padding remains reversible');
+    await cellAt(row, 0).click(); await cellAt(row, 1).click();
+    await documentMock.dispatch('keydown', { key: 'Enter', target: cellAt(row, 1) });
+    assert.deepEqual(boardCircuit(), expected, 'Keyboard application shares automatic spacing');
   }
 
   // Reverse basis changes need only the gate, with surrounding identities inferred.
@@ -885,7 +905,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   // Every PDF lesson is playable using only its unlocked rules and public layout controls.
   for (const lesson of LEVELS) {
     await chooseLevel(lesson.id);
-    for (const button of rules) assert.equal(button.hidden, !lesson.allowedRules.includes(button.dataset.rule), `Rule availability in lesson ${lesson.id}`);
+    for (const button of rules) assert.equal(button.hidden, !lesson.allowedRules.map(ruleButtonId).includes(button.dataset.rule), `Rule availability in lesson ${lesson.id}`);
     await finish(lesson);
     assert.equal(moveCount(), sequenceCost(lesson.solution), `Witness score in lesson ${lesson.id}`);
   }

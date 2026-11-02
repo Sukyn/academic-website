@@ -14,7 +14,7 @@ import CircuitGame from '../../components/games/CircuitGame.astro';
 import CategoricalCircuitGame from '../../components/games/CategoricalCircuitGame.astro';
 import { LEVELS } from '../../lib/circuit-reduction/puzzles.js';
 import { TUTORIAL_INTRO } from '../../lib/circuit-reduction/tutorial.js';
-import { RULES } from '../../lib/circuit-reduction/engine.js';
+import { RULE_OPTIONS } from '../../lib/circuit-reduction/engine.js';
 ---
 
 <BaseLayout title="Circuit simplification" description="Simplify quantum circuits to the identity using reversible rewrite rules. Play levels, custom circuits and a daily puzzle.">
@@ -40,7 +40,7 @@ import { RULES } from '../../lib/circuit-reduction/engine.js';
           <p class="selection-note" id="selection-note" role="status" aria-live="polite"></p>
           <div class="circuit-actions">
             <div class="rule-palette" role="group" aria-label="Circuit rules">
-              {RULES.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled></button>)}
+              {RULE_OPTIONS.map(rule => <button class="button ghost rule-button" type="button" data-rule={rule.id} aria-label={rule.title} disabled></button>)}
             </div>
             <GameRoundControls>
               <button class="button ghost" id="compact-identities" type="button">Tidy</button>

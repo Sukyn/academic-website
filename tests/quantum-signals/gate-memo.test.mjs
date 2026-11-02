@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGateMemo, gateMemoChoices, gateMemoMap } from '../../src/lib/quantum-signals/gate-memo.js';
+import { createGateMemo, gateMemoMap } from '../../src/lib/quantum-signals/gate-memo.js';
 import { applyGate } from '../../src/lib/quantum-signals/engine.js';
 import { applyOperation, holeOperation } from '../../src/lib/categorical-circuits/engine.js';
 
@@ -75,133 +75,98 @@ function dom(context) {
     focus() { this.focused = true; document.activeElement = this; }
   }
   globalThis.document = { createElement: tag => new Node(tag), createElementNS: (_, tag) => new Node(tag) };
-  const nodes = new Map(['signal-memo', 'signal-memo-tabs', 'signal-memo-body', 'signal-memo-map', 'signal-memo-caption', 'signal-memo-key'].map(id => [id, new Node('div')]));
+  const nodes = new Map(['signal-memo', 'signal-memo-tabs', 'signal-memo-body', 'signal-memo-map', 'signal-memo-caption'].map(id => [id, new Node('div')]));
   return { get: id => nodes.get(id), icon: () => new Node('svg') };
 }
 
-test('Visual memo tabs retain context across network updates and support keyboard navigation', context => {
+
+const all = element => element.children.flatMap(child => [child, ...all(child)]);
+const dots = (diagram, role) => all(diagram).filter(node => node.tag === 'circle' && node.attrs['data-role'] === role);
+const lanes = diagram => all(diagram).filter(node => node.tag === 'line');
+const example = (get, input, phase) => get('signal-memo-body').children.find(node => node.dataset.input === input && node.dataset.phase === String(phase));
+
+test('Memo retains gate/context caching and keyboard tabs while showing every input in both colours', context => {
   const { get, icon } = dom(context); let evolved = 0;
   const memo = createGateMemo({ get, icon, apply(state, op, wires) { evolved++; applyGate(state, op.gate, op.wires, wires); } });
-  const hole = { id: 'first', wires: [2], choices: ['I', 'H', 'X'] };
+  const hole = { wires: [2], choices: ['I', 'H', 'X'] };
   memo.update(hole);
   const tabs = get('signal-memo-tabs'), diagrams = get('signal-memo-body').children, count = evolved;
-  assert.equal(count, 8, 'All four one-wire gates are simulated once per basis; white inputs follow by linearity.');
+  assert.equal(count, 8, 'Simulate each positive basis once per gate; derive white cases by linearity.');
   assert.deepEqual(tabs.children.map(button => button.dataset.memoChoice), ['I', 'H', 'X', 'Z']);
   assert.equal(get('signal-memo').open, false); assert.equal(get('signal-memo').hidden, false);
   assert.equal(get('signal-memo-caption').textContent, 'Bits from left to right: wire 3');
   assert.equal(tabs.children[1].attrs['aria-selected'], 'true');
-  assert.equal(diagrams.length, 1); assert.equal(diagramLanes(diagrams[0]).length, 2);
-  assert.doesNotMatch(get('signal-memo-body').textContent, /0\.707|Hadamard/);
+  assert.deepEqual(diagrams.map(node => [node.dataset.input, node.dataset.phase]), [['0', '1'], ['0', '-1'], ['1', '1'], ['1', '-1']]);
+  assert.ok(diagrams.every(diagram => lanes(diagram).length === 2));
+  assert.equal(get('signal-memo-body').handlers.click, undefined, 'No hidden lane-selection interaction');
+  assert.equal(all(get('signal-memo-body')).filter(node => node.tag === 'button').length, 0);
   const buttons = tabs.children;
-  memo.update({ ...hole, id: 'another-hole', wires: [...hole.wires], choices: ['I', 'Z'] });
+  memo.update({ ...hole, wires: [...hole.wires], choices: ['I', 'Z'] });
   assert.equal(tabs.children, buttons); assert.equal(get('signal-memo-body').children, diagrams); assert.equal(evolved, count);
   let prevented = false;
   tabs.handlers.keydown({ target: buttons[1], key: 'ArrowRight', preventDefault() { prevented = true; } });
   assert.equal(prevented, true); assert.equal(buttons[2].focused, true); assert.equal(buttons[2].attrs['aria-selected'], 'true');
-  assert.equal(diagramNodes(get('signal-memo-body').children[0], 'output')[0].attrs['data-bits'], '1');
+  tabs.handlers.keydown({ target: buttons[2], key: 'End', preventDefault() {} });
+  assert.equal(buttons[3].focused, true); assert.equal(buttons[3].tabIndex, 0);
   get('signal-memo').open = true; memo.update(null);
   assert.equal(get('signal-memo').hidden, true); assert.equal(get('signal-memo').open, true);
   memo.update(hole); assert.equal(evolved, count);
   memo.update({ ...hole, wires: [0] });
-  assert.equal(get('signal-memo-caption').textContent, 'Bits from left to right: wire 1'); assert.notEqual(tabs.children, buttons);
-  assert.equal(tabs.children[2].attrs['aria-selected'], 'true', 'A chosen gate remains selected in the next compatible context.');
+  assert.equal(get('signal-memo-caption').textContent, 'Bits from left to right: wire 1');
+  assert.notEqual(tabs.children, buttons); assert.equal(tabs.children[3].attrs['aria-selected'], 'true');
 });
 
-test('A restricted paired hole exposes every two-wire reference without changing its playable choices', context => {
-  const { get, icon } = dom(context);
-  const memo = createGateMemo({ get, icon });
+test('A paired hole exposes all reference gates and eight static examples without changing its choices', context => {
+  const { get, icon } = dom(context), memo = createGateMemo({ get, icon });
   const hole = { wires: [0, 2], choices: ['I', 'CX'] }, saved = structuredClone(hole);
   memo.update(hole);
   assert.deepEqual(get('signal-memo-tabs').children.map(button => button.dataset.memoChoice), ['I', 'CX', 'XC', 'CZ']);
-  assert.equal(diagramLanes(get('signal-memo-body').children[0]).length, 4);
+  assert.equal(get('signal-memo-body').children.length, 8);
+  assert.ok(get('signal-memo-body').children.every(diagram => lanes(diagram).length === 4));
   assert.deepEqual(hole, saved);
-  memo.update({ wires: [2], choices: ['I', 'X'] });
-  assert.deepEqual(get('signal-memo-tabs').children.map(button => button.dataset.memoChoice), gateMemoChoices({ wires: [2] }));
-  assert.equal(diagramLanes(get('signal-memo-body').children[0]).length, 2);
 });
 
-test('Full one-target references retain the selected hole’s fixed controls', context => {
-  const { get, icon } = dom(context);
-  const memo = createGateMemo({ get, icon, operation: holeOperation, apply: applyOperation });
-  const hole = { wires: [3], controls: [0, 2], choices: ['I', 'H'] }, saved = structuredClone(hole);
+test('Static controlled maps retain every control bit and show active and inactive cases together', context => {
+  const { get, icon } = dom(context), memo = createGateMemo({ get, icon, operation: holeOperation, apply: applyOperation });
+  const hole = { wires: [3], controls: [0, 2], choices: ['I', 'X'] }, saved = structuredClone(hole);
   memo.update(hole);
-  const tabs = get('signal-memo-tabs');
-  assert.deepEqual(tabs.children.map(button => button.dataset.memoChoice), ['I', 'H', 'X', 'Z']);
-  tabs.handlers.click({ target: tabs.children[2] });
-  assert.equal(diagramLanes(get('signal-memo-body').children[0]).length, 8, 'Both controls and the target are included in the reference map');
+  assert.equal(get('signal-memo-body').children.length, 16);
   assert.equal(get('signal-memo-caption').textContent, 'Bits from left to right: wire 1, wire 3, wire 4');
-  assert.equal(diagramNodes(get('signal-memo-body').children[0], 'output')[0].attrs['data-bits'], '000', 'An inactive control leaves the input unchanged');
-  get('signal-memo-body').handlers.click({ target: inputButton(get('signal-memo-body').children[0], '110') });
-  assert.equal(diagramNodes(get('signal-memo-body').children[0], 'output')[0].attrs['data-bits'], '111', 'Both active controls allow X to flip the target');
+  for (const phase of [1, -1]) {
+    assert.equal(dots(example(get, '000', phase), 'output')[0].attrs['data-bits'], '000');
+    assert.equal(dots(example(get, '110', phase), 'output')[0].attrs['data-bits'], '111');
+  }
+  assert.ok(get('signal-memo-body').children.every(diagram => lanes(diagram).length <= 2), 'Unused controlled-basis lanes do not make each example tall');
   assert.deepEqual(hole, saved);
 });
 
-function diagramNodes(diagram, role) {
-  return diagram.children[0].children.filter(node => node.tag === 'circle' && node.attrs['data-role'] === role);
-}
-function diagramLanes(diagram) { return diagram.children[0].children.filter(node => node.tag === 'line'); }
-function inputButton(diagram, bits) { return diagram.children.find(node => node.dataset.memoInput === bits); }
-
-test('Changing the selected input keeps keyboard focus, clamping its lane when the next hole has fewer wires', context => {
+test('Hadamard shows all four input cases, including the white 1-to-1 branch turning black', context => {
   const { get, icon } = dom(context), memo = createGateMemo({ get, icon });
-  const body = get('signal-memo-body');
-  memo.update({ wires: [0, 1], choices: ['I', 'CX'] });
-  const before = inputButton(body.children[0], '11'); before.focus();
-  body.handlers.click({ target: before });
-  const selected = inputButton(body.children[0], '11');
-  assert.notEqual(selected, before); assert.equal(document.activeElement, selected);
-  memo.update({ wires: [0], choices: ['I', 'X'] });
-  assert.equal(document.activeElement, inputButton(body.children[0], '1'));
-  assert.equal(document.activeElement.attrs['aria-pressed'], 'true');
-  const tabs = get('signal-memo-tabs');
-  tabs.handlers.keydown({ target: tabs.children[2], key: 'End', preventDefault() {} });
-  assert.equal(document.activeElement, tabs.children[3]);
-  assert.equal(tabs.children[3].tabIndex, 0);
-});
-
-test('The neutral memo marks colour swaps without assuming an input colour or recomputing gate maps', context => {
-  const { get, icon } = dom(context); let evolved = 0;
-  const memo = createGateMemo({ get, icon, apply(state, op, wires) { evolved++; applyGate(state, op.gate, op.wires, wires); } });
   memo.update({ wires: [0], choices: ['I', 'H'] });
-  const count = evolved;
-  const check = input => {
-      const diagram = get('signal-memo-body').children[0];
-      assert.equal(diagram.dataset.input, String(input));
-      assert.equal(diagram.children[0].attrs.role, 'img');
-      assert.ok([...diagramNodes(diagram, 'input'), ...diagramNodes(diagram, 'output')].every(node => node.attrs.fill === 'none' && !Object.hasOwn(node.attrs, 'data-phase')));
-      const outputs = diagramNodes(diagram, 'output');
-      assert.deepEqual(outputs.map(node => node.attrs['data-bits']), ['0', '1']);
-      assert.deepEqual(outputs.map(node => node.attrs['data-colour-swap']), ['false', String(input === 1)]);
-      assert.ok(diagram.children[0].children.filter(node => node.tag === 'path').every(node => node.attrs.stroke === '#dde3d7'));
-      const markers = diagram.children[0].children.filter(node => node.attrs.class === 'signal-memo-colour-swap');
-      assert.deepEqual(markers.map(node => [node.attrs['data-from'], node.attrs['data-to'], node.attrs['data-active']]), [['1', '1', String(input === 1)]]);
-  };
-  check(0); assert.equal(get('signal-memo-key').hidden, false);
-  get('signal-memo-body').handlers.click({ target: inputButton(get('signal-memo-body').children[0], '1') }); check(1);
-  const diagrams = get('signal-memo-body').children;
-  get('signal-memo-body').handlers.click({ target: inputButton(diagrams[0], '1') });
-  assert.equal(get('signal-memo-body').children, diagrams, 'Selecting the current input does not redraw');
-  const tabs = get('signal-memo-tabs'); tabs.handlers.click({ target: tabs.children[2] });
-  assert.equal(get('signal-memo-key').hidden, true, 'NOT preserves colour and needs no colour-swap key');
-  assert.equal(evolved, count, 'Changing the input or reference gate uses the existing linear maps');
+  for (const input of ['0', '1']) for (const phase of [1, -1]) {
+    const diagram = example(get, input, phase), outputs = dots(diagram, 'output');
+    assert.deepEqual(outputs.map(dot => dot.attrs['data-bits']), ['0', '1']);
+    assert.deepEqual(outputs.map(dot => Number(dot.attrs['data-phase'])), [phase, input === '1' ? -phase : phase]);
+    for (const dot of [...dots(diagram, 'input'), ...outputs]) {
+      assert.equal(dot.attrs.fill, Number(dot.attrs['data-phase']) < 0 ? '#ffffff' : '#000000');
+      assert.equal(dot.attrs.stroke, '#ffffff');
+    }
+    const gradients = all(diagram).filter(node => node.tag === 'linearGradient');
+    assert.equal(gradients.length, input === '1' ? 1 : 0);
+    if (gradients.length) assert.deepEqual(gradients[0].children.map(stop => stop.attrs['stop-color']), phase > 0 ?
+      ['#000000', '#000000', '#ffffff', '#ffffff'] : ['#ffffff', '#ffffff', '#000000', '#000000']);
+    assert.equal(all(diagram).filter(node => node.attrs.class === 'signal-memo-colour-swap' || node.attrs['data-active']).length, 0);
+  }
 });
 
-test('NOT crosses the fixed 0 and 1 lanes, highlighting one input without combining reference cases', context => {
+test('NOT shows both crossed mappings for each colour without combining the separate input cases', context => {
   const { get, icon } = dom(context), memo = createGateMemo({ get, icon });
   memo.update({ wires: [0], choices: ['I', 'X'] });
-  const diagram = get('signal-memo-body').children[0];
-  const contents = get('signal-memo-body').children;
-  get('signal-memo-body').handlers.click({ target: diagram.children[0] });
-  assert.equal(get('signal-memo-body').children, contents, 'Clicking a path or label outside the input controls does nothing');
-  assert.deepEqual(diagramLanes(diagram).map(node => [node.attrs['data-basis'], node.attrs.y1, node.attrs.y2]), [['0', '56', '56'], ['1', '100', '100']]);
-  const paths = diagram.children[0].children.filter(node => node.tag === 'path');
-  assert.deepEqual(paths.map(node => [node.attrs['data-from'], node.attrs['data-to']]).sort(), [['0', '1'], ['1', '0']]);
-  assert.equal(paths.find(node => node.attrs['data-from'] === '0').attrs.d, 'M60,56 C140,56 140,100 220,100');
-  assert.equal(paths.find(node => node.attrs['data-from'] === '1').attrs.d, 'M60,100 C140,100 140,56 220,56');
-  assert.equal(diagramNodes(diagram, 'output')[0].attrs.cy, '100');
-  get('signal-memo-body').handlers.click({ target: inputButton(diagram, '1') });
-  const selected = get('signal-memo-body').children[0];
-  assert.equal(selected.dataset.input, '1');
-  assert.equal(diagramNodes(selected, 'output')[0].attrs.cy, '56');
-  assert.equal(inputButton(selected, '1').attrs['aria-pressed'], 'true');
+  for (const input of ['0', '1']) for (const phase of [1, -1]) {
+    const diagram = example(get, input, phase), paths = all(diagram).filter(node => node.attrs.class === 'signal-memo-path');
+    assert.equal(paths.length, 1);
+    assert.equal(paths[0].attrs['data-from'], input); assert.equal(paths[0].attrs['data-to'], input === '0' ? '1' : '0');
+    assert.equal(Number(paths[0].attrs['data-phase']), phase);
+    assert.deepEqual(lanes(diagram).map(node => [node.attrs['data-basis'], node.attrs.y1, node.attrs.y2]), [['0', '56', '56'], ['1', '100', '100']]);
+  }
 });

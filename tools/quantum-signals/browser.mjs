@@ -1,3 +1,5 @@
+import { gateMemoMap } from '../../src/lib/quantum-signals/gate-memo.js';
+import { assertGateMemo } from '../games/gate-memo-checks.mjs';
 // Real mouse/touch playthroughs against an Astro preview. Daily and completion
 // requests use a local fixture, so this check never writes production records.
 import assert from 'node:assert/strict';
@@ -11,7 +13,6 @@ import { gateLabel } from '../../src/lib/quantum-signals/rendering.js';
 import { phaseColor, phasePathColor, PHASE_COLORS, GOAL_COLOR, GOAL_RADIUS, CANCELLATION_WALL } from '../../src/lib/quantum-signals/state-visuals.js';
 import { TUTORIAL_PUZZLES, TUTORIAL_STEPS } from '../../src/lib/quantum-signals/tutorial.js';
 import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
-import { CIRCUIT_COLORS } from '../../src/lib/games/circuit-graphics.js';
 import { advanceTutorial } from '../games/tutorial-input.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
@@ -1325,122 +1326,27 @@ async function gateMemo(page, puzzle) {
   assert.equal(await page.locator('#signal-memo').isVisible(), true);
   await openDetails(page, '#signal-memo');
   const history = await page.locator('#sequence').innerHTML(), target = await targetMarkers(page);
-  const rgb = hex => 'rgb(' + [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)).join(', ') + ')';
-  assert.equal(await page.locator('#signal-memo-black, #signal-memo-white').count(),0,'The memo describes colour changes without separate input-colour switches');
   for (const hole of getHoles(puzzle)) {
     await activate(page, page.locator(`[data-hole="${hole.id}"]`));
     const choices = hole.wires.length === 1 ? ['I', 'H', 'X', 'Z'] : ['I', 'CX', 'XC', 'CZ'];
     assert.deepEqual(await page.locator('#signal-memo-tabs [data-memo-choice]').evaluateAll(nodes => nodes.map(node => node.dataset.memoChoice)), choices);
-    const wires = [...hole.wires].sort((a,b)=>a-b), bits = value => value.toString(2).padStart(wires.length,'0');
     for (const gate of choices) {
       await activate(page, page.locator(`#signal-memo-tabs [data-memo-choice="${gate}"]`));
-      assert.equal(await page.locator(`#signal-memo-tabs [data-memo-choice="${gate}"]`).getAttribute('aria-selected'),'true');
-      const expectedOutputs = basis => {
-        if (gate === 'H') return [{bits:'0',flipsColour:false},{bits:'1',flipsColour:Boolean(basis)}];
-        let output=basis,flipsColour=false;
-        const mask=wire=>1<<(wires.length-1-wires.indexOf(wire));
-        if (gate==='X') output^=mask(hole.wires[0]);
-        if (gate==='Z' && (basis&mask(hole.wires[0]))) flipsColour=true;
-        if ((gate==='CX'||gate==='XC') && (basis&mask(hole.wires[gate==='XC'?1:0]))) output^=mask(hole.wires[gate==='XC'?0:1]);
-        if (gate==='CZ' && hole.wires.every(wire=>basis&mask(wire))) flipsColour=true;
-        return [{bits:bits(output),flipsColour}];
-      };
-      const circuit = page.locator('#signal-memo-body > .signal-memo-circuit');
-      assert.equal(await circuit.count(),1,'The memo uses one expanded circuit with fixed basis lanes');
-      const read = () => circuit.evaluate(row => {
-        const paths = [...row.querySelectorAll('.signal-memo-path')].map(path => {
-          const start = path.getPointAtLength(0), end = path.getPointAtLength(path.getTotalLength());
-          return { role: path.dataset.role, from: path.dataset.from, to: path.dataset.to,
-            flipsColour: path.dataset.colourSwap === 'true', active: path.dataset.active,
-            stroke: getComputedStyle(path).stroke, startX: start.x, endX: end.x, startY: start.y, endY: end.y };
-        });
-        return {
-          input: row.dataset.input, label: row.querySelector('.signal-memo-paths').getAttribute('aria-label'),
-          gates: row.querySelector('.signal-memo-circuit-gate').children.length,
-          lanes: [...row.querySelectorAll('.signal-memo-lane')].map(lane => ({
-            basis: lane.dataset.basis, fromY: Number(lane.getAttribute('y1')), toY: Number(lane.getAttribute('y2')),
-          })),
-          buttons: [...row.querySelectorAll('[data-memo-input]')].map(button => ({ bits: button.dataset.memoInput, pressed: button.getAttribute('aria-pressed') })),
-          nodes: [...row.querySelectorAll('.signal-memo-node')].map(node => ({
-            role: node.dataset.role, bits: node.dataset.bits, flipsColour: node.dataset.colourSwap === 'true', active: node.dataset.active,
-            y: Number(node.getAttribute('cy')), fill: getComputedStyle(node).fill, outline: getComputedStyle(node).stroke,
-          })), paths,
-          markers: [...row.querySelectorAll('.signal-memo-colour-swap')].map(marker => ({
-            from: marker.dataset.from, to: marker.dataset.to, active: marker.dataset.active,
-            x: Number(marker.getAttribute('x')), y: Number(marker.getAttribute('y')),
-            width: Number(marker.getAttribute('width')), height: Number(marker.getAttribute('height')), glyph: marker.innerHTML,
-          })),
-        };
-      });
-      const drawing = await read(), count = 2**wires.length;
-      assert.ok(drawing.label?.length > 0, 'The circuit has an accessible explanation');
-      assert.equal(drawing.gates,1,'The reference contains the actual gate icon once');
-      assert.equal(drawing.lanes.length,count);
-      assert.equal(new Set(drawing.lanes.map(lane => lane.basis)).size,count);
-      assert.ok(drawing.lanes.every(lane => lane.fromY === lane.toY), 'Input and output share the same basis lanes');
-      const expectedPaths = Array.from({length:count}, (_, basis) => expectedOutputs(basis).map(output => ({from:bits(basis),to:output.bits,flipsColour:output.flipsColour}))).flat();
-      const pathOrder = (a,b) => (a.from + ':' + a.to).localeCompare(b.from + ':' + b.to);
-      assert.deepEqual(drawing.paths.filter(path => path.role === 'output').map(({from,to,flipsColour})=>({from,to,flipsColour})).sort(pathOrder),
-        expectedPaths.sort(pathOrder),'Every basis mapping is present, including inactive mappings');
-      const negativePaths = expectedPaths.filter(path => path.flipsColour).map(({from,to})=>({from,to})).sort(pathOrder);
-      assert.deepEqual(drawing.markers.map(({from,to})=>({from,to})).sort(pathOrder),negativePaths,'Only colour-changing paths carry the black/white swap marker');
-      assert.equal(await page.locator('#signal-memo-key').isVisible(),negativePaths.length > 0);
-      if (negativePaths.length) {
-        const key = page.locator('#signal-memo-key .signal-memo-colour-swap');
-        assert.equal(await key.count(),1);
-        assert.equal(await key.getAttribute('data-from'),null,'The legend marker is not a circuit route');
-        assert.equal(await key.getAttribute('data-to'),null);
-        assert.ok(drawing.markers.every(marker => marker.glyph === drawing.markers[0].glyph));
-        assert.equal(await key.innerHTML(),drawing.markers[0].glyph,'The legend uses the same marker as the paths');
-      }
-      assert.equal(await circuit.locator('.signal-memo-node[data-phase], .signal-memo-path[data-phase]').count(),0);
-      for (const path of drawing.paths.filter(path => path.role === 'output')) {
-        assert.ok(Math.abs(path.startY - drawing.lanes[parseInt(path.from,2)].fromY) < 0.1);
-        assert.ok(Math.abs(path.endY - drawing.lanes[parseInt(path.to,2)].toY) < 0.1,
-          'Mappings terminate on their output basis lane instead of relabelling an input lane');
-      }
-      for (const marker of drawing.markers) {
-        const path = drawing.paths.find(path => path.from === marker.from && path.to === marker.to);
-        assert.ok(marker.width > 0 && marker.height > 0);
-        assert.ok(Math.abs(marker.x + marker.width/2 - (path.startX + path.endX)/2) < 0.1);
-        assert.ok(Math.abs(marker.y + marker.height/2 - (path.startY + path.endY)/2) < 0.1,'Colour-change markers sit at the route midpoint');
-      }
-      for (let basis=0; basis<count; basis++) {
-        await activate(page,page.locator(`[data-memo-input="${bits(basis)}"]`));
-        const row = await read(), expected = expectedOutputs(basis);
-        assert.equal(row.input,bits(basis));
-        const inputs = row.nodes.filter(node => node.role === 'input'), outputs = row.nodes.filter(node => node.role === 'output');
-        assert.equal(inputs.length,count);
-        assert.deepEqual(inputs.map(({bits:input,active})=>({bits:input,active})),
-          Array.from({length:count},(_,index)=>({bits:bits(index),active:String(index===basis)})));
-        assert.deepEqual(row.buttons,Array.from({length:count},(_,index)=>({bits:bits(index),pressed:String(index===basis)})));
-        assert.deepEqual(outputs.map(({bits,flipsColour})=>({bits,flipsColour})),expected,`${gate}, ${row.input}`);
-        assert.ok(row.nodes.every(node => Math.abs(node.y - row.lanes[parseInt(node.bits,2)].fromY) < 0.1), 'Nodes stay on their named basis lane');
-        assert.ok(row.nodes.every(node => node.fill === 'none' && node.outline === rgb(CIRCUIT_COLORS.text)), 'Neutral endpoints do not impose an input colour');
-        assert.ok(row.paths.filter(path => path.role === 'output').every(path => path.active === String(path.from === bits(basis))), 'Only the selected input’s mapping is highlighted');
-        assert.deepEqual(row.paths.filter(path => path.role === 'output' && path.active === 'true').map(({to,flipsColour})=>({bits:to,flipsColour})),expected);
-        assert.ok(row.markers.every(marker => marker.active === String(marker.from === bits(basis))),'Colour-swap markers follow the selected input');
-        assert.ok(row.paths.every(path => path.stroke === rgb(CIRCUIT_COLORS.text)), 'Every route uses the same neutral stroke');
-      }
+      assert.equal(await page.locator(`#signal-memo-tabs [data-memo-choice="${gate}"]`).getAttribute('aria-selected'), 'true');
+      await assertGateMemo(page, gateMemoMap({ ...hole, choices }, gate));
     }
   }
-  const inputs = page.locator('#signal-memo-body [data-memo-input]');
-  await inputs.first().focus(); await page.keyboard.press('Space');
-  assert.equal(await page.locator('#signal-memo-body > .signal-memo-circuit').getAttribute('data-input'),await inputs.first().getAttribute('data-memo-input'));
-  await inputs.last().focus(); await page.keyboard.press('Enter');
-  assert.equal(await page.locator('#signal-memo-body > .signal-memo-circuit').getAttribute('data-input'),await inputs.last().getAttribute('data-memo-input'));
   await page.locator('#signal-memo-tabs [data-memo-choice]').first().focus(); await page.keyboard.press('End');
-  assert.equal(await page.locator('#signal-memo-tabs [aria-selected="true"]').getAttribute('data-memo-choice'),getHoles(puzzle).at(-1).wires.length === 1 ? 'Z' : 'CZ');
+  assert.equal(await page.locator('#signal-memo-tabs [aria-selected="true"]').getAttribute('data-memo-choice'), getHoles(puzzle).at(-1).wires.length === 1 ? 'Z' : 'CZ');
   await page.keyboard.press('Home');
-  assert.equal(await page.locator('#signal-memo-tabs [aria-selected="true"]').getAttribute('data-memo-choice'),'I');
-  assert.equal(await page.locator('#sequence').innerHTML(),history,'Consulting the maps places no gates');
-  assert.deepEqual(await targetMarkers(page),target);
+  assert.equal(await page.locator('#signal-memo-tabs [aria-selected="true"]').getAttribute('data-memo-choice'), 'I');
+  assert.equal(await page.locator('#sequence').innerHTML(), history, 'Consulting maps places no gates');
+  assert.deepEqual(await targetMarkers(page), target);
   await noOverflow(page); await accessibility(page);
   const hadamard = getHoles(puzzle).find(hole=>hole.wires.length === 1);
   if (hadamard) {
     await activate(page,page.locator(`[data-hole="${hadamard.id}"]`));
     await activate(page,page.locator('#signal-memo-tabs [data-memo-choice="H"]'));
-    await activate(page,page.locator('[data-memo-input="1"]'));
     await page.locator('#signal-memo').screenshot({path:resolve(output,`memo-H-${page.viewportSize().width}.png`)});
   }
   await page.screenshot({path:resolve(output,`memo-${page.viewportSize().width}.png`),fullPage:true});
@@ -1842,7 +1748,21 @@ async function focusedRegistration() {
 }
 
 try {
-  if (process.env.GAME_BROWSER_FOCUS === 'baits') await focusedBaits();
+  if (process.env.GAME_BROWSER_FOCUS === 'memo') {
+    const examples = [LEVELS[2], LEVELS.find(level => getHoles(level).some(hole => hole.wires.length === 2))];
+    for (const mobile of [false, true]) {
+      const page = await pageFor({ viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, isMobile: mobile, hasTouch: mobile });
+      try {
+        for (const level of examples) {
+          await page.locator('#level').selectOption(String(LEVELS.indexOf(level) + 1)); await gateMemo(page, level);
+        }
+        if (mobile) { await page.setViewportSize({ width: 320, height: 780 }); await gateMemo(page, examples.at(-1)); }
+      } finally { await page.context().close(); }
+    }
+    assert.deepEqual(errors, [], 'Static memo has no uncaught desktop or touch errors');
+    console.log('Static memo: all gates and both colours, mouse/touch, 320px, keyboard tabs, accessibility and unchanged puzzle/target verified.');
+  }
+  else if (process.env.GAME_BROWSER_FOCUS === 'baits') await focusedBaits();
   else if (process.env.GAME_BROWSER_FOCUS === 'cancellations') await focusedCancellations();
   else if (process.env.GAME_BROWSER_FOCUS === 'flow') await focusedFlow();
   else if (process.env.GAME_BROWSER_FOCUS === 'navigation') await focusedNavigation();

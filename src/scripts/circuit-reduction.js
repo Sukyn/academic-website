@@ -1,4 +1,4 @@
-import { getRule, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getSelectionMoves, gateCells, isSolved, validateCircuit, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
+import { getRule, ruleButtonId, LEARNED_RULE_IDS, cloneCircuit, circuitKey, applyMove, getSelectionMoves, gateCells, isSolved, validateCircuit, moveCost, sequenceCost } from '../lib/circuit-reduction/engine.js';
 import { customCircuit, identityCircuit } from '../lib/circuit-reduction/custom.js';
 import { generatePuzzle } from '../lib/circuit-reduction/generator.js';
 import { spaceGlyph, circuitWires } from '../lib/circuit-reduction/rendering.js';
@@ -26,7 +26,10 @@ const get = id => document.getElementById(id);
 const onClick = (id, callback) => get(id).addEventListener('click', callback);
 const winDialog = get('win-dialog');
 const ruleButtons = [...document.querySelectorAll('[data-rule]')];
-const rulePalette = createRulePalette(ruleButtons, { apply: playMove });
+const rulePalette = createRulePalette(ruleButtons, {
+  ruleOf: move => ruleButtonId(move.rule),
+  apply: playSelectedMove,
+});
 const puzzleSolved = createPuzzleResult(isSolved);
 const cellNames = { '.': 'empty slot', H: 'H', X: 'X', Z: 'Z', ZU: 'upper Z endpoint', ZD: 'lower Z endpoint', XU: 'upper X endpoint', XD: 'lower X endpoint' };
 let mode = 'campaign', level = LEVELS[0], campaignLevel = level, editing = false;
@@ -142,6 +145,10 @@ guide = createTutorial({
 function matchingSelection() {
   return getSelectionMoves(circuit, selection, { allowedRules: allowedRules() });
 }
+function playSelectedMove({ prefix = [], ...move }) {
+  for (const space of prefix) playMove(space);
+  return playMove(move);
+}
 
 function updateSelection() {
   for (const cell of get('circuit-board').querySelectorAll('[data-cell]')) cell.setAttribute('aria-pressed', String(selection.has(cell.dataset.cell)));
@@ -202,7 +209,7 @@ function update({ board = true } = {}) {
   get('editor-wires').disabled = locked;
   get('create-circuit').hidden = editing;
   const matching = locked || won ? [] : matchingSelection();
-  rulePalette.update(matching, { allowed: allowedRules(), disabled: locked });
+  rulePalette.update(matching, { allowed: allowedRules().map(ruleButtonId), disabled: locked });
   const selectionNote = !locked && !won && selection.size && !matching.length ? 'No matching rule' : '';
   get('selection-note').textContent = selectionNote;
   updateModeMenu(get, mode, false, scores.submitting);
@@ -429,7 +436,7 @@ document.addEventListener('keydown', event => {
       if (matches.length === 1) {
         event.preventDefault();
         const focusKey = cell?.dataset.cell ?? selectionAnchor;
-        const completed = playMove(matches[0]);
+        const completed = playSelectedMove(matches[0]);
         const focus = success => { if (success && !winDialog.open) get('circuit-board').querySelector(`[data-cell="${focusKey}"]`)?.focus(); };
         if (completed?.then) completed.then(focus); else focus(completed);
       }

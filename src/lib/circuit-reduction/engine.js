@@ -21,7 +21,7 @@ export const RULES = Object.freeze([
   // Keep both valid versions, rather than silently losing either source's rule.
   { id: 'cancel-cnot-down', title: 'Cancel CNOT ↓ pair', left: [['ZU', 'ZU'], ['XD', 'XD']], right: [['.', '.'], ['.', '.']] },
   { id: 'cancel-cnot-up', derived: true, title: 'Cancel CNOT ↑ pair', left: [['XU', 'XU'], ['ZD', 'ZD']], right: [['.', '.'], ['.', '.']] },
-  { id: 'phase-up', title: 'Move upper phase', left: [['Z', 'ZU', '.']], right: [['.', 'ZU', 'Z']] },
+  { id: 'phase-up', title: 'Move phase through control', left: [['Z', 'ZU', '.']], right: [['.', 'ZU', 'Z']] },
   { id: 'phase-down', title: 'Move lower phase', left: [['Z', 'ZD', '.']], right: [['.', 'ZD', 'Z']] },
   { id: 'control-order', title: 'Reorder controls', left: [['.', 'ZU'], ['ZU', 'ZD'], ['ZD', '.']], right: [['ZU', '.'], ['ZD', 'ZU'], ['.', 'ZD']] },
   { id: 'stabilizer-up', title: 'Propagate upper X', left: [['X', 'ZU'], ['.', 'ZD']], right: [['ZU', 'X'], ['ZD', 'Z']] },
@@ -32,6 +32,9 @@ export const RULES = Object.freeze([
 ]);
 export const PAPER_RULE_IDS = Object.freeze(RULES.filter(rule => !rule.derived).map(rule => rule.id));
 export const LEARNED_RULE_IDS = Object.freeze(RULES.map(rule => rule.id));
+// Both wire orientations use the same phase-commutation equation in the palette.
+export const ruleButtonId = id => id === 'phase-down' ? 'phase-up' : id;
+export const RULE_OPTIONS = Object.freeze(RULES.filter(rule => ruleButtonId(rule.id) === rule.id));
 const rulesById = new Map(RULES.map(rule => [rule.id, rule]));
 export const getRule = id => rulesById.get(id);
 const freeRules = new Set(['slide-h', 'slide-x', 'insert-column', 'remove-column', 'insert-space', 'remove-space', 'compact-identities', 'arrange']);
@@ -194,6 +197,13 @@ export function getSelectionMoves(circuit, selection, { allowedRules } = {}) {
       }
     }
   }
+  const missing = RULES.filter(rule => moveCost({ rule: rule.id }) &&
+    (!allowedRules || allowedRules.includes(rule.id)) && !moves.some(move => move.rule === rule.id)).map(rule => rule.id);
+  if (missing.length && [...selected].some(key => {
+    const [row, column] = key.split(':').map(Number); return circuit[row][column] !== EMPTY;
+  })) for (const { move, prefix } of getRewriteMoves(circuit, { allowedRules: missing, selection: selected, preserveLayout: true })) {
+    moves.push(prefix.length ? { ...move, prefix } : move);
+  }
   return moves;
 }
 
@@ -248,9 +258,11 @@ export function applyMove(circuit, move) {
 // Match consecutive gates on each wire, then solve the layout constraints for
 // the rule's empty cells. This enumerates rewrites modulo freely inserted paper
 // identities rather than charging artificial steps for horizontal alignment.
-export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinity } = {}) {
+export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinity, selection, preserveLayout = false } = {}) {
   validateCircuit(circuit);
   const graph = circuitGraph(circuit), results = new Map();
+  const selectedNodes = selection && new Set(graph.nodes.filter(node =>
+    node.cells.some(cell => selection.has(cell.row + ':' + node.column))).map(node => node.id));
   const originalKey = circuitKey(circuit);
   const sourceKey = circuitKey(compactCircuit(circuit));
   const token = (id, row) => graph.nodes[id].cells.find(cell => cell.row === row)?.symbol;
@@ -264,7 +276,8 @@ export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinit
         const choices = expectedRows.map((expected, y) => {
           const wire = graph.wires[row + y], matches = [];
           for (let start = 0; start <= wire.length - expected.length; start++) {
-            if (expected.every((cell, offset) => token(wire[start + offset], row + y) === cell.symbol)) matches.push({ start, expected });
+            if (expected.every((cell, offset) => (!selectedNodes || selectedNodes.has(wire[start + offset])) &&
+              token(wire[start + offset], row + y) === cell.symbol)) matches.push({ start, expected });
           }
           return matches;
         });
@@ -284,6 +297,7 @@ export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinit
               offsets.set(id, offset);
             }
           }
+          if (selectedNodes && (offsets.size !== selectedNodes.size || [...selectedNodes].some(id => !offsets.has(id)))) return;
           const group = id => offsets.has(id) ? 0 : id + 1;
           const offset = id => offsets.get(id) ?? 0;
           const edges = [];
@@ -305,6 +319,7 @@ export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinit
             }
           }
           const starts = Array(graph.nodes.length + 1).fill(0);
+          if (preserveLayout) for (const node of graph.nodes) starts[group(node.id)] = Math.max(starts[group(node.id)], node.column - offset(node.id));
           let changed = false;
           for (let pass = 0; pass <= graph.nodes.length + 1; pass++) {
             changed = false;
@@ -315,7 +330,7 @@ export function getRewriteMoves(circuit, { allowedRules, maxLowerBound = Infinit
           }
           if (changed) return; // A positive constraint cycle: this window is impossible.
           const columns = graph.nodes.map(node => starts[group(node.id)] + offset(node.id));
-          const layout = drawGraph(graph, columns, Math.max(2, starts[0] + width));
+          const layout = drawGraph(graph, columns, Math.max(preserveLayout ? circuit[0].length : 2, starts[0] + width));
           if (!matches(layout, pattern, row, starts[0])) return;
           const move = { rule: rule.id, row, column: starts[0] };
           const next = applyMove(layout, move), key = circuitKey(compactCircuit(next));

@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
-import { RULES, sequenceCost, moveCost, isSolved, solveShortest, applyMove, gateCells } from '../../src/lib/circuit-reduction/engine.js';
+import { RULES, RULE_OPTIONS, ruleButtonId, sequenceCost, moveCost, isSolved, solveShortest, applyMove, gateCells } from '../../src/lib/circuit-reduction/engine.js';
 import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../../src/lib/circuit-reduction/tutorial.js';
 import { createBrowserApi } from './browser-api.mjs';
 import { layoutMoves } from './layout-moves.js';
@@ -137,12 +137,12 @@ async function apply(page, move) {
   } else {
     const rule = RULES.find(rule => rule.id === move.rule);
     assert.ok(rule, `Known playable rule ${move.rule}`);
-    assert.equal(await page.locator(`[data-rule="${move.rule}"]`).evaluate(button => button.hidden), false, 'A witness uses only rules unlocked by the current lesson');
+    assert.equal(await page.locator(`[data-rule="${ruleButtonId(move.rule)}"]`).evaluate(button => button.hidden), false, 'A witness uses only rules unlocked by the current lesson');
     for (let y = 0; y < rule.left.length; y++) for (let x = 0; x < rule.left[0].length; x++) {
       const cell = page.locator(`[data-cell="${move.row + y}:${move.column + x}"]`);
       if (await cell.getAttribute('aria-pressed') !== 'true') await activate(page, cell);
     }
-    await activate(page, page.locator(`[data-rule="${move.rule}"]`));
+    await activate(page, page.locator(`[data-rule="${ruleButtonId(move.rule)}"]`));
   }
   await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
   return 1;
@@ -176,7 +176,7 @@ async function noOverflow(page) {
 }
 async function fullRulePalette(page) {
   const rules = page.locator('[data-rule]:visible');
-  assert.equal(await rules.count(), RULES.length, 'Every rule is visible without a disclosure');
+  assert.equal(await rules.count(), RULE_OPTIONS.length, 'Every rule is visible without a disclosure');
   assert.deepEqual(await rules.evaluateAll(buttons => buttons.filter(button => {
     const bounds = button.getBoundingClientRect();
     return Array.from(button.querySelectorAll('.rule-preview, .rule-mini, .rule-mini > svg')).some(diagram => {
@@ -324,7 +324,7 @@ async function focusedTutorial() {
       assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT);
       assert.deepEqual(TUTORIAL_CIRCUIT.map(row => row.slice(0, 4)), [['X', 'X', 'H', 'H'], ['.', '.', '.', '.']]);
       const order = await ruleOrder();
-      assert.deepEqual(order.dom, RULES.map(rule => rule.id), 'The preview keeps canonical order while no rule is available');
+      assert.deepEqual(order.dom, RULE_OPTIONS.map(rule => rule.id), 'The preview keeps canonical order while no rule is available');
       assert.deepEqual(order.visual, order.dom, 'Visual and keyboard order agree');
       await screenshot(page, `${profile}-tutorial-intro.png`);
       await activate(page, page.locator('#tutorial-start'));
@@ -510,13 +510,14 @@ async function desktopSelection(page) {
     await importJson(page, { circuit: original });
     await drag(`${row}:0`, `${row}:2`);
     assert.equal((await selected()).length, 4, `${rule}: only the linked partner is added outside the rule row`);
-    const button = page.locator(`[data-rule="${rule}"]`);
+    const button = page.locator(`[data-rule="${ruleButtonId(rule)}"]`);
     assert.equal(await button.isEnabled(), true, `${rule} remains available after whole-gate selection`);
     await button.click();
     await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
     assert.deepEqual(await boardCircuit(page), applyMove(original, { rule, row, column: 0 }));
   }
   await implicitIdentitySelection(page);
+  await automaticPhaseSpacing(page);
   await page.locator('#mode-campaign').click();
   await page.locator('#level').selectOption('1');
   console.log('Desktop selection: whole CNOT/CZ toggles, linked Shift/drag, basis/phase context, Enter and Ctrl+Z verified');
@@ -572,7 +573,27 @@ async function touchSelection(page) {
   await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
   assert.deepEqual(await boardCircuit(page), applyMove(original, { rule: 'basis-up', row: 0, column: 0 }));
   await implicitIdentitySelection(page);
+  await automaticPhaseSpacing(page);
   console.log('Touch selection: either endpoint toggles whole CNOT/CZ gates and the partial basis rule remains playable');
+}
+async function automaticPhaseSpacing(page) {
+  for (const row of [0, 1]) {
+    const original = row ? [['.', 'ZU', '.', 'ZU'], ['Z', 'ZD', 'Z', 'ZD']] : [['Z', 'ZU', 'Z', 'ZU'], ['.', 'ZD', '.', 'ZD']];
+    await importJson(page, { circuit: original });
+    assert.equal(await page.locator('[data-rule="phase-down"]').count(), 0, 'One phase equation covers either wire orientation');
+    for (const column of [0, 1]) await activate(page, page.locator(`[data-cell="${row}:${column}"]`));
+    const phase = page.locator('[data-rule="phase-up"]');
+    assert.equal(await phase.isEnabled(), true, 'CZ and Z can be selected with no empty slots');
+    await activate(page, phase);
+    await page.waitForFunction(() => !document.getElementById('circuit-board').dataset.rewriteAnimating);
+    const next = await boardCircuit(page);
+    assert.ok(next[0].length > original[0].length, 'A trailing gap is inserted automatically');
+    assert.equal(await page.locator('#move-count').innerText(), '1 move', 'Automatic space adds no score');
+    assert.deepEqual(next[row].filter(cell => cell !== '.'), [row ? 'ZD' : 'ZU', 'Z', 'Z', row ? 'ZD' : 'ZU']);
+    await activate(page, page.locator('#undo')); await activate(page, page.locator('#undo'));
+    assert.deepEqual(await boardCircuit(page), original, 'Both the rewrite and free spacing remain reversible');
+    await noOverflow(page);
+  }
 }
 async function columnSpacing(page) {
   const lesson = LEVELS.find(level => level.circuit.length > 1);
@@ -834,7 +855,7 @@ try {
     for (const level of LEVELS) {
       await desktop.locator('#level').selectOption(String(level.id));
       const available = await desktop.locator('[data-rule]').evaluateAll(buttons => buttons.filter(button => !button.hidden).map(button => button.dataset.rule));
-      assert.deepEqual(available.sort(), [...level.allowedRules].sort(), `Progressive rule palette in lesson ${level.id}`);
+      assert.deepEqual(available.sort(), [...new Set(level.allowedRules.map(ruleButtonId))].sort(), `Progressive rule palette in lesson ${level.id}`);
       if (level.id <= 2) {
         assert.equal(available.length, level.id, 'The first lessons each introduce one cancellation');
         assert.equal(await desktop.locator('#paper-rules').count(), 0);

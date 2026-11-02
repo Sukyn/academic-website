@@ -1,3 +1,5 @@
+import { assertGateMemo } from './gate-memo-checks.mjs';
+import { gateMemoMap } from '../../src/lib/quantum-signals/gate-memo.js';
 // Focused real-input checks for the shared tutorial bubble and every worked example.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -539,7 +541,7 @@ async function run([game, count, category], touch, fallback = false) {
           await bubbleGeometry(page, label + ' memo open');
           await uncovered(page, '#signal-memo-tabs', label + ' memo gates');
           await uncovered(page, '#signal-memo-map', label + ' memo circuits');
-          assert.equal(await memo.locator('#signal-memo-black, #signal-memo-white').count(), 0, 'One reference diagram covers either input colour');
+          assert.equal(await memo.locator('[data-memo-input]').count(), 0, 'The reference needs no input selection');
           await activate(memo.locator('[data-memo-choice="H"]'), touch);
           await bubbleGeometry(page, label + ' memo split paths');
           await uncovered(page, '#signal-memo-map', label + ' memo split circuits');
@@ -547,13 +549,7 @@ async function run([game, count, category], touch, fallback = false) {
           assert.equal(await page.locator('#tutorial-panel .tutorial-pointer path').evaluate(tail =>
             tail.getBoundingClientRect().bottom <= document.getElementById('signal-memo-map').getBoundingClientRect().top), true,
           'The speech tail stops before the expanded reference paths');
-          assert.equal(await memo.locator('.signal-memo-lane').count(), 2, 'The reference uses fixed basis lanes');
-          assert.equal(await memo.locator('.signal-memo-node[data-role="output"]').count(), 2, 'The selected H input visibly splits into two output lanes');
-          await activate(memo.locator('[data-memo-input="1"]'), touch);
-          assert.equal(await memo.locator('[data-memo-input="1"]').getAttribute('aria-pressed'), 'true');
-          assert.deepEqual(await memo.locator('.signal-memo-node[data-role="output"]').evaluateAll(nodes => nodes.map(node => node.dataset.colourSwap)), ['false', 'true']);
-          assert.equal(await memo.locator('.signal-memo-paths .signal-memo-colour-swap[data-from="1"][data-to="1"][data-active="true"]').count(), 1,
-            'The second H branch swaps colour when the input is 1');
+          await assertGateMemo(page, gateMemoMap({ wires: [0], choices: ['H'] }, 'H'));
           await page.screenshot({ path: resolve(output, name + '-memo-H.png') });
           const tabs = memo.locator('[role="tab"]');
           assert.deepEqual(await tabs.evaluateAll(nodes => nodes.map(node => node.dataset.memoChoice)), ['I', 'H', 'X', 'Z'],
