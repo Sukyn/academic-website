@@ -59,10 +59,12 @@ async function controllerReadiness(page, tap) {
     const route = await pending;
     assert.equal(await page.locator('[data-circuit-game]').evaluate(root => root.inert), true,
       'Controls wait until the chosen controller has loaded');
-    const heading = await page.locator('#tutorial-heading').innerText();
-    const start = await page.locator('#tutorial-start').boundingBox();
-    await page.mouse.click(start.x + start.width / 2, start.y + start.height / 2);
-    assert.equal(await page.locator('#tutorial-heading').innerText(), heading, 'Pending controls cannot accept a lost tutorial action');
+    const campaign = page.locator('#mode-campaign');
+    const pressed = await campaign.getAttribute('aria-pressed');
+    const bounds = await campaign.boundingBox();
+    assert.ok(bounds, 'The mode menu remains visible while loading');
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    assert.equal(await campaign.getAttribute('aria-pressed'), pressed, 'Pending controls cannot accept a lost mode change');
     await route.continue();
     await page.waitForFunction(() => !document.querySelector('[data-circuit-game]').inert);
     await tap(page.locator('#tutorial-start'));
