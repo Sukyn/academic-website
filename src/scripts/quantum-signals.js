@@ -15,7 +15,7 @@ import { createMoveTimeline } from '../lib/games/move-timeline.js';
 import { createCustomPuzzleJson } from '../lib/games/custom-puzzle-json.js';
 import { createTutorial } from '../lib/games/tutorial.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { TUTORIAL_PUZZLE, TUTORIAL_PUZZLES, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/quantum-signals/tutorial.js';
+import { TUTORIAL_PUZZLE, TUTORIAL_PUZZLES, TUTORIAL_STEPS } from '../lib/quantum-signals/tutorial.js';
 import { bindGameDialogs, directionalControl, handleGateShortcut, handleRoundShortcut, updateLevelControls, updateModeMenu, updateResultMenu } from '../lib/games/controls.js';
 import { formatPuzzleDate, bindDailyControls } from '../lib/games/daily-ui.js';
 
@@ -331,7 +331,7 @@ const customJson = createCustomPuzzleJson({ get, game: GAME, exportPuzzle: () =>
 } });
 const tutorial = createTutorial({
   renderText: renderCircuitInstruction,
-  get, isBlocked: () => daily.loading, intro: TUTORIAL_INTRO,
+  get, isBlocked: () => daily.loading,
   onRender: syncTutorialFocus, revealTarget: revealTutorialFocus, getAnchor: tutorialAnchor,
   controls: '#signal-board button, .signal-palette button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #circuit-editor-controls button, #custom-details select',
   steps: TUTORIAL_STEPS.map(step => ({

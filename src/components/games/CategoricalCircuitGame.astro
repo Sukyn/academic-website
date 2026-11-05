@@ -40,7 +40,7 @@ const tools = [
       <GameModeMenu daily={false}><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={[]} daily={false} />
-        <GameTutorial intro={signals ? 'Circuit gates prepare the all-ones basis state.' : 'Gate equations and wire swaps reduce the circuit to the identity.'} />
+        <GameTutorial />
         <section aria-label={title}>
           <p id="move-count" class="categorical-count" role="status" hidden={signals}>0 moves</p>
           <div class="game-scroll categorical-scroll" id="categorical-scroll" role="region" aria-label="Circuit board. Scroll horizontally to explore longer circuits." tabindex="0">

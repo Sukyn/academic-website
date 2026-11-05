@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { LEVELS, dailyPuzzle } from './witnesses.js';
 import { RULES, RULE_OPTIONS, ruleButtonId, sequenceCost, moveCost, isSolved, solveShortest, applyMove, gateCells } from '../../src/lib/circuit-reduction/engine.js';
-import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../../src/lib/circuit-reduction/tutorial.js';
+import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../../src/lib/circuit-reduction/tutorial.js';
 import { createBrowserApi } from './browser-api.mjs';
 import { layoutMoves } from './layout-moves.js';
 import { advanceTutorial } from '../games/tutorial-input.mjs';
@@ -319,8 +319,8 @@ async function focusedTutorial() {
     try {
       await activate(page, page.locator('#mode-tutorial'));
       await page.evaluate(() => document.fonts.ready);
-      assert.equal(await page.locator('#tutorial-text').innerText(), TUTORIAL_INTRO,
-        'The introductory text matches the tutorial source');
+      assert.equal(await page.locator('#tutorial-text').textContent(), '',
+        'The preview has no introductory text');
       assert.deepEqual(await boardCircuit(page), TUTORIAL_CIRCUIT);
       assert.deepEqual(TUTORIAL_CIRCUIT.map(row => row.slice(0, 4)), [['X', 'X', 'H', 'H'], ['.', '.', '.', '.']]);
       const order = await ruleOrder();

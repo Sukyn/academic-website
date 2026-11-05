@@ -65,6 +65,7 @@ function dom(context) {
     append(...nodes) { this.children.push(...nodes); nodes.forEach(node => { node.parent = this; }); }
     replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
     setAttribute(name, value) { this.attrs[name] = String(value); }
+    getAttribute(name) { return this.attrs[name] ?? null; }
     set textContent(value) { this.text = value; this.children = []; }
     get textContent() { return this.children.length ? this.children.map(node => node.textContent).join('') : this.text ?? ''; }
     addEventListener(type, handler) { this.handlers[type] = handler; }
@@ -101,6 +102,8 @@ test('Memo retains gate/context caching and keyboard tabs while showing every in
   assert.equal(get('signal-memo-body').handlers.click, undefined, 'No hidden lane-selection interaction');
   assert.equal(all(get('signal-memo-body')).filter(node => node.tag === 'button').length, 0);
   const buttons = tabs.children;
+  tabs.handlers.click({ target: buttons[1] });
+  assert.equal(get('signal-memo-body').children, diagrams, 'The current tab does not rebuild its static examples');
   memo.update({ ...hole, wires: [...hole.wires], choices: ['I', 'Z'] });
   assert.equal(tabs.children, buttons); assert.equal(get('signal-memo-body').children, diagrams); assert.equal(evolved, count);
   let prevented = false;

@@ -361,7 +361,7 @@ guide = createTutorial({ get, steps,
   controls: '#categorical-board button, #rule-list button, #gate-palette button, #erase-gate, #autofocus, #undo, #restart, #tidy, #add-space',
   isBlocked: () => Boolean(flowAnimation),
   renderText: (node, text) => renderCircuitInstruction(node, text),
-  intro: get('tutorial-text').textContent,
+
   onReset() { load(getTutorial(profile, kind), 'tutorial'); },
 });
 

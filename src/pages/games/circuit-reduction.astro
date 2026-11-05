@@ -13,7 +13,6 @@ import CircuitCategoryMenu from '../../components/games/CircuitCategoryMenu.astr
 import CircuitGame from '../../components/games/CircuitGame.astro';
 import CategoricalCircuitGame from '../../components/games/CategoricalCircuitGame.astro';
 import { LEVELS } from '../../lib/circuit-reduction/puzzles.js';
-import { TUTORIAL_INTRO } from '../../lib/circuit-reduction/tutorial.js';
 import { RULE_OPTIONS } from '../../lib/circuit-reduction/engine.js';
 ---
 
@@ -26,7 +25,7 @@ import { RULE_OPTIONS } from '../../lib/circuit-reduction/engine.js';
       <GameModeMenu><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content">
         <GameToolbar levels={LEVELS} />
-        <GameTutorial intro={TUTORIAL_INTRO} />
+        <GameTutorial />
         <section aria-label="Circuit simplification">
           <div class="circuit-heading"><p id="move-count" role="status">0 moves</p></div>
           <div class="generator-controls circuit-editor-controls" id="circuit-editor-controls" hidden>

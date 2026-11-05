@@ -1,6 +1,5 @@
 import { validatePuzzle } from './engine.js';
 
-export const TUTORIAL_INTRO = 'Use gates to take 00 to 11. Then solve examples with fixed gates.';
 export const TUTORIAL_PUZZLES = [];
 export const TUTORIAL_STEPS = [];
 

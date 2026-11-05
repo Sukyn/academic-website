@@ -1,5 +1,3 @@
-export const TUTORIAL_INTRO = 'H and T rotate the qubit state on the Bloch sphere. The gold region marks the target and its allowed error.';
-
 export const GOLF_TUTORIAL = Object.freeze({
   level: 8,
   moves: Object.freeze([

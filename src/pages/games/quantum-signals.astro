@@ -15,7 +15,6 @@ import CircuitCategoryMenu from '../../components/games/CircuitCategoryMenu.astr
 import CircuitGame from '../../components/games/CircuitGame.astro';
 import CategoricalCircuitGame from '../../components/games/CategoricalCircuitGame.astro';
 import { LEVELS } from '../../lib/quantum-signals/puzzles.js';
-import { TUTORIAL_INTRO } from '../../lib/quantum-signals/tutorial.js';
 import { GATES } from '../../lib/quantum-signals/engine.js';
 import { gateLabel } from '../../lib/quantum-signals/rendering.js';
 import '../../styles/quantum-signals.css';
@@ -32,7 +31,7 @@ import SignalGateMemo from '../../components/games/SignalGateMemo.astro';
       <GameModeMenu><CircuitCategoryMenu /></GameModeMenu>
       <div class="game-content signals-game">
         <GameToolbar levels={LEVELS} />
-        <GameTutorial intro={TUTORIAL_INTRO} />
+        <GameTutorial />
         <section aria-label="Quantum signals">
           <div id="signal-stage">
           <div class="game-scroll signal-scroll" id="signal-scroll" role="region" aria-label="Circuit board. Scroll horizontally for longer circuits." tabindex="0">

@@ -539,7 +539,7 @@ test('campaign, random and daily rounds: scoring, replay, sharing, races and mid
   assert.equal(strokes(), 0, 'A cancelled animation cannot commit a tutorial gate');
   await browser.dispatch('pageshow', { persisted: true });
   assert.equal(get('mode-tutorial').getAttribute('aria-pressed'), 'true');
-  assert.equal(get('tutorial-heading').textContent, 'Guided demonstration');
+  assert.equal(get('tutorial-heading').textContent, '');
   assert.equal(requests.length, 0, 'Returning to a tutorial still avoids score requests');
   await click('tutorial-start');
   const abandonedStep = click('tutorial-next'), abandonedFrame = frames.values().next().value;

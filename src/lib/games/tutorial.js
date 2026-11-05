@@ -7,8 +7,7 @@ import { unionTutorialRects } from './tutorial-placement.js';
  */
 export function createTutorial({ get, steps, onReset, controls, onLeave = () => {}, isBlocked = () => false,
   onRender = () => {}, revealTarget = null, getAnchor = (focus, step) => typeof step.anchor === 'function' ? step.anchor() : step.anchor ? document.querySelector(step.anchor) : focus,
-  renderText = (node, text) => { node.textContent = text; },
-  intro = 'Next step plays the demonstration. Restart returns to the beginning.' }) {
+  renderText = (node, text) => { node.textContent = text; } }) {
   let active = false, executing = false, index = -1, revision = 0, focus = null, failed = false;
   let renderedText, nextPress = null;
   const panel = get('tutorial-panel'), startButton = get('tutorial-start'), nextButton = get('tutorial-next');
@@ -40,9 +39,12 @@ export function createTutorial({ get, steps, onReset, controls, onLeave = () => 
       control.disabled = true;
     }
     const done = finished();
-    get('tutorial-heading').textContent = done ? 'Tutorial complete' : index < 0 ? 'Guided demonstration' : `Step ${index + 1} of ${steps.length}`;
-    const text = failed ? 'Step failed. Restart the tutorial.' : done ? '' : index < 0 ? intro : steps[index].text;
-    if (text !== renderedText) { renderText(get('tutorial-text'), text); renderedText = text; }
+    const heading = get('tutorial-heading'), explanation = get('tutorial-text');
+    heading.textContent = done ? 'Tutorial complete' : index < 0 ? '' : `Step ${index + 1} of ${steps.length}`;
+    heading.hidden = index < 0;
+    const text = failed ? 'Step failed. Restart the tutorial.' : done || index < 0 ? '' : steps[index].text;
+    explanation.hidden = !text;
+    if (text !== renderedText) { renderText(explanation, text); renderedText = text; }
     startButton.textContent = index < 0 ? 'Start tutorial' : 'Restart tutorial';
     const blocked = executing || isBlocked();
     startButton.disabled = isBlocked() && !executing;

@@ -19,7 +19,7 @@ import { createTutorial } from '../lib/games/tutorial.js';
 import { createRulePalette } from '../lib/games/rule-palette.js';
 import { createPuzzleResult } from '../lib/games/puzzle-result.js';
 import { renderCircuitInstruction } from '../lib/games/tutorial-gates.js';
-import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS, TUTORIAL_INTRO } from '../lib/circuit-reduction/tutorial.js';
+import { TUTORIAL_CIRCUIT, TUTORIAL_STEPS } from '../lib/circuit-reduction/tutorial.js';
 
 const GAME = 'circuit-reduction';
 const get = id => document.getElementById(id);
@@ -101,7 +101,6 @@ guide = createTutorial({
   onRender: focus => rulePalette.prioritize(focus?.dataset.rule),
   renderText: (node, text) => renderCircuitInstruction(node, text, { singleWire: true }),
   controls: '[data-cell], [data-space], [data-rule], #undo, #restart, #compact-identities, #replay, #replay-result, #share-score, #share-result, #show-results',
-  intro: TUTORIAL_INTRO,
   onReset: () => setPuzzle('tutorial', { circuit: cloneCircuit(TUTORIAL_CIRCUIT), optimalMoves: null }),
   onLeave: () => { cancelAnimation(); review.clear(); clearSelection(); },
   steps: TUTORIAL_STEPS.map(({ text, target, layout, move }) => {

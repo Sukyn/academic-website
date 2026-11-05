@@ -1,6 +1,6 @@
 import { applyMove, isSolved, optimalShots, pathGraph, puzzleData, sequenceCost, MAX_MOVES } from '../lib/graph-states/engine.js';
 import { LEVELS, generatePuzzle, DAILY_START } from '../lib/graph-states/puzzles.js';
-import { TUTORIAL, TUTORIAL_INTRO } from '../lib/graph-states/tutorial.js';
+import { TUTORIAL } from '../lib/graph-states/tutorial.js';
 import { edgeAtPoint, renderGraph, renderCircuit } from '../lib/graph-states/rendering.js';
 import { correctionGlyph } from '../lib/graph-states/correction-graphics.js';
 import { animateGraphMove, REPLAY_COMPLEMENT_DURATION } from '../lib/graph-states/animation.js';
@@ -298,7 +298,7 @@ const tutorial = createTutorial({
     return { ...anchor, rect: { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 } };
   },
   revealTarget: () => get('graph-board').scrollIntoView({ block: 'center', inline: 'nearest' }),
-  intro: TUTORIAL_INTRO,
+
   controls: '#graph-board button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select, #graph-editor-controls button, #custom-details select',
   steps: TUTORIAL.steps.map(({ move, text }) => ({ text, target: '#graph-board ' + moveSelector(move), action: () => playMove(move) })),
   onReset: () => setPuzzle('tutorial', TUTORIAL.graph),

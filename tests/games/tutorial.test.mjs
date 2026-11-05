@@ -28,7 +28,7 @@ function fixture(context, actions = [() => {}, () => {}], options = {}) {
     addEventListener(type, action, capture) { assert.equal(capture === true || capture?.capture, true); listeners.set(type, action); },
   } });
   context.after(() => original ? Object.defineProperty(globalThis, 'document', original) : delete globalThis.document);
-  const guide = createTutorial({ get, intro: 'A harder example.', controls: '.game-controls button', isBlocked: () => blocked,
+  const guide = createTutorial({ get, controls: '.game-controls button', isBlocked: () => blocked,
     onReset() { calls.push('reset'); assert.equal(guide.active, true); assert.equal(guide.executing, true); guide.render(); },
     onLeave() { calls.push('leave'); },
     steps: actions.map((action, index) => ({ text: `Reason ${index}`, target: `#gate-${index}`,
@@ -72,13 +72,18 @@ test('preview waits for Start; each explanation prepares and highlights only its
   const { guide, get, calls } = fixture(context);
   guide.enter();
   assert.equal(guide.active, true); assert.equal(guide.finished, false);
-  assert.equal(get('tutorial-text').textContent, 'A harder example.');
+  assert.equal(get('tutorial-text').textContent, '');
+  assert.equal(get('tutorial-text').hidden, true);
+  assert.equal(get('tutorial-heading').textContent, '');
+  assert.equal(get('tutorial-heading').hidden, true);
   assert.equal(get('tutorial-start').textContent, 'Start tutorial');
   assert.equal(get('tutorial-next').hidden, true);
   assert.equal(get('gate-0').disabled, true); assert.equal(get('undo').disabled, true);
   await guide.next(); assert.equal(calls.includes('move:0'), false);
   get('tutorial-start').click();
   assert.equal(get('tutorial-heading').textContent, 'Step 1 of 2');
+  assert.equal(get('tutorial-heading').hidden, false);
+  assert.equal(get('tutorial-text').hidden, false);
   assert.equal(get('gate-0').disabled, true); assert.equal(get('gate-1').disabled, true);
   assert.equal(get('gate-0').attrs.has('data-tutorial-focus'), true);
   await guide.next();
@@ -101,14 +106,14 @@ test('metadata and animation refreshes retain the current explanation and its ga
     renderText(node, text) { texts.push(text); node.textContent = text; },
   });
   guide.enter(); guide.render(); guide.render();
-  assert.deepEqual(texts, ['A harder example.']);
+  assert.deepEqual(texts, ['']);
   guide.start(); guide.render();
-  assert.deepEqual(texts, ['A harder example.', 'Reason 0']);
+  assert.deepEqual(texts, ['', 'Reason 0']);
   await guide.next(); guide.render();
-  assert.deepEqual(texts, ['A harder example.', 'Reason 0', 'Reason 1']);
+  assert.deepEqual(texts, ['', 'Reason 0', 'Reason 1']);
   assert.equal(get('tutorial-text').textContent, 'Reason 1');
   guide.start();
-  assert.deepEqual(texts, ['A harder example.', 'Reason 0', 'Reason 1', 'Reason 0']);
+  assert.deepEqual(texts, ['', 'Reason 0', 'Reason 1', 'Reason 0']);
 });
 
 test('only Next advances the demonstration and rapid input cannot skip an animated move', async context => {

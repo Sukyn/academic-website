@@ -1,5 +1,3 @@
-export const TUTORIAL_INTRO = 'Circuit equations preserve the operation. The goal is the identity: empty wires that leave every input unchanged.';
-
 // Basic cancellations and a basis change, then paper mission 12 (campaign lesson 17).
 // Layout actions are free.
 const PAPER_CIRCUIT = [

@@ -11,7 +11,7 @@ import { renderGolfInstruction } from '../lib/games/tutorial-gates.js';
 import { START_STATE, applyGate, gateRotation, traceDistance, randomTarget, normalize } from '../lib/quantum-golf/quantum.js';
 import { validateCustomPuzzle } from '../lib/quantum-golf/custom-puzzle.js';
 import { DAILY_START } from '../lib/quantum-golf/daily.js';
-import { GOLF_TUTORIAL, TUTORIAL_INTRO } from '../lib/quantum-golf/tutorial.js';
+import { GOLF_TUTORIAL } from '../lib/quantum-golf/tutorial.js';
 import { BlochSphere } from '../lib/quantum-golf/sphere.js';
 import LEVELS from '../lib/quantum-golf/levels.json' with { type: 'json' };
 const VIEW_STEPS = { ArrowLeft: [-30, 0], ArrowRight: [30, 0], ArrowUp: [0, -30], ArrowDown: [0, 30] };
@@ -83,7 +83,6 @@ tutorial = createTutorial({
   get,
   getAnchor: focus => ({ element: focus, avoid: [get('sphere')], preferredSide: 'below' }),
   renderText: renderGolfInstruction,
-  intro: TUTORIAL_INTRO,
   isBlocked: () => daily.loading,
   controls: '.gates button, .round-controls button, #sequence button, .advanced-panel button, #coordinate-form button',
   steps: GOLF_TUTORIAL.moves.map(({ gate, text }) => ({ text, target: '#gate-' + gate.toLowerCase(), action: () => apply(gate) })),

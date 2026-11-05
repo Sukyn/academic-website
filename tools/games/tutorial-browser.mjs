@@ -442,6 +442,8 @@ async function run([game, count, category], touch, fallback = false) {
   try {
     await page.goto(`${base}/games/${game}/${category ? '?category=' + category : ''}`);
     await page.locator('#tutorial-start:enabled').waitFor();
+    assert.equal((await page.locator('#tutorial-panel').innerText()).trim(), 'Start tutorial',
+      name + ': the preview contains only its start action');
     if (touch && page.viewportSize().width <= 760) {
       const menu = await page.evaluate(() => {
         const box = id => {
@@ -459,7 +461,7 @@ async function run([game, count, category], touch, fallback = false) {
           name + ': Category and Rules share one row without overlapping');
       }
     }
-    assert.equal(await page.locator('#tutorial-panel[data-tutorial-bubble]').count(), 0, 'The introduction stays in the page');
+    assert.equal(await page.locator('#tutorial-panel[data-tutorial-bubble]').count(), 0, 'The start action stays in the page');
     await activate(page.locator('#tutorial-start'), touch);
     await page.getByText(`Step 1 of ${count}`, { exact: true }).waitFor();
     await bubbleGeometry(page, name + ' first step');

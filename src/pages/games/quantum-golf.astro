@@ -1,7 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import LEVELS from '../../lib/quantum-golf/levels.json';
-import { TUTORIAL_INTRO } from '../../lib/quantum-golf/tutorial.js';
 import GameShell from '../../components/games/GameShell.astro';
 import GameModeMenu from '../../components/games/GameModeMenu.astro';
 import GameToolbar from '../../components/games/GameToolbar.astro';
@@ -23,7 +22,7 @@ import GameReviewControls from '../../components/games/GameReviewControls.astro'
 
     <div class="game-content">
       <GameToolbar levels={LEVELS} />
-      <GameTutorial intro={TUTORIAL_INTRO} />
+      <GameTutorial />
 
   <section aria-label="Quantum golf">
     <div class="sphere-view">

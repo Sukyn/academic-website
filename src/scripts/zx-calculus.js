@@ -327,7 +327,7 @@ window.addEventListener('pagehide', () => { dragging.cancel(); cancelAnimation()
 const customJson = createCustomPuzzleJson({ get, game: GAME,
   exportPuzzle: () => editing ? diagram : puzzle, importPuzzle: value => setPuzzle('random', value),
 });
-const tutorial = createTutorial({ get, intro: 'The green and red circles are called spiders. Use ZX rules to reduce the diagram to two straight wires.', isBlocked: () => daily.loading,
+const tutorial = createTutorial({ get, isBlocked: () => daily.loading,
   getAnchor: () => ({ elements: [...selected].map(id => get('zx-board').querySelector(`[data-zx-node="${id}"]`)).filter(Boolean),
     avoid: [get('zx-board'), get('zx-target')] }),
   onRender: focus => rulePalette.prioritize(focus?.dataset.rule),

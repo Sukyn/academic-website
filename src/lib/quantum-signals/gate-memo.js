@@ -88,14 +88,16 @@ export function createGateMemo({ get, choices = gateMemoChoices, operation = ope
   function select(choice) {
     const entry = gates.get(choice); if (!entry) return;
     const { map, button } = entry;
+    if (button.getAttribute('aria-selected') === 'true') return;
     selected = choice;
     for (const [gate, { button }] of gates) {
       button.setAttribute('aria-selected', String(gate === choice)); button.tabIndex = gate === choice ? 0 : -1;
     }
     tabpanel.setAttribute('aria-labelledby', button.id);
     caption.textContent = 'Bits from left to right: ' + map.wires.map(wire => 'wire ' + (wire + 1)).join(', ');
+    const gateName = label(map.operation, choice, currentHole);
     body.replaceChildren(...map.rows.flatMap((_, basis) => [1, -1].map(phase =>
-      circuitDiagram(map, basis, phase, icon(map.operation, choice, currentHole), label(map.operation, choice, currentHole)))));
+      circuitDiagram(map, basis, phase, icon(map.operation, choice, currentHole), gateName))));
   }
   tabs.addEventListener('click', event => {
     const button = event.target.closest('[data-memo-choice]');

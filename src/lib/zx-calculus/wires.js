@@ -29,7 +29,7 @@ export function decoratedWires(diagram) {
     }
   }
   // Remaining components contain only H boxes and have no spider endpoints.
-  diagram.edges.forEach((edge, index) => { if (!visited.has(index)) wires.push(raw(index)); });
+  for (const index of diagram.edges.keys()) if (!visited.has(index)) wires.push(raw(index));
   return wires;
 }
 
@@ -93,7 +93,6 @@ export function curveSlice(curve, start, end) {
   } };
 }
 
-/** Chord projection recovers t on midpoint-normal curves; new boxes fill gaps. */
 /** Shared separation for laying out and sliding H boxes along a wire. */
 export function hadamardGap(count, minimumGap = 0) {
   return Math.min(1 / (count + 1), Math.max(Math.min(.04, .5 / (count + 1)), minimumGap));
