@@ -147,7 +147,7 @@ export function getTutorial(profile, game = 'simplification') {
     steps: solution.map((action, index) => ({ move: action, text: action.rule === 'tidy' ? 'Tidy removes the empty columns.' :
       index === 0 ? 'Hadamard conjugation gives H–Z–H = X. Removing all gates leaves the identity circuit.' :
       index === 2 ? 'The two X gates cancel.' : action.rule === 'basis-x' ?
-        'The conjugation equation applies to the target gates under a shared, unchanged control condition.' : action.rule === 'swap-h' ?
+        'Apply the equation to the target gates. Keep their shared control.' : action.rule === 'swap-h' ?
           'H follows its wire through SWAP, moving to the other row. This is the naturality equation.' :
           action.rule === 'swap-cnot' ? 'Three alternating CNOT gates equal SWAP.' :
           action.rule === 'cancel-swap' ? 'SWAP is self-inverse: two consecutive crossings cancel.' : 'Two identical self-inverse gates cancel.' })),

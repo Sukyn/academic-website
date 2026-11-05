@@ -11,7 +11,7 @@ export const TUTORIAL_CIRCUIT = [
 ];
 
 export const TUTORIAL_STEPS = [
-  { text: 'X is self-inverse: two consecutive X gates equal the identity and can be removed.',
+  { text: 'Remove every gate to reach the identity. X is self-inverse: two consecutive X gates cancel.',
     move: { rule: 'cancel-x', row: 0, column: 0 } },
   { text: 'H is self-inverse too, so the selected pair cancels.',
     move: { rule: 'cancel-h', row: 0, column: 2 } },
@@ -20,7 +20,7 @@ export const TUTORIAL_STEPS = [
   { text: 'The adjacent X gates cancel.',
     layout: [['X', 'X', ...PAPER_CIRCUIT[0]], ['.', '.', ...PAPER_CIRCUIT[1]]],
     move: { rule: 'cancel-x', row: 0, column: 0 } },
-  { text: 'The controlled form of H–Z–H = X expands CNOT into H–CZ–H, with H on the target wire.',
+  { text: 'The same equation works with a control: CNOT = H–CZ–H. Both H gates go on the target wire.',
     layout: PAPER_CIRCUIT,
     move: { rule: 'basis-up', row: 0, column: 1 } },
   { text: 'An identity column adds space between X and CNOT. Adding or removing empty columns costs no moves.',

@@ -333,7 +333,7 @@ const tutorial = createTutorial({ get, isBlocked: () => daily.loading,
   onRender: focus => rulePalette.prioritize(focus?.dataset.rule),
   controls: '#zx-board button, #zx-rules button, .round-controls button, #review-controls button, #sequence button, #replay-actions button, #campaign-controls button, #campaign-controls select, #custom-controls button, #custom-controls select',
   steps: TUTORIAL.solution.map((move, index) => ({
-    text: index === 0 ? 'A fully filled spider has zero phase. A cut-out marks a quarter, half or three-quarter turn. Fuse the green pair: their phases add to a full turn, filling the circle again.' : move.rule === 'color' ? 'Change the spider\'s colour to absorb the Hadamards on all its legs.' : explanations[move.rule],
+    text: index === 0 ? 'These circles are spiders. A full circle has zero phase. A cut-out marks a quarter, half or three-quarter turn. Fuse the green pair: their phases add to a full turn, filling the circle again.' : move.rule === 'color' ? 'Change the spider\'s colour to absorb the Hadamards on all its legs.' : explanations[move.rule],
     target: `#zx-rules [data-rule="${move.rule}"]`,
     prepare: () => { selected = new Set(move.nodes); selectedEdge = null; update(); }, action: () => playMove(move),
   })),

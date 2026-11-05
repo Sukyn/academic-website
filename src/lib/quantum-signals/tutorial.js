@@ -32,7 +32,7 @@ lesson(2, [[single('a', 0, 'X')], [single('b', 1, 'X')]], [
 ]);
 
 lesson(2, [[fixed('H', 0)], [single('a', 0, 'Z')], [single('b', 0, 'H')], [single('c', 1, 'X')]], [
-  look('In this game, at the beginning some gates are fixed. H splits each signal into two branches. For input bit 0, both keep its colour. For input bit 1, the lower branch swaps colour.',
+  look('Some gates are fixed before you start. H splits each signal into two branches. For input bit 0, both keep its colour. For input bit 1, the lower branch swaps colour.',
     { wires: [0], bases: [0, 2], column: 0 }, { kind: 'gate', column: 0, wires: [0] }, 'circuit'),
   place('a', 'Z', 'Z on the upper wire swaps black and white when the first bit is 1. Here 10 turns white; 00 stays black.',
     { wires: [0], bases: [0, 2], column: 1 }, node(2, 1), { view: 'paths', anchor: bits(2, 0) }),
