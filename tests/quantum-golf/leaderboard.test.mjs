@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { websiteFile } from '../../tools/lib/paths.mjs';
 const {
   CAMPAIGN, getLevel, validateSubmission,
 } = await import(websiteFile('src/lib/quantum-golf/leaderboard.js'));
@@ -118,7 +118,7 @@ test('streamed JSON score requests enforce a byte limit and preserve split UTF-8
   const long = valid({ level: 2, sequence: 'H' + 'T'.repeat(10_000) });
   assert.deepEqual(await readSubmission(new Request('https://example.test', {
     method: 'POST', body: JSON.stringify(long),
-  })), long, 'Circuits exceeding the old 2KB request limit are read intact');
+  })), long, 'Large valid circuits within the request limit are read intact');
 });
 
 test('invalid UTF-8 and duplicate JSON fields cannot disguise a score submission', async () => {

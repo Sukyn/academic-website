@@ -110,7 +110,7 @@ test('replay encodes a regular circuit, basis paths and a complete winning frame
     assert.ok(surface.frames.every(frame => texts(frame).every(text => !/GG|colin-blake|https?:|Photon paths|Match the target/.test(text))),
       'Replay frames keep the same clean label without links or congratulatory copy');
     assert.ok(surface.frames.every(frame => texts(frame).every(text => !/optimal|gates placed|\d+ gates?/i.test(text))),
-      'Replays display neither gate counts nor legacy benchmarks');
+      'Replays display neither gate counts nor score benchmarks');
     assert.ok(surface.frames.every(frame => texts(frame).every(text => !['Linked', '|0⟩', '|1⟩', '|+⟩', '|−⟩'].includes(text))),
       'Circuit wires never display local state tokens');
     assert.ok(surface.frames.every(frame => texts(frame).includes('Output') && texts(frame).includes('Goal')));

@@ -4,7 +4,7 @@ import { createLevelLeaderboard, MAX_REPLAY_MOVES } from '../../src/lib/categori
 import { getLevels } from '../../src/lib/categorical-circuits/puzzles.js';
 import { getGame } from '../../src/lib/games/server.js';
 import { SubmissionError } from '../../src/lib/games/submission.js';
-import { loadApiFixture } from '../../tools/games/api-fixture.mjs';
+import { loadApiFixture } from '../helpers/api.mjs';
 
 const key = (kind, profile) => `${kind === 'signals' ? 'quantum-signals' : 'circuit-reduction'}-${profile}`;
 const sequenceFor = (puzzle, kind) => kind === 'signals'

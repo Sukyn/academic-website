@@ -4,7 +4,7 @@ import { encodeReplay } from '../../src/scripts/zx-calculus-gif-worker.js';
 import { applyMove, LEVELS, MAX_MOVES, targetDiagram } from '../../src/lib/zx-calculus/engine.js';
 import { createRewriteScene, drawRewriteFrame, rewriteDuration, REPLAY_MOVE_DURATION } from '../../src/lib/zx-calculus/animation.js';
 import { diagramLayout, ZX_COLORS } from '../../src/lib/zx-calculus/rendering.js';
-import solutions from '../../tools/zx-calculus/solutions.json' with { type: 'json' };
+import solutions from '../fixtures/zx-calculus/solutions.json' with { type: 'json' };
 
 function canvases(context) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'OffscreenCanvas'), surfaces = [];

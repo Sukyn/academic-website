@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMove, availableMoves, LEVELS as LESSONS, ruleFamily } from '../../src/lib/zx-calculus/engine.js';
-import solutions from '../../tools/zx-calculus/solutions.json' with { type: 'json' };
+import solutions from '../fixtures/zx-calculus/solutions.json' with { type: 'json' };
 import { CAMPAIGN, DAILY_START, DAILY_VERSION, dailyPuzzle } from '../../src/lib/zx-calculus/leaderboard.js';
 import { dailyBounds } from '../../src/lib/games/daily-calendar.js';
-import { loadApiFixture } from '../../tools/games/api-fixture.mjs';
+import { loadApiFixture } from '../helpers/api.mjs';
 
 const endpoint = 'https://www.colin-blake.eu/api/leaderboard?game=zx-calculus';
 const LEVELS = LESSONS.map((level, index) => ({ ...level, solution: solutions[index] }));
@@ -37,7 +37,7 @@ test('ZX uses the shared ranked API, isolates campaigns and closes daily scores 
   const { opensAt, closesAt } = dailyBounds(DAILY_START);
   const databaseNow = instant => database.query("SELECT set_config('zx.test_now', $1, false)", [new Date(instant).toISOString()]);
   try {
-    await database.exec(await readFile(new URL('../../tools/quantum-golf/schema.sql', import.meta.url), 'utf8'));
+    await database.exec(await readFile(new URL('../../tools/scores/schema.sql', import.meta.url), 'utf8'));
     await database.exec(`
       CREATE SCHEMA test_clock;
       CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE

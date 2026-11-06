@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMove, availableMoves, isSolved, LEVELS as LESSONS, MAX_MOVES, ruleFamily } from '../../src/lib/zx-calculus/engine.js';
-import solutions from '../../tools/zx-calculus/solutions.json' with { type: 'json' };
+import solutions from '../fixtures/zx-calculus/solutions.json' with { type: 'json' };
 import { CAMPAIGN, DAILY_START, DAILY_VERSION, dailyPuzzle, getBoard, MAX_SUBMISSION_BYTES,
   validateSubmission } from '../../src/lib/zx-calculus/leaderboard.js';
 import { dailyBounds } from '../../src/lib/games/daily-calendar.js';

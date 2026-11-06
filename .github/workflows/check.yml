@@ -31,7 +31,7 @@ jobs:
       - name: Check the minimality API
         run: |
           python -m pip install -r requirements.txt
-          python -m unittest discover -s tools/minimality -p "test_*.py"
+          npm run test:minimality
       - run: node tools/circuit-reduction/certify-generated.mjs --check-data
       - run: npm run build
       - run: node tools/quality/weights.mjs
@@ -45,6 +45,6 @@ jobs:
           curl --retry 10 --retry-delay 1 --retry-connrefused --fail --silent http://127.0.0.1:4323/ > /dev/null
           npm run test:site:browser
           npm run test:tutorials:browser
-          node tools/categorical-circuits/browser.mjs
+          npm run test:categories:browser
           npm run test:daily:browser
           npm run test:zx:browser

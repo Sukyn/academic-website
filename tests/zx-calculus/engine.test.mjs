@@ -4,7 +4,7 @@ import {
   MAX_NODES, MAX_EDGES, MAX_MOVES, RULES, LEVELS as LESSONS, TUTORIAL,
   validateDiagram, targetDiagram, availableMoves, applyMove, isSolved, generatePuzzle, ruleFamily,
 } from '../../src/lib/zx-calculus/engine.js';
-import solutions from '../../tools/zx-calculus/solutions.json' with { type: 'json' };
+import solutions from '../fixtures/zx-calculus/solutions.json' with { type: 'json' };
 
 const LEVELS = LESSONS.map((level, index) => ({ ...level, solution: solutions[index] }));
 const insert = (diagram, edge, kind = 'z') => applyMove(diagram, { rule: 'insert', edge, kind });

@@ -271,7 +271,7 @@ test('phased fusion takes extra time while replay speed and explicit timing rema
     'Other equations keep their existing timing');
   const normal = animateDiagramMove(dom.container, scene);
   dom.tick(MOVE_DURATION);
-  assert.equal(dom.removed, 0, 'The transfer has not been cut off at the old duration');
+  assert.equal(dom.removed, 0, 'Phase transfer continues beyond the standard move duration');
   dom.tick(duration); assert.equal(await normal.finished, true);
   const explicit = animateDiagramMove(dom.container, scene, { duration: 100 });
   dom.tick(99); assert.equal(dom.removed, 1);

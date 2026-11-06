@@ -2,7 +2,7 @@
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { createBrowserApi } from '../circuit-reduction/browser-api.mjs';
+import { createBrowserApi } from '../../tests/browser/helpers/score-fixture.mjs';
 
 const require = createRequire(resolve(process.env.PLAYWRIGHT_MODULE_DIR ?? 'tmp/quality-tools/node_modules', 'package.json'));
 const { chromium } = require('playwright');

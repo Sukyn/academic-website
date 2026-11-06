@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { websiteFile } from '../../tools/lib/paths.mjs';
 import { runPython } from '../../tools/quantum-golf/python.mjs';
 const { START_STATE, applyGate, traceDistance, normalize } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));

@@ -77,7 +77,7 @@ test('unsupported parenthesized BibTeX entries fail clearly before citation extr
 });
 
 test('malformed and trailing-comment bibliography inputs terminate and report clear errors', () => {
-  // Keep the dependency's historic end-of-comment infinite-loop regression bounded.
+  // Parse malformed comments in a subprocess with a timeout.
   const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     const { parseBibtexToPubs } = await import(${JSON.stringify(bibtexModule)});

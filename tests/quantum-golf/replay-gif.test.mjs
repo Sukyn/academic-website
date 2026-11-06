@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { websiteFile } from '../../tools/lib/paths.mjs';
 
 const { encodeReplay } = await import(websiteFile('src/scripts/quantum-golf-gif-worker.js'));
 const { createWorkerReplayGif, createWorkerReplayImage } = await import(websiteFile('src/lib/games/replay-gif.js'));

@@ -13,8 +13,6 @@ npm run check
 npm run build
 ```
 
-For local scoring APIs, see [setup](tools/quantum-golf/SETUP.md).
-
 `npm run dev` starts Astro and the `/minimality/` Python search API together.
-See its
-[local setup and runner](tools/minimality/README.md).
+
+Documentation: [development](docs/development.md), [game tools](docs/games.md), [Minimality](docs/minimality.md).

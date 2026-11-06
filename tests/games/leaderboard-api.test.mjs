@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
-import { websiteFile } from '../../tools/quantum-golf/website.mjs';
-import { compileApiFixture, loadApiFixture } from '../../tools/games/api-fixture.mjs';
+import { websiteFile } from '../../tools/lib/paths.mjs';
+import { compileApiFixture, loadApiFixture } from '../helpers/api.mjs';
 const { default: LEVELS } = await import(websiteFile('src/lib/quantum-golf/levels.json'), { with: { type: 'json' } });
 const { solveShortest } = await import(websiteFile('src/lib/quantum-golf/solver.js'));
 const { DAILY_VERSION, dailyBounds, dailyPuzzle } = await import(websiteFile('src/lib/quantum-golf/daily.js'));
@@ -31,7 +31,7 @@ const { optimalShots: graphOptimalShots, sequenceCost: graphSequenceCost, soluti
 const { CAMPAIGN: GRAPH_CAMPAIGN, DAILY_CAMPAIGN: GRAPH_DAILY_CAMPAIGN, MAX_SUBMISSION_BYTES: MAX_GRAPH_BYTES } =
   await import(websiteFile('src/lib/graph-states/leaderboard.js'));
 const { LEVELS: ZX_LEVELS, MAX_MOVES: ZX_MAX_MOVES } = await import(websiteFile('src/lib/zx-calculus/engine.js'));
-const { default: ZX_SOLUTIONS } = await import(websiteFile('tools/zx-calculus/solutions.json'), { with: { type: 'json' } });
+const { default: ZX_SOLUTIONS } = await import(websiteFile('tests/fixtures/zx-calculus/solutions.json'), { with: { type: 'json' } });
 const { CAMPAIGN: ZX_CAMPAIGN, DAILY_START: ZX_START, DAILY_VERSION: ZX_DAILY_CAMPAIGN,
   MAX_SUBMISSION_BYTES: MAX_ZX_BYTES, dailyPuzzle: zxDailyPuzzle } = await import(websiteFile('src/lib/zx-calculus/leaderboard.js'));
 const { getLevels: categoricalLevels } = await import(websiteFile('src/lib/categorical-circuits/puzzles.js'));
@@ -166,7 +166,7 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
     ])));
   };
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     const count = async () => Number((await database.query('SELECT COUNT(*) AS n FROM scores')).rows[0].n);
 
     assert.equal((await get('unknown')).status, 400);
@@ -323,8 +323,7 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
       ['retired-campaign', 'Old campaign']);
     assert.equal((await (await get()).json()).total, 1, 'Previous campaigns cannot contaminate current ranks');
 
-    // A tied timestamp deliberately exercises the ID ordering used for old D1
-    // rows and simultaneous new submissions.
+    // Simultaneous submissions use IDs to break timestamp ties.
     const originalNow = Date.now;
     Date.now = () => 1;
     const ids = [];
@@ -411,7 +410,7 @@ test('Vercel route ranks preserved attempts in PostgreSQL and rejects invalid wr
 });
 
 test('score migration preserves IDs and timestamps, retries safely and rolls back conflicting imports', async () => {
-  const { migrate } = await import(websiteFile('tools/quantum-golf/migrate.mjs'));
+  const { migrate } = await import(websiteFile('tools/scores/migrate.mjs'));
   const database = new PGlite();
   let queryCount = 0;
   const sql = {
@@ -526,8 +525,8 @@ test('database waits stop on request cancellation or timeout and errors never ex
 });
 
 test('JSON export restores scores and completions safely and refuses to overwrite a backup', async () => {
-  const { migrate } = await import(websiteFile('tools/quantum-golf/migrate.mjs'));
-  const { exportScores } = await import(websiteFile('tools/quantum-golf/export.mjs'));
+  const { migrate } = await import(websiteFile('tools/scores/migrate.mjs'));
+  const { exportScores } = await import(websiteFile('tools/scores/export.mjs'));
   const databases = [new PGlite()];
   const adapter = database => ({
     query: (query, values = []) => ({ query, values }),
@@ -601,7 +600,7 @@ test('JSON export restores scores and completions safely and refuses to overwrit
 });
 
 test('schema removes legacy circuit storage while preserving scores and upgrading level limits', async () => {
-  const { migrate } = await import(websiteFile('tools/quantum-golf/migrate.mjs'));
+  const { migrate } = await import(websiteFile('tools/scores/migrate.mjs'));
   const database = new PGlite();
   const sql = {
     query: (query, values = []) => ({ query, values }),
@@ -750,7 +749,7 @@ test('daily PostgreSQL writes enforce the real scoring day at midnight, independ
   // unchanged. This proves slow requests cannot use the application clock.
   const databaseNow = instant => database.query("SELECT set_config('quantum_golf.test_now', $1, false)", [new Date(instant).toISOString()]);
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     await database.exec(`
       CREATE SCHEMA test_clock;
       CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
@@ -859,7 +858,7 @@ test('circuit reduction shares ranking SQL while isolating campaigns, replays an
   const circuitBoard = player => route.fetch(new Request(`${address}&level=${level.id}${player ? `&player=${player}` : ''}`));
   const count = async () => Number((await database.query('SELECT COUNT(*) AS n FROM scores')).rows[0].n);
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     assert.equal((await route.fetch(new Request(`${endpoint}?game=unknown&level=1`))).status, 400);
     assert.equal((await post({ ...payload, game: 'quantum-golf' }, origin, address)).status, 400,
       'Contradictory URL and body game selectors never switch score boards');
@@ -971,7 +970,7 @@ test('advanced level leaderboards verify official solutions and isolate categori
   )).rows[0].n);
   const firstBoards = new Map();
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     for (const { game, kind, levels, campaign } of advancedCampaigns) {
       const level = levels[0], sequence = advancedSequence(kind, level);
       const payload = { game, level: level.id, name: 'Ada', sequence };
@@ -1097,7 +1096,7 @@ test('Signals records verified completions in the shared table without ranks', a
     }
   };
   try {
-    const schema = await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8');
+    const schema = await readFile(websiteFile('tools/scores/schema.sql'), 'utf8');
     await database.exec(schema);
     assert.deepEqual(await (await list()).json(), { total: 0, entries: [], currentPlayer: null });
     for (const input of [null, [], {}, { ...payload, sequence: [] }, { ...payload, sequence: 'X' },
@@ -1217,7 +1216,7 @@ test('graph states ranks verified shots and enforces daily database deadlines', 
   const bounds = dailyBounds(GRAPH_START);
   const databaseNow = instant => database.query("SELECT set_config('graph.test_now', $1, false)", [new Date(instant).toISOString()]);
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     await database.exec(`
       CREATE SCHEMA test_clock;
       CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
@@ -1312,7 +1311,7 @@ test('ZX scores replay official diagrams, keep compact records and enforce datab
   const bounds = dailyBounds(ZX_START);
   const databaseNow = instant => database.query("SELECT set_config('zx.test_now', $1, false)", [new Date(instant).toISOString()]);
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     await database.exec(`
       CREATE SCHEMA test_clock;
       CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE
@@ -1453,7 +1452,7 @@ test('circuit daily metadata and database scoring share Paris deadlines and rema
   const boardFor = chosen => route.fetch(new Request(`${address}&date=${chosen}`));
   const databaseNow = instant => database.query("SELECT set_config('games.test_now', $1, false)", [new Date(instant).toISOString()]);
   try {
-    await database.exec(await readFile(websiteFile('tools/quantum-golf/schema.sql'), 'utf8'));
+    await database.exec(await readFile(websiteFile('tools/scores/schema.sql'), 'utf8'));
     await database.exec(`
       CREATE SCHEMA test_clock;
       CREATE FUNCTION test_clock.clock_timestamp() RETURNS timestamptz LANGUAGE SQL VOLATILE

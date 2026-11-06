@@ -312,7 +312,7 @@ export function placeGate(value, ruleId, side, generatorId, wire, column, source
   return normalizeDraft(draft);
 }
 
-/** Occupied columns in display order; reading an old draft never rewrites its layout. */
+/** Occupied columns in display order, preserving the saved layout. */
 export function getCircuitColumns(operations) {
   return [...new Set(operations.map(operation => operation.column))].sort((a, b) => a - b);
 }

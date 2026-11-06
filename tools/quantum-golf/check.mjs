@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { websiteFile } from './website.mjs';
+import { websiteFile } from '../lib/paths.mjs';
 
 const files = [
   'src/scripts/quantum-golf.js',

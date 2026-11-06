@@ -449,8 +449,6 @@ def run_search(source: Source, theory: dict[str, Any], timeout: float,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         cwd=source.root, env=_worker_environment(), shell=False,
     )
-    assert process.stdin is not None and process.stdout is not None
-
     def read_output() -> None:
         try:
             for line in process.stdout:

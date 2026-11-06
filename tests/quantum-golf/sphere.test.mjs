@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { websiteFile } from '../../tools/lib/paths.mjs';
 
 const { BlochSphere } = await import(websiteFile('src/lib/quantum-golf/sphere.js'));
 const { START_STATE, applyGate, gateRotation } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));

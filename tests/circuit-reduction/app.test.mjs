@@ -393,7 +393,7 @@ test('circuit controller preserves rounds, validates scoring, cancels stale work
   assert.deepEqual(boardCircuit(), beforeColumn, 'Undo restores every wire before the spacing edit');
   const lowerGap = get('circuit-board').querySelectorAll('[data-space]').find(node => node.dataset.space === '1:1');
   await lowerGap.dispatch('click', { shiftKey: true });
-  assert.deepEqual(boardCircuit(), withColumn, 'Holding Shift no longer changes a + click');
+  assert.deepEqual(boardCircuit(), withColumn, 'Click and Shift-click insert the same column');
   assert.equal(moveCount(), 0);
   await click('undo'); await boards();
   assert.deepEqual(boardCircuit(), beforeColumn);

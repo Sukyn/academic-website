@@ -73,7 +73,7 @@ test('available equations come first in canonical order without moving unchanged
   palette.update([]); assert.deepEqual(state.order(), ['a', 'b', 'c', 'd']);
 });
 
-for (const nativeMove of [false, true]) test(`moving an equation retains keyboard focus (${nativeMove ? 'native move' : 'legacy insert'})`, () => {
+for (const nativeMove of [false, true]) test(`moving an equation retains keyboard focus (${nativeMove ? 'moveBefore' : 'insertBefore'})`, () => {
   const state = placedButtons(['a', 'b', 'c'], nativeMove);
   state.doc.activeElement = state.entries[2];
   const palette = createRulePalette(state.entries, { apply() {} });

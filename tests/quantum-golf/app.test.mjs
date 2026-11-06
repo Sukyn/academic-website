@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { website, websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { website, websiteFile } from '../../tools/lib/paths.mjs';
 import { expandGameControls } from '../games/markup.mjs';
 import { replayWorkers } from '../games/replay-worker-fixture.mjs';
 const { applyGate, traceDistance, START_STATE } = await import(websiteFile('src/lib/quantum-golf/quantum.js'));

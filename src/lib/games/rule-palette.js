@@ -12,7 +12,7 @@ export function createRulePalette(buttons, { apply, ruleOf = move => move.rule, 
       if (button === current) current = current.nextElementSibling;
       else (parent.moveBefore ?? parent.insertBefore).call(parent, button, current);
     }
-    // Older browsers can blur a moved button; keep keyboard users on that control.
+    // Preserve keyboard focus when reordering buttons.
     if (entries.includes(focused) && parent.ownerDocument.activeElement !== focused) focused.focus({ preventScroll: true });
   }
   for (const button of entries) button.addEventListener('click', () => {

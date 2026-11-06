@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { websiteFile } from '../../tools/quantum-golf/website.mjs';
+import { websiteFile } from '../../tools/lib/paths.mjs';
 const {
   START_STATE, normalize, applyGate, gateRotation, gateTrajectory,
   traceDistance, targetCap, randomTarget,

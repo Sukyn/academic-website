@@ -148,7 +148,7 @@ test('degenerate curves have finite metrics and leave normalized positions uncha
   }
 });
 
-test('H slots preserve old parameters in arc space and respect a physical spacing fraction', () => {
+test('H slots preserve existing positions in arc space and respect a physical spacing fraction', () => {
   const curve = { a: { x: 0, y: 0 }, control: { x: 50, y: 150 }, b: { x: 100, y: 0 } }, metrics = curveMetrics(curve);
   const position = curvePoint(curve, .35), oldFraction = arcFraction(.35, metrics);
   const slots = hadamardSlots([0, 4, 5, 2], new Map([[4, position]]), curve.a, curve.b,
