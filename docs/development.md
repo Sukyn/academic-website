@@ -71,7 +71,8 @@ A 503 requires checking function logs, schema and environment configuration. Red
 
 ## Assets
 
-`python tools/profile/build.py` regenerates the CV and overview in `public/profile/` using ReportLab.
+`python -m pip install -r tools/profile/requirements.txt`, then `python tools/profile/build.py` regenerates the CV and overview in `public/profile/`. Use `--cv` or `--overview` to build only one.
+The CV uses [Florilegium v2.0.1](https://github.com/kevinraymond/florilegium/tree/v2.0.1) and needs Lua 5.3+ or `texlua` (MiKTeX / TeX Live). The local theme supplies ZX drawing primitives; Florilegium handles their growth and placement. The library is downloaded once into ignored `tmp/pdfs/`. The fixed PDF font in `tools/profile/` is the website's Grenze Gotisch at weight 600; its [license](../public/fonts/grenzegotisch-OFL.txt) is shared with the web fonts.
 The site build does not regenerate these PDFs. Check their links and render every page after editing; use public research results and settled dates.
 Keep publication details aligned with `src/content/publications.bibtex`.
 
