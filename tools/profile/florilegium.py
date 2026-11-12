@@ -39,5 +39,5 @@ def margin(page, left_mm):
     )
     if result.returncode:
         raise RuntimeError(result.stderr.decode(errors="replace").strip()
-                           or "Florilegium could not render the CV margin")
+                           or "Florilegium could not render the page margin")
     return svg2rlg(BytesIO(result.stdout))

@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 
+from reportlab.graphics import renderPDF
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -19,6 +20,8 @@ from reportlab.platypus import (
     Spacer,
     Table,
 )
+
+from florilegium import margin
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -96,7 +99,7 @@ def header(subtitle):
     ]
 
 
-def footer(canvas, doc, *, credit=False):
+def footer(canvas, doc):
     right, y = doc.leftMargin+doc.width, 10.5*mm
     canvas.saveState()
     canvas.setStrokeColor(RULE)
@@ -106,7 +109,7 @@ def footer(canvas, doc, *, credit=False):
     canvas.setFillColor(MUTED)
     canvas.drawString(doc.leftMargin, y, f"Colin Blake | Updated {UPDATED}")
     canvas.drawRightString(right, y, str(doc.page))
-    if credit:
+    if doc.page == 1:
         prefix, url = "For the ornament, see ", "https://github.com/kevinraymond/florilegium"
         size, y = 6, y-3.5*mm
         canvas.setFont("Helvetica",size)
@@ -118,20 +121,17 @@ def footer(canvas, doc, *, credit=False):
     canvas.restoreState()
 
 
-def build(filename, title, story, *, illustrated=False):
-    left = 38 if illustrated else 18
+def build(filename, title, story):
+    left = 38
     def page(canvas, doc):
-        if illustrated:
-            from florilegium import margin
-            from reportlab.graphics import renderPDF
-            # Keep the artwork in the side margin, without the floral footer trail.
-            canvas.saveState()
-            clip = canvas.beginPath()
-            clip.rect(0, 7*mm, doc.leftMargin, A4[1]-7*mm)
-            canvas.clipPath(clip, stroke=0, fill=0)
-            renderPDF.draw(margin(doc.page, left), canvas, 0, 0)
-            canvas.restoreState()
-        footer(canvas, doc, credit=illustrated and doc.page == 1)
+        # Keep the artwork in the side margin, without the floral footer trail.
+        canvas.saveState()
+        clip = canvas.beginPath()
+        clip.rect(0, 7*mm, doc.leftMargin, A4[1]-7*mm)
+        canvas.clipPath(clip, stroke=0, fill=0)
+        renderPDF.draw(margin(doc.page, left), canvas, 0, 0)
+        canvas.restoreState()
+        footer(canvas, doc)
 
     doc = SimpleDocTemplate(
         str(OUTPUT / filename), pagesize=A4,
@@ -231,7 +231,7 @@ def cv():
     story += section("Languages")
     story += [p("French: native. English: full professional proficiency. "
                 "Spanish:&nbsp;professional&nbsp;working&nbsp;proficiency.")]
-    build("colin-blake-cv.pdf", "Curriculum vitae", story, illustrated=True)
+    build("colin-blake-cv.pdf", "Curriculum vitae", story)
 
 
 def overview():
